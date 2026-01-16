@@ -107,9 +107,16 @@ async def get_nvd_cves(api_key: str) -> List[Dict]:
         return []
 
 
+
 async def get_intel471_data(email: str, api_key: str) -> List[Dict]:
     """
     Fetch threat intelligence from Intel471 (last 7 days).
+    
+    Based on Intel471 Titan API v1.20.0 Swagger Specification.
+    Key fixes applied:
+    - Timestamps converted to milliseconds (multiply by 1000)
+    - Field names corrected to match API response schema
+    - Indicator nested structure properly handled
     
     Args:
         email: Intel471 login email
@@ -133,12 +140,18 @@ async def get_intel471_data(email: str, api_key: str) -> List[Dict]:
         threats = []
         
         async with aiohttp.ClientSession() as session:
-            # Fetch reports
+            # =====================
+            # Fetch Reports
+            # =====================
             reports_url = f"{base_url}/reports"
+            
+            # CRITICAL: Intel471 uses MILLISECONDS, not seconds!
+            # Alternative: use string format like "7day"
             params = {
-                "from": int(start_date.timestamp()),
-                "until": int(end_date.timestamp()),
-                "count": 50
+                "from": int(start_date.timestamp() * 1000),  # Convert to milliseconds
+                "until": int(end_date.timestamp() * 1000),   # Convert to milliseconds
+                "count": 50,
+                "v": "1.20.0"  # Pin API version for consistency
             }
             
             async with session.get(reports_url, auth=auth, params=params) as response:
@@ -146,54 +159,148 @@ async def get_intel471_data(email: str, api_key: str) -> List[Dict]:
                     data = await response.json()
                     
                     for report in data.get("reports", []):
-                        # Filter for biotech/genomics/healthcare keywords
-                        text = report.get("text", "").lower()
-                        title = report.get("title", "").lower()
+                        # CORRECTED field names based on SimpleReportSchema:
+                        # - "subject" not "title"
+                        # - "actorHandle" not "actor.name"
+                        # - "documentType" not "type"
+                        # Note: "rawText" only available in /reports/{uid} endpoint
                         
-                        keywords = ["biotech", "genomics", "healthcare", "hospital", "medical", 
-                                   "pharmaceutical", "life sciences", "research"]
+                        subject = report.get("subject", "").lower()
+                        tags = [t.lower() for t in report.get("tags", [])]
                         
-                        if any(keyword in text or keyword in title for keyword in keywords):
+                        # Keywords for biotech/genomics/healthcare filtering
+                        keywords = [
+                            "biotech", "genomics", "healthcare", "hospital", "medical",
+                            "pharmaceutical", "life sciences", "research", "clinical",
+                            "patient", "health", "laboratory", "diagnostics"
+                        ]
+                        
+                        # Check subject and tags for relevance
+                        is_relevant = (
+                            any(keyword in subject for keyword in keywords) or
+                            any(keyword in tag for tag in tags for keyword in keywords)
+                        )
+                        
+                        if is_relevant:
+                            # Extract actor handle if present
+                            actor_handle = report.get("actorHandle", "Unknown")
+                            
+                            # Also check actorSubjectOfReport for actor names
+                            actor_subjects = report.get("actorSubjectOfReport", [])
+                            if actor_subjects and actor_handle == "Unknown":
+                                actor_handle = actor_subjects[0].get("handle", "Unknown")
+                            
+                            # Convert timestamp from milliseconds to ISO format
+                            created_ms = report.get("created", 0)
+                            created_date = ""
+                            if created_ms:
+                                created_date = datetime.fromtimestamp(created_ms / 1000).isoformat()
+                            
+                            # Map admiralty code to confidence level
+                            admiralty = report.get("admiraltyCode", "")
+                            confidence_map = {
+                                "A": "Confirmed",
+                                "B": "High",
+                                "C": "Medium",
+                                "D": "Low",
+                                "E": "Very Low",
+                                "F": "Cannot be judged"
+                            }
+                            confidence = confidence_map.get(admiralty[:1], "Medium") if admiralty else "Medium"
+                            
                             threats.append({
-                                "threat_actor": report.get("actor", {}).get("name", "Unknown"),
-                                "threat_type": report.get("type", "Report"),
-                                "confidence": report.get("confidence", "Medium"),
-                                "summary": report.get("title", "")[:500],
-                                "date": report.get("released", "")
+                                "source": "Intel471",
+                                "threat_actor": actor_handle,
+                                "threat_type": report.get("documentType", "Report"),
+                                "confidence": confidence,
+                                "summary": report.get("subject", "")[:500],
+                                "date": created_date,
+                                "tags": report.get("tags", []),
+                                "motivation": report.get("motivation", []),
+                                "portal_url": report.get("portalReportUrl", ""),
+                                "uid": report.get("uid", "")
                             })
                     
-                    logger.info(f"Retrieved {len(threats)} items from Intel471 reports")
+                    logger.info(f"Retrieved {len(threats)} relevant items from Intel471 reports")
                 else:
                     logger.error(f"Intel471 reports API returned status {response.status}")
                     response_text = await response.text()
                     logger.error(f"Intel471 response: {response_text[:500]}")
             
-            # Fetch indicators
+            # =====================
+            # Fetch Indicators
+            # =====================
             indicators_url = f"{base_url}/indicators"
             
-            async with session.get(indicators_url, auth=auth, params=params) as response:
+            # Indicators use same timestamp format
+            indicator_params = {
+                "from": int(start_date.timestamp() * 1000),
+                "until": int(end_date.timestamp() * 1000),
+                "count": 20,
+                "v": "1.20.0"
+            }
+            
+            async with session.get(indicators_url, auth=auth, params=indicator_params) as response:
                 if response.status == 200:
                     data = await response.json()
                     
-                    for indicator in data.get("indicators", [])[:20]:
+                    for indicator in data.get("indicators", []):
+                        # CORRECTED: Indicators have nested "data" structure
+                        # See IndicatorSearchResponse schema in swagger
+                        
+                        indicator_data = indicator.get("data", {})
+                        threat_info = indicator_data.get("threat", {})
+                        threat_data = threat_info.get("data", {})
+                        
+                        # Get indicator details
+                        indicator_type = indicator_data.get("indicator_type", "Unknown")
+                        indicator_values = indicator_data.get("indicator_data", {})
+                        
+                        # Extract the actual indicator value based on type
+                        value = ""
+                        if indicator_type == "url":
+                            value = indicator_values.get("url", "")
+                        elif indicator_type == "file":
+                            value = indicator_values.get("md5", "") or indicator_values.get("sha256", "")
+                        elif indicator_type == "ipv4":
+                            value = indicator_values.get("ipv4", "")
+                        elif indicator_type == "domain":
+                            value = indicator_values.get("domain", "")
+                        else:
+                            # Generic fallback
+                            value = str(indicator_values)[:100] if indicator_values else ""
+                        
+                        # Get last updated timestamp (in milliseconds)
+                        last_updated_ms = indicator.get("last_updated", 0)
+                        last_updated_date = ""
+                        if last_updated_ms:
+                            last_updated_date = datetime.fromtimestamp(last_updated_ms / 1000).isoformat()
+                        
+                        # Get malware family from threat data
+                        malware_family = threat_data.get("family", "Unknown")
+                        
                         threats.append({
-                            "threat_actor": indicator.get("actor", "Unknown"),
-                            "threat_type": "Indicator",
-                            "confidence": indicator.get("confidence", "Medium"),
-                            "summary": f"{indicator.get('type', 'Unknown')}: {indicator.get('value', '')}",
-                            "date": indicator.get("last_seen", "")
+                            "source": "Intel471",
+                            "threat_actor": malware_family,  # Using malware family as identifier
+                            "threat_type": f"Indicator ({indicator_type})",
+                            "confidence": indicator_data.get("confidence", "Medium"),
+                            "summary": f"{indicator_type.upper()}: {value}",
+                            "date": last_updated_date,
+                            "mitre_tactics": indicator_data.get("mitre_tactics", ""),
+                            "indicator_uid": indicator.get("uid", "")
                         })
                     
                     logger.info(f"Retrieved {len(threats)} total items from Intel471")
                 else:
                     logger.error(f"Intel471 indicators API returned status {response.status}")
+                    response_text = await response.text()
+                    logger.error(f"Intel471 indicators response: {response_text[:500]}")
         
         return threats
         
     except Exception as e:
         logger.error(f"Error fetching Intel471 data: {e}", exc_info=True)
         return []
-
 
 async def get_crowdstrike_data(client_id: str, client_secret: str, base_url: str = "https://api.crowdstrike.com") -> List[Dict]:
     """
@@ -388,84 +495,187 @@ async def get_threatq_data(api_key: str, threatq_url: str) -> List[Dict]:
 
 async def get_rapid7_data(api_key: str, region: str = "us") -> List[Dict]:
     """
-    Fetch vulnerability data from Rapid7 InsightVM.
+    Fetch vulnerability data from Rapid7 InsightVM Cloud API V4.
+    
+    Uses POST /vm/v4/integration/vulnerabilities endpoint to retrieve
+    all vulnerabilities that can be assessed, with CVE IDs for correlation.
+    
+    API Reference: https://help.rapid7.com/insightvm/en-us/api/integrations.html
     
     Args:
-        api_key: Rapid7 API key
-        region: Rapid7 region (us, eu, ca, au, ap)
+        api_key: Rapid7 Organization API key (from Insight Platform)
+        region: Rapid7 region (us, us2, us3, eu, ca, au, ap)
         
     Returns:
-        List of vulnerability dictionaries
+        List containing vulnerability summary with CVE mappings
     """
-    logger.info("Fetching data from Rapid7 API")
+    logger.info(f"Fetching data from Rapid7 InsightVM Cloud API (region: {region})")
     
     try:
-        # Determine base URL based on region
+        # Build base URL for the specified region
+        # Format: https://{region}.api.insight.rapid7.com
         base_url = f"https://{region}.api.insight.rapid7.com"
         
         headers = {
             "X-Api-Key": api_key,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Accept": "application/json"
         }
         
         vulnerabilities = []
+        all_cve_ids = set()  # Track unique CVEs for correlation
         
         async with aiohttp.ClientSession() as session:
-            # Fetch vulnerability data
+            # =====================
+            # Fetch Vulnerabilities via POST
+            # =====================
+            # POST /vm/v4/integration/vulnerabilities
+            # Returns all vulnerabilities that can be assessed
             vuln_url = f"{base_url}/vm/v4/integration/vulnerabilities"
-            params = {
-                "size": 100,
-                "sort": "riskScore,DESC"
+            
+            # Request body with search criteria
+            # Get vulnerabilities modified in the last 30 days for relevance
+            from datetime import datetime, timedelta
+            thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%dT00:00:00Z")
+            
+            request_body = {
+                "vulnerability": f"modified > {thirty_days_ago}"
             }
             
-            async with session.get(vuln_url, headers=headers, params=params) as response:
+            # Query parameters for pagination
+            params = {
+                "size": 500,  # Max records per page
+                "sort": "severity,DESC"  # Sort by severity descending
+            }
+            
+            logger.info(f"Fetching vulnerabilities from: {vuln_url}")
+            logger.info(f"Request body: {request_body}")
+            
+            async with session.post(vuln_url, headers=headers, json=request_body, params=params) as response:
+                logger.info(f"Rapid7 vulnerabilities API response status: {response.status}")
+                
                 if response.status == 200:
                     data = await response.json()
                     
-                    for vuln in data.get("resources", []):
-                        severity = vuln.get("severity", "")
+                    # Response structure: data, metadata, links
+                    vuln_list = data.get("data", [])
+                    metadata = data.get("metadata", {})
+                    
+                    total_resources = metadata.get("totalResources", 0)
+                    logger.info(f"Total vulnerabilities available: {total_resources}")
+                    logger.info(f"Retrieved {len(vuln_list)} vulnerabilities in this page")
+                    
+                    # Process each vulnerability
+                    for vuln in vuln_list:
+                        # Extract severity
+                        severity = vuln.get("severity", "").upper()
+                        
+                        # Map severity levels
+                        severity_map = {
+                            "CRITICAL": "Critical",
+                            "SEVERE": "Severe", 
+                            "HIGH": "Severe",
+                            "MODERATE": "Moderate",
+                            "MEDIUM": "Moderate",
+                            "LOW": "Low"
+                        }
+                        normalized_severity = severity_map.get(severity, severity)
                         
                         # Only include Critical and Severe vulnerabilities
-                        if severity in ["Critical", "Severe"]:
-                            # Get CVE IDs
-                            cve_ids = [ref.get("id") for ref in vuln.get("references", []) 
-                                      if ref.get("source") == "CVE"]
+                        if normalized_severity in ["Critical", "Severe"]:
+                            # Extract CVE IDs
+                            # V4 API stores CVEs in 'cves' array
+                            cve_ids = vuln.get("cves", [])
+                            
+                            # Track all unique CVEs for correlation
+                            all_cve_ids.update(cve_ids)
+                            
+                            # Get CVSS scores
+                            cvss_v3 = vuln.get("cvss", {}).get("v3", {})
+                            cvss_v2 = vuln.get("cvss", {}).get("v2", {})
+                            cvss_score = cvss_v3.get("score", cvss_v2.get("score", 0))
+                            
+                            # Check for exploitability
+                            # exploits and malwareKits can be lists or integers depending on API version
+                            exploits = vuln.get("exploits", 0)
+                            malware_kits = vuln.get("malwareKits", 0)
+                            
+                            # Handle if exploits/malwareKits are lists (contains exploit objects) or integers (count)
+                            if isinstance(exploits, list):
+                                exploits_count = len(exploits)
+                            else:
+                                exploits_count = exploits if isinstance(exploits, int) else 0
+                                
+                            if isinstance(malware_kits, list):
+                                malware_kits_count = len(malware_kits)
+                            else:
+                                malware_kits_count = malware_kits if isinstance(malware_kits, int) else 0
                             
                             vulnerabilities.append({
+                                "source": "Rapid7",
                                 "vulnerability_id": vuln.get("id", ""),
                                 "title": vuln.get("title", ""),
-                                "severity": severity,
-                                "risk_score": vuln.get("riskScore", 0),
+                                "description": vuln.get("description", {}).get("text", "")[:300] if isinstance(vuln.get("description"), dict) else str(vuln.get("description", ""))[:300],
+                                "severity": normalized_severity,
+                                "cvss_score": cvss_score,
                                 "cve_ids": cve_ids,
+                                "exploitable": exploits_count > 0 or malware_kits_count > 0,
+                                "exploits_count": exploits_count,
+                                "malware_kits_count": malware_kits_count,
                                 "published": vuln.get("published", ""),
-                                "exploits": vuln.get("exploits", 0) > 0
+                                "modified": vuln.get("modified", ""),
+                                "risk_score": vuln.get("riskScore", 0),
+                                "categories": vuln.get("categories", [])
                             })
                     
-                    # Get asset count
-                    assets_url = f"{base_url}/vm/v4/integration/assets"
-                    async with session.get(assets_url, headers=headers) as assets_response:
-                        if assets_response.status == 200:
-                            assets_data = await assets_response.json()
-                            asset_count = assets_data.get("page", {}).get("totalResources", 0)
-                        else:
-                            asset_count = 0
+                    # Sort by CVSS score descending
+                    vulnerabilities.sort(key=lambda x: (x.get("cvss_score", 0), x.get("exploitable", False)), reverse=True)
                     
-                    # Calculate summary statistics
+                    # Build summary for the report
                     summary = {
-                        "asset_count": asset_count,
-                        "vulnerability_count": len(vulnerabilities),
+                        "source": "Rapid7",
+                        "total_vulnerabilities_scanned": total_resources,
+                        "critical_severe_count": len(vulnerabilities),
+                        "unique_cve_count": len(all_cve_ids),
+                        "all_cve_ids": list(all_cve_ids),  # For CVE correlation with threat intel
                         "critical_count": sum(1 for v in vulnerabilities if v["severity"] == "Critical"),
-                        "exploitable_count": sum(1 for v in vulnerabilities if v.get("exploits", False)),
-                        "average_risk_score": sum(v["risk_score"] for v in vulnerabilities) / len(vulnerabilities) if vulnerabilities else 0,
-                        "vulnerabilities": vulnerabilities[:20]  # Limit to top 20
+                        "severe_count": sum(1 for v in vulnerabilities if v["severity"] == "Severe"),
+                        "exploitable_count": sum(1 for v in vulnerabilities if v.get("exploitable", False)),
+                        "top_vulnerabilities": vulnerabilities[:25]  # Top 25 for the report
                     }
                     
-                    logger.info(f"Retrieved {len(vulnerabilities)} Critical/Severe vulnerabilities from Rapid7")
-                    return [summary]  # Return as single summary object
-                else:
-                    logger.error(f"Rapid7 API returned status {response.status}")
+                    logger.info(f"Processed {len(vulnerabilities)} Critical/Severe vulnerabilities")
+                    logger.info(f"Found {len(all_cve_ids)} unique CVEs for correlation")
+                    
+                    return [summary]
+                    
+                elif response.status == 401:
+                    logger.error("Rapid7 API authentication failed. Check API key.")
+                    response_text = await response.text()
+                    logger.error(f"Rapid7 response: {response_text[:500]}")
                     return []
                     
+                elif response.status == 403:
+                    logger.error("Rapid7 API access forbidden. Verify API key permissions.")
+                    response_text = await response.text()
+                    logger.error(f"Rapid7 response: {response_text[:500]}")
+                    return []
+                    
+                elif response.status == 400:
+                    logger.error("Rapid7 API bad request. Check request body format.")
+                    response_text = await response.text()
+                    logger.error(f"Rapid7 response: {response_text[:500]}")
+                    return []
+                    
+                else:
+                    logger.error(f"Rapid7 API returned status {response.status}")
+                    response_text = await response.text()
+                    logger.error(f"Rapid7 response: {response_text[:500]}")
+                    return []
+                    
+    except aiohttp.ClientError as e:
+        logger.error(f"Network error connecting to Rapid7 API: {e}", exc_info=True)
+        return []
     except Exception as e:
         logger.error(f"Error fetching Rapid7 data: {e}", exc_info=True)
         return []
