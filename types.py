@@ -252,7 +252,8 @@ class CollectorResult:
 
 @dataclass
 class APICredentials:
-    """Container for all API credentials."""
+    """Container for all API credentials stored in Key Vault."""
+    # Threat Intelligence APIs
     nvd_key: str = ""
     threatq_key: str = ""
     threatq_url: str = ""
@@ -263,8 +264,12 @@ class APICredentials:
     crowdstrike_base_url: str = ""
     rapid7_key: str = ""
     rapid7_region: str = ""
+    # Azure OpenAI
     openai_key: str = ""
     openai_endpoint: str = ""
+    # Azure Storage
+    storage_account_name: str = ""
+    storage_account_key: str = ""
 
     def to_dict(self) -> Dict[str, str]:
         """Convert to dictionary (for backwards compatibility)."""
@@ -280,5 +285,7 @@ class APICredentials:
             "rapid7_key": self.rapid7_key,
             "rapid7_region": self.rapid7_region,
             "openai_key": self.openai_key,
-            "openai_endpoint": self.openai_endpoint
+            "openai_endpoint": self.openai_endpoint,
+            "storage_account_name": self.storage_account_name,
+            "storage_account_key": self.storage_account_key
         }

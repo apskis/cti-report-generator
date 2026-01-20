@@ -95,22 +95,22 @@ class ReportConfig:
 
 @dataclass(frozen=True)
 class AzureConfig:
-    """Azure infrastructure configuration from environment variables."""
+    """
+    Azure infrastructure configuration.
+
+    Only the Key Vault URL is stored in environment variables.
+    All secrets (API keys, storage credentials) are stored in Key Vault.
+    """
 
     @staticmethod
     def get_key_vault_url() -> str:
-        """Get Key Vault URL from environment or default."""
+        """
+        Get Key Vault URL from environment variable.
+
+        This is the ONLY secret-related config stored in environment.
+        All actual secrets are retrieved from Key Vault.
+        """
         return os.environ.get("KEY_VAULT_URL", "https://kv-cti-reporting.vault.azure.net/")
-
-    @staticmethod
-    def get_storage_account_name() -> str:
-        """Get Storage Account name from environment."""
-        return os.environ.get("STORAGE_ACCOUNT_NAME", "")
-
-    @staticmethod
-    def get_storage_account_key() -> str:
-        """Get Storage Account key from environment."""
-        return os.environ.get("STORAGE_ACCOUNT_KEY", "")
 
 
 # Global configuration instances

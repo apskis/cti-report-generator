@@ -87,12 +87,13 @@ async def generate_cti_report(req: func.HttpRequest) -> func.HttpResponse:
         )
 
         # Step 4: Generate Word document and upload to blob storage
+        # Storage credentials come from Key Vault (same as other secrets)
         logging.info('Generating Word document and uploading to Azure Blob Storage...')
-        storage_account_name = azure_config.get_storage_account_name()
-        storage_account_key = azure_config.get_storage_account_key()
+        storage_account_name = credentials['storage_account_name']
+        storage_account_key = credentials['storage_account_key']
 
         if not storage_account_name or not storage_account_key:
-            raise ValueError("Storage account credentials not configured")
+            raise ValueError("Storage account credentials not found in Key Vault")
 
         report_result = create_and_upload_report(
             analysis,

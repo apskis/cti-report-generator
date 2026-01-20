@@ -100,7 +100,9 @@ def get_all_api_keys(vault_url: Optional[str] = None) -> Dict[str, str]:
     logger.info(f"Retrieving all API keys from vault: {vault_url}")
 
     # Define all secrets to retrieve
+    # All credentials stored in Key Vault for security
     secrets_map = {
+        # Threat Intelligence API credentials
         'nvd_key': 'nvd-api-key',
         'threatq_key': 'threatq-api-key',
         'threatq_url': 'threatq-url',
@@ -111,8 +113,12 @@ def get_all_api_keys(vault_url: Optional[str] = None) -> Dict[str, str]:
         'crowdstrike_base_url': 'crowdstrike-base-url',
         'rapid7_key': 'rapid7-api-key',
         'rapid7_region': 'rapid7-region',
+        # Azure OpenAI credentials
         'openai_key': 'openai-api-key',
-        'openai_endpoint': 'openai-endpoint'
+        'openai_endpoint': 'openai-endpoint',
+        # Azure Storage credentials
+        'storage_account_name': 'storage-account-name',
+        'storage_account_key': 'storage-account-key'
     }
 
     api_keys = {}
