@@ -1,0 +1,15 @@
+{
+    "IsEncrypted": false,
+    "Values": {
+        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+        "FUNCTIONS_WORKER_RUNTIME": "python",
+
+        "KEY_VAULT_URL": "https://your-keyvault-name.vault.azure.net/",
+
+        "STORAGE_ACCOUNT_NAME": "your-storage-account-name",
+        "STORAGE_ACCOUNT_KEY": "your-storage-account-key",
+
+        "ENABLED_COLLECTORS": "nvd,intel471,crowdstrike,threatq,rapid7"
+    },
+    "ConnectionStrings": {}
+}

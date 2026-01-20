@@ -1,13 +1,27 @@
-# Uncomment to enable Azure Monitor OpenTelemetry
-# Ref: aka.ms/functions-azure-monitor-python 
-# azure-monitor-opentelemetry 
-
+# Azure Functions runtime
 azure-functions
+
+# Azure services
 azure-identity
 azure-keyvault-secrets
 azure-storage-blob
+azure-core
+
+# AI/ML
 openai
 semantic-kernel
+
+# Document generation
 python-docx
+
+# HTTP clients
 requests
 aiohttp
+
+# Testing (install with: pip install -r requirements.txt -r requirements-dev.txt)
+# pytest
+# pytest-asyncio
+
+# Uncomment to enable Azure Monitor OpenTelemetry
+# Ref: aka.ms/functions-azure-monitor-python
+# azure-monitor-opentelemetry
