@@ -197,7 +197,10 @@ class CrowdStrikeCollector(BaseCollector):
                 actors = await response.json()
 
                 for actor in actors.get("resources", []):
-                    target_industries = actor.get("target_industries", [])
+                    target_industries_raw = actor.get("target_industries", [])
+
+                    # Extract industry names - API returns list of dicts like {"slug": "...", "value": "..."}
+                    target_industries = self._extract_industry_names(target_industries_raw)
 
                     # Filter for relevant industries
                     # Include if relevant OR if no industry specified (conservative approach)
@@ -268,6 +271,30 @@ class CrowdStrikeCollector(BaseCollector):
 
         return indicators_data
 
+    def _extract_industry_names(self, industries_raw: List[Any]) -> List[str]:
+        """
+        Extract industry names from CrowdStrike's industry format.
+
+        CrowdStrike API returns industries as list of dicts:
+        [{"slug": "healthcare", "value": "Healthcare"}, ...]
+
+        Args:
+            industries_raw: Raw industries list from API
+
+        Returns:
+            List of industry name strings
+        """
+        names = []
+        for item in industries_raw:
+            if isinstance(item, dict):
+                # Try 'value' first, then 'slug', then 'name'
+                name = item.get("value") or item.get("slug") or item.get("name")
+                if name:
+                    names.append(str(name))
+            elif isinstance(item, str):
+                names.append(item)
+        return names
+
     def _parse_actor(self, actor: Dict[str, Any]) -> Dict[str, Any]:
         """
         Parse CrowdStrike actor into standardized format.
@@ -278,16 +305,34 @@ class CrowdStrikeCollector(BaseCollector):
         Returns:
             Standardized actor dictionary
         """
-        # Extract country from origins
+        # Extract country from origins (list of dicts with 'value' key)
         origins = actor.get("origins", [])
-        country = origins[0].get("value", "Unknown") if origins else "Unknown"
+        country = "Unknown"
+        if origins:
+            first_origin = origins[0]
+            if isinstance(first_origin, dict):
+                country = first_origin.get("value", "Unknown")
+            elif isinstance(first_origin, str):
+                country = first_origin
+
+        # Extract motivations (may be list of dicts or strings)
+        motivations_raw = actor.get("motivations", [])
+        motivations = self._extract_industry_names(motivations_raw)
+
+        # Extract TTPs from kill_chain (may be list of dicts or strings)
+        kill_chain_raw = actor.get("kill_chain", [])
+        ttps = self._extract_industry_names(kill_chain_raw)[:5]
+
+        # Extract target industries
+        industries_raw = actor.get("target_industries", [])
+        target_industries = self._extract_industry_names(industries_raw)
 
         return {
             "actor_name": actor.get("name", "Unknown"),
             "country": country,
-            "motivations": actor.get("motivations", []),
-            "ttps": actor.get("kill_chain", [])[:5],
-            "target_industries": actor.get("target_industries", []),
+            "motivations": motivations,
+            "ttps": ttps,
+            "target_industries": target_industries,
             "last_activity": actor.get("last_modified_date", ""),
             "source": self.source_name
         }
