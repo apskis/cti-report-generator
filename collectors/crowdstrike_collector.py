@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 from collectors.base import BaseCollector
 from collectors.http_utils import HTTPClient, NonRetryableHTTPError, validate_url
 from config import collector_config, industry_filter_config
-from types import APTActor, CollectorResult
+from models import APTActor, CollectorResult
 
 logger = logging.getLogger(__name__)
 

@@ -12,7 +12,7 @@ import aiohttp  # type: ignore
 from collectors.base import BaseCollector
 from collectors.http_utils import HTTPClient, NonRetryableHTTPError
 from config import collector_config, industry_filter_config
-from types import ThreatReport, CollectorResult
+from models import ThreatReport, CollectorResult
 
 logger = logging.getLogger(__name__)
 

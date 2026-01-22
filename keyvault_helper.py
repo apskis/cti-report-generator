@@ -15,7 +15,7 @@ from azure.keyvault.secrets import SecretClient  # type: ignore
 from azure.core.exceptions import ResourceNotFoundError  # type: ignore
 
 from config import azure_config
-from types import APICredentials
+from models import APICredentials
 
 logger = logging.getLogger(__name__)
 

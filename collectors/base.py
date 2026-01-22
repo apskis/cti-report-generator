@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
 from config import collector_config
-from types import CollectorResult
+from models import CollectorResult
 
 
 class BaseCollector(ABC):

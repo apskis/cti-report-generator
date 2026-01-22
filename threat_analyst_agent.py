@@ -14,7 +14,7 @@ from semantic_kernel.connectors.ai.open_ai import AzureChatPromptExecutionSettin
 from semantic_kernel.contents import ChatHistory  # type: ignore
 
 from config import analysis_config
-from types import ThreatAnalysisResult
+from models import ThreatAnalysisResult
 
 logger = logging.getLogger(__name__)
 

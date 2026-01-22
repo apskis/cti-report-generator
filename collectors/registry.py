@@ -15,7 +15,7 @@ from collectors.crowdstrike_collector import CrowdStrikeCollector
 from collectors.threatq_collector import ThreatQCollector
 from collectors.rapid7_collector import Rapid7Collector
 from config import get_enabled_collectors
-from types import CollectorResult
+from models import CollectorResult
 
 logger = logging.getLogger(__name__)
 
