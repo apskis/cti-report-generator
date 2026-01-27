@@ -348,10 +348,24 @@ async def collect_and_analyze(report_type: str) -> dict:
     else:
         # Strategic analysis
         logger.info("Running strategic AI analysis for quarterly report...")
+        
+        # Extract breach reports from Intel471 data
+        intel471_data = data_by_source.get("Intel471", [])
+        breach_data = [
+            item for item in intel471_data 
+            if item.get("threat_type", "").upper() == "BREACH ALERT"
+        ]
+        
+        # Remove breach reports from intel471_data (they'll be in breach_data)
+        intel471_data = [
+            item for item in intel471_data 
+            if item.get("threat_type", "").upper() != "BREACH ALERT"
+        ]
+        
         return await agent.analyze_strategic(
-            intel471_data=data_by_source.get("Intel471", []),
+            intel471_data=intel471_data,
             crowdstrike_data=data_by_source.get("CrowdStrike", []),
-            breach_data=None
+            breach_data=breach_data if breach_data else None
         )
 
 

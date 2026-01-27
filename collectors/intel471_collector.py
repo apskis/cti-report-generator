@@ -202,8 +202,8 @@ class Intel471Collector(BaseCollector):
         Fetch all report types for quarterly reports: BREACH ALERT, SPOT REPORT,
         SITUATION REPORT, and MALWARE REPORT.
 
-        Fetches all reports in batches (API limit is 100 per request), then filters
-        client-side for the target document types. No keyword filtering - OpenAI will filter by industry/sector.
+        Uses the /reports endpoint (dedicated endpoints are for individual items by UID, not listing).
+        Filters results by documentType field to extract target report types.
 
         Args:
             client: HTTP client
@@ -214,23 +214,17 @@ class Intel471Collector(BaseCollector):
         Returns:
             List of all report dictionaries matching target types
         """
+        # Use /reports endpoint - it's the correct one for listing with date filters
+        # The dedicated endpoints (/breachAlerts/{uid}, etc.) are for getting individual items
         reports_url = f"{self.BASE_URL}/reports"
-
-        # Document types to fetch for quarterly reports
-        target_document_types = {
-            "BREACH ALERT",
-            "SPOT REPORT",
-            "SITUATION REPORT",
-            "MALWARE REPORT"
-        }
-
+        
         all_reports = []
-        max_count_per_request = 100  # Intel471 API limit
-        max_requests = 20  # Fetch up to 2000 reports (20 * 100)
-
-        # Fetch all reports in batches (without documentType filter - more reliable)
+        max_count_per_request = 100
+        max_requests = 20  # Fetch up to 2000 reports
+        
         logger.info(f"Fetching all Intel471 reports going back {self.lookback_days} days (batches of {max_count_per_request})...")
         
+        # Fetch all reports in batches
         for request_num in range(max_requests):
             params = {
                 "from": self.format_date_timestamp_ms(start_date),
@@ -253,7 +247,6 @@ class Intel471Collector(BaseCollector):
                     all_reports.extend(reports)
                     logger.info(f"Fetched {len(reports)} reports (batch {request_num + 1}, total: {len(all_reports)})")
                     
-                    # If we got fewer than requested, we've reached the end
                     if len(reports) < max_count_per_request:
                         logger.info(f"Reached end of available reports")
                         break
@@ -266,19 +259,79 @@ class Intel471Collector(BaseCollector):
                 logger.warning(f"Error fetching reports (batch {request_num + 1}): {e}")
                 break
 
-        # Filter for target document types
+        # Analyze what documentType values we got
+        doc_type_counts = {}
+        for report in all_reports:
+            doc_type = report.get("documentType", "MISSING")
+            doc_type_counts[doc_type] = doc_type_counts.get(doc_type, 0) + 1
+        logger.info(f"DocumentType distribution in {len(all_reports)} reports: {dict(list(doc_type_counts.items())[:20])}")
+        
+        # Filter for target report types
+        # Based on actual API response, documentType values are:
+        # - BREACH_REPORT (not BREACH ALERT)
+        # - MALWARE_CAMPAIGN (not MALWARE REPORT)
+        # - Need to check for SPOT and SITUATION report types
+        target_types = {
+            "BREACH_REPORT",
+            "BREACH ALERT",  # Keep for backwards compatibility
+            "SPOT REPORT",
+            "SITUATION REPORT",
+            "MALWARE_REPORT",
+            "MALWARE_CAMPAIGN",  # Actual API value
+            "MALWARE REPORT"  # Keep for backwards compatibility
+        }
+        
         filtered_threats = []
         for report in all_reports:
-            document_type = report.get("documentType", "").upper()
-            if document_type in target_document_types:
+            document_type = report.get("documentType", "")
+            document_type_upper = document_type.upper()
+            
+            # Check if this is one of our target types
+            is_target_type = False
+            threat_type = None
+            
+            # Exact match first
+            if document_type_upper in target_types:
+                is_target_type = True
+                # Normalize to standard names
+                if document_type_upper == "BREACH_REPORT":
+                    threat_type = "BREACH ALERT"
+                elif document_type_upper == "MALWARE_CAMPAIGN":
+                    threat_type = "MALWARE REPORT"
+                elif document_type_upper in ("MALWARE_REPORT", "MALWARE REPORT"):
+                    threat_type = "MALWARE REPORT"
+                elif document_type_upper == "BREACH ALERT":
+                    threat_type = "BREACH ALERT"
+                elif "SPOT" in document_type_upper and "REPORT" in document_type_upper:
+                    threat_type = "SPOT REPORT"
+                elif "SITUATION" in document_type_upper and "REPORT" in document_type_upper:
+                    threat_type = "SITUATION REPORT"
+                else:
+                    threat_type = document_type_upper
+            # Partial matches
+            elif "BREACH" in document_type_upper:
+                is_target_type = True
+                threat_type = "BREACH ALERT"
+            elif "SPOT" in document_type_upper and "REPORT" in document_type_upper:
+                is_target_type = True
+                threat_type = "SPOT REPORT"
+            elif "SITUATION" in document_type_upper and "REPORT" in document_type_upper:
+                is_target_type = True
+                threat_type = "SITUATION REPORT"
+            elif "MALWARE" in document_type_upper:
+                is_target_type = True
+                threat_type = "MALWARE REPORT"
+            
+            if is_target_type:
                 threat = self._parse_report(report)
-                threat["threat_type"] = document_type
+                threat["threat_type"] = threat_type
                 filtered_threats.append(threat)
 
         logger.info(f"Retrieved {len(filtered_threats)} reports matching target types (from {len(all_reports)} total reports)")
         logger.info(f"Breakdown: {self._count_by_type(filtered_threats)}")
         
         return filtered_threats
+
 
     def _count_by_type(self, threats: List[Dict[str, Any]]) -> str:
         """Count threats by type for logging."""
@@ -534,7 +587,7 @@ class Intel471Collector(BaseCollector):
         end_date: datetime
     ) -> List[Dict[str, Any]]:
         """
-        Fetch threat indicators from Intel471.
+        Fetch threat indicators from Intel471 using the /indicators/stream endpoint.
 
         Args:
             client: HTTP client
@@ -542,6 +595,65 @@ class Intel471Collector(BaseCollector):
             start_date: Start of date range
             end_date: End of date range
 
+        Returns:
+            List of indicator dictionaries
+        """
+        # Use the dedicated /indicators/stream endpoint as per API docs
+        indicators_url = f"{self.BASE_URL}/indicators/stream"
+
+        params = {
+            "from": self.format_date_timestamp_ms(start_date),
+            "until": self.format_date_timestamp_ms(end_date),
+            "count": collector_config.intel471_indicators_limit,
+            "v": self.API_VERSION
+        }
+
+        threats = []
+
+        try:
+            response = await client.get_raw_response(indicators_url, auth=auth, params=params)
+
+            if response.status == 200:
+                data = await response.json()
+
+                # Try multiple possible response keys
+                indicators = data.get("indicators", data.get("data", []))
+                
+                for indicator in indicators:
+                    threat = self._parse_indicator(indicator)
+                    threats.append(threat)
+
+                logger.info(f"Retrieved {len(threats)} indicators from Intel471 /indicators/stream")
+            elif response.status == 404:
+                # Fallback to old /indicators endpoint if /stream doesn't exist
+                logger.info("indicators/stream endpoint not available, trying /indicators endpoint")
+                return await self._fetch_indicators_fallback(client, auth, start_date, end_date)
+            else:
+                response_text = await response.text()
+                logger.error(f"Intel471 indicators/stream API returned status {response.status}: {response_text[:500]}")
+
+        except Exception as e:
+            logger.warning(f"Error fetching Intel471 indicators from /stream: {e}, trying fallback")
+            return await self._fetch_indicators_fallback(client, auth, start_date, end_date)
+
+        return threats
+
+    async def _fetch_indicators_fallback(
+        self,
+        client: HTTPClient,
+        auth: aiohttp.BasicAuth,
+        start_date: datetime,
+        end_date: datetime
+    ) -> List[Dict[str, Any]]:
+        """
+        Fallback method to fetch indicators from the /indicators endpoint.
+        
+        Args:
+            client: HTTP client
+            auth: Basic auth credentials
+            start_date: Start of date range
+            end_date: End of date range
+            
         Returns:
             List of indicator dictionaries
         """
@@ -566,13 +678,13 @@ class Intel471Collector(BaseCollector):
                     threat = self._parse_indicator(indicator)
                     threats.append(threat)
 
-                logger.info(f"Retrieved {len(threats)} indicators from Intel471")
+                logger.info(f"Retrieved {len(threats)} indicators from Intel471 /indicators (fallback)")
             else:
                 response_text = await response.text()
                 logger.error(f"Intel471 indicators API returned status {response.status}: {response_text[:500]}")
 
         except Exception as e:
-            logger.error(f"Error fetching Intel471 indicators: {e}")
+            logger.error(f"Error fetching Intel471 indicators (fallback): {e}")
 
         return threats
 

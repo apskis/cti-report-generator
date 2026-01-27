@@ -199,10 +199,22 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
         )
 
         # Use strategic analysis for quarterly reports
+        # Extract breach reports from Intel471 data
+        breach_data = [
+            item for item in intel471_data 
+            if item.get("threat_type", "").upper() == "BREACH ALERT"
+        ]
+        
+        # Remove breach reports from intel471_data (they'll be in breach_data)
+        intel471_data = [
+            item for item in intel471_data 
+            if item.get("threat_type", "").upper() != "BREACH ALERT"
+        ]
+        
         analysis = await agent.analyze_strategic(
             intel471_data=intel471_data,
             crowdstrike_data=crowdstrike_data,
-            breach_data=None  # Can be populated from external breach feed
+            breach_data=breach_data if breach_data else None
         )
 
         # Step 4: Generate Word document and upload to blob storage

@@ -500,8 +500,10 @@ APT groups targeting the healthcare, biotech, or manufacturing sectors, and indi
         
         return f"""Analyze this threat intelligence data and provide a QUARTERLY STRATEGIC BRIEF for executive leadership.
 
-IMPORTANT: Filter Intel471 reports by relevance to these industries/sectors: {target_industries}
-Focus on reports (BREACH ALERT, SPOT REPORT, SITUATION REPORT, MALWARE REPORT) that mention or target these sectors.
+IMPORTANT: 
+- ALL breach reports (BREACH ALERT) should be included regardless of industry - they are critical for the breach landscape analysis.
+- Filter other Intel471 reports (SPOT REPORT, SITUATION REPORT, MALWARE REPORT) by relevance to these industries/sectors: {target_industries}
+- Focus on reports that mention or target these sectors: {target_industries}
 
 DATA SUMMARY:
 - Intel471 Threat Reports: {len(intel471_data)} records (filtered for relevance to: {target_industries})
