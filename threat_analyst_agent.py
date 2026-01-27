@@ -32,6 +32,24 @@ Focus on threats that could impact:
 - Supply chain and vendor security
 - Regulatory compliance (HIPAA, FDA, etc.)"""
 
+# Strategic analysis system prompt for quarterly reports
+STRATEGIC_SYSTEM_PROMPT = """You are a Senior Cyber Threat Intelligence Analyst preparing a quarterly strategic brief for executive leadership and the board of directors.
+
+Your role is to analyze threat intelligence data with a STRATEGIC lens, focusing on:
+- Geopolitical trends and nation-state threats to the life sciences/genomics sector
+- Industry breach landscape and peer organization incidents
+- Ransomware and extortion group activity trends
+- Supply chain and third-party risk evolution
+- Business implications of cyber threats (not just technical details)
+
+Write for a non-technical executive audience. Focus on:
+- Business risk and competitive implications
+- Regulatory and compliance considerations
+- Investment and resource allocation decisions
+- Peer organization comparisons and industry benchmarks
+
+Avoid tactical details like specific CVEs or IOCs unless they have strategic significance."""
+
 
 def load_system_prompt(prompt_file: str = "prompts/analyst_system.txt") -> str:
     """
@@ -390,4 +408,262 @@ APT groups targeting the healthcare, biotech, or manufacturing sectors, and indi
                 "p2_count": 1,
                 "p3_count": 0
             }
+        }
+
+    async def analyze_strategic(
+        self,
+        intel471_data: List[Dict],
+        crowdstrike_data: List[Dict],
+        breach_data: List[Dict] | None = None
+    ) -> Dict[str, Any]:
+        """
+        Analyze threat intelligence data for quarterly strategic reports.
+
+        Focuses on geopolitical threats, industry breach landscape, and
+        business implications rather than tactical CVE details.
+
+        Args:
+            intel471_data: List of threat intelligence from Intel471
+            crowdstrike_data: List of APT intelligence from CrowdStrike
+            breach_data: Optional list of industry breach incidents
+
+        Returns:
+            Dictionary containing strategic analysis results
+        """
+        try:
+            logger.info("Starting strategic threat analysis for quarterly report")
+            logger.info(
+                f"Data counts - Intel471: {len(intel471_data)}, "
+                f"CrowdStrike: {len(crowdstrike_data)}, "
+                f"Breaches: {len(breach_data) if breach_data else 0}"
+            )
+
+            # Build strategic analysis prompt
+            strategic_prompt = self._build_strategic_prompt(
+                intel471_data, crowdstrike_data, breach_data
+            )
+
+            # Create chat history with strategic system prompt
+            chat_history = ChatHistory()
+            chat_history.add_system_message(STRATEGIC_SYSTEM_PROMPT)
+            chat_history.add_user_message(strategic_prompt)
+
+            # Configure execution settings
+            settings = AzureChatPromptExecutionSettings(
+                max_completion_tokens=analysis_config.max_completion_tokens,
+            )
+
+            # Get response from GPT
+            logger.info("Sending strategic analysis request to Azure OpenAI")
+            response = await self.chat_service.get_chat_message_content(
+                chat_history=chat_history,
+                settings=settings
+            )
+
+            # Parse response
+            response_text = str(response)
+            logger.info("Received strategic analysis response from Azure OpenAI")
+
+            analysis_result = self._parse_response(response_text)
+
+            if analysis_result:
+                logger.info("Successfully parsed strategic analysis results")
+                return analysis_result
+            else:
+                return self._get_default_strategic_analysis(
+                    intel471_data, crowdstrike_data, breach_data
+                )
+
+        except Exception as e:
+            logger.error(f"Error during strategic analysis: {e}", exc_info=True)
+            return self._get_default_strategic_analysis(
+                intel471_data, crowdstrike_data, breach_data
+            )
+
+    def _build_strategic_prompt(
+        self,
+        intel471_data: List[Dict],
+        crowdstrike_data: List[Dict],
+        breach_data: List[Dict] | None
+    ) -> str:
+        """Build the strategic analysis prompt for quarterly reports."""
+        breach_data = breach_data or []
+
+        # Group APT data by country/region
+        china_actors = [a for a in crowdstrike_data if self._is_china_related(a)]
+        russia_actors = [a for a in crowdstrike_data if self._is_russia_related(a)]
+        nk_actors = [a for a in crowdstrike_data if self._is_nk_related(a)]
+
+        return f"""Analyze this threat intelligence data and provide a QUARTERLY STRATEGIC BRIEF for executive leadership.
+
+DATA SUMMARY:
+- Intel471 Threat Reports: {len(intel471_data)} records
+- CrowdStrike APT Activity: {len(crowdstrike_data)} records
+  - China-linked actors: {len(china_actors)}
+  - Russia-linked actors: {len(russia_actors)}
+  - North Korea-linked actors: {len(nk_actors)}
+- Industry Breach Incidents: {len(breach_data)} records
+
+RAW DATA:
+Intel471 Data (sample):
+{json.dumps(intel471_data[:20], indent=2)}
+
+CrowdStrike APT Data:
+{json.dumps(crowdstrike_data[:30], indent=2)}
+
+Industry Breaches:
+{json.dumps(breach_data[:20], indent=2) if breach_data else "No breach data provided"}
+
+Please provide your STRATEGIC analysis in the following JSON format:
+{{
+  "executive_summary": "2-3 paragraph strategic overview for board/executives. Focus on business risk, not technical details.",
+  "risk_assessment": {{
+    "nation_state": "HIGH/MEDIUM/LOW",
+    "nation_state_trend": "↑/↓/Unchanged",
+    "ransomware": "HIGH/MEDIUM/LOW",
+    "ransomware_trend": "↑/↓/Unchanged",
+    "supply_chain": "HIGH/MEDIUM/LOW",
+    "supply_chain_trend": "↑/↓/Unchanged",
+    "insider": "HIGH/MEDIUM/LOW",
+    "insider_trend": "↑/↓/Unchanged"
+  }},
+  "breach_landscape": {{
+    "total_incidents": 0,
+    "prev_total_incidents": 0,
+    "total_impact_millions": 0,
+    "prev_total_impact": 0,
+    "ransomware_count": 0,
+    "prev_ransomware": 0,
+    "records_exposed_millions": 0,
+    "prev_records": 0
+  }},
+  "incidents_by_type": [
+    {{
+      "type": "Ransomware",
+      "current_count": 0,
+      "prev_count": 0,
+      "notable_example": "Brief description of notable incident"
+    }}
+  ],
+  "common_factors": "Common factors across incidents (percentages): e.g., 'Exploitation of unpatched systems (34%), compromised credentials (28%)'",
+  "geopolitical_threats": {{
+    "china": {{
+      "strategic_context": "China's strategic interest in biotech/genomics sector",
+      "activity": "Observed activity this quarter from China-linked actors",
+      "implications": "Business implications of China threat activity"
+    }},
+    "russia": {{
+      "strategic_context": "Russia's interests and ransomware ecosystem",
+      "activity": "Observed activity this quarter",
+      "implications": "Business implications"
+    }},
+    "north_korea": {{
+      "strategic_context": "NK's dual-purpose cyber operations",
+      "activity": "Observed activity this quarter",
+      "implications": "Business implications"
+    }}
+  }},
+  "looking_ahead": {{
+    "threat_outlook": "What we anticipate next quarter",
+    "planned_initiatives": "Security initiatives to recommend",
+    "watch_items": "Specific items to monitor"
+  }},
+  "recommendations": [
+    ["Executive Awareness", "Recommendation for executive security awareness"],
+    ["Vendor Risk Review", "Recommendation for third-party risk"],
+    ["Manufacturing Security", "Recommendation for OT/manufacturing security"],
+    ["Incident Response", "Recommendation for IR readiness"],
+    ["Board Reporting", "Support available for board communications"]
+  ]
+}}
+
+Focus on STRATEGIC insights for leadership, not tactical details.
+Respond ONLY with valid JSON. Do not include any markdown formatting or code blocks."""
+
+    def _is_china_related(self, actor: Dict) -> bool:
+        """Check if an actor is China-related."""
+        country = str(actor.get("country", "")).lower()
+        name = str(actor.get("actor_name", actor.get("name", ""))).lower()
+        return "china" in country or "panda" in name or "apt41" in name or "apt40" in name
+
+    def _is_russia_related(self, actor: Dict) -> bool:
+        """Check if an actor is Russia-related."""
+        country = str(actor.get("country", "")).lower()
+        name = str(actor.get("actor_name", actor.get("name", ""))).lower()
+        return "russia" in country or "bear" in name or "apt29" in name or "apt28" in name
+
+    def _is_nk_related(self, actor: Dict) -> bool:
+        """Check if an actor is North Korea-related."""
+        country = str(actor.get("country", "")).lower()
+        name = str(actor.get("actor_name", actor.get("name", ""))).lower()
+        return "korea" in country or "lazarus" in name or "kimsuky" in name or "chollima" in name
+
+    def _get_default_strategic_analysis(
+        self,
+        intel471_data: List[Dict],
+        crowdstrike_data: List[Dict],
+        breach_data: List[Dict] | None
+    ) -> Dict[str, Any]:
+        """Generate default strategic analysis when AI analysis fails."""
+        breach_data = breach_data or []
+
+        return {
+            "executive_summary": f"""The threat landscape for the genomics, life sciences, and precision manufacturing sectors \
+requires continued vigilance. This quarter's analysis identified {len(crowdstrike_data)} threat actor groups and \
+{len(intel471_data)} threat intelligence reports relevant to our sector.
+
+While no direct threats to the organization were identified, the threat actors and techniques observed are consistent \
+with those historically targeting genomics and life sciences companies. Strategic monitoring and proactive defense \
+measures remain essential.""",
+            "risk_assessment": {
+                "nation_state": "HIGH",
+                "nation_state_trend": "Unchanged",
+                "ransomware": "HIGH",
+                "ransomware_trend": "↑",
+                "supply_chain": "MEDIUM",
+                "supply_chain_trend": "Unchanged",
+                "insider": "LOW",
+                "insider_trend": "Unchanged"
+            },
+            "breach_landscape": {
+                "total_incidents": len(breach_data),
+                "prev_total_incidents": "N/A",
+                "total_impact_millions": 0,
+                "prev_total_impact": "N/A",
+                "ransomware_count": 0,
+                "prev_ransomware": "N/A",
+                "records_exposed_millions": 0,
+                "prev_records": "N/A"
+            },
+            "incidents_by_type": [],
+            "common_factors": "Analysis pending - manual review of threat data recommended",
+            "geopolitical_threats": {
+                "china": {
+                    "strategic_context": "China's national plans designate biotechnology as a strategic priority.",
+                    "activity": f"Observed {len([a for a in crowdstrike_data if self._is_china_related(a)])} China-linked actor groups.",
+                    "implications": "Potential IP theft risk for proprietary research and manufacturing processes."
+                },
+                "russia": {
+                    "strategic_context": "Russian-speaking criminal groups pose significant ransomware risk to healthcare and life sciences.",
+                    "activity": f"Observed {len([a for a in crowdstrike_data if self._is_russia_related(a)])} Russia-linked actor groups.",
+                    "implications": "Ransomware incidents can result in significant operational disruption and recovery costs."
+                },
+                "north_korea": {
+                    "strategic_context": "North Korean cyber operations target pharmaceutical and healthcare sectors.",
+                    "activity": f"Observed {len([a for a in crowdstrike_data if self._is_nk_related(a)])} North Korea-linked actor groups.",
+                    "implications": "Social engineering risk for research and executive personnel."
+                }
+            },
+            "looking_ahead": {
+                "threat_outlook": "Continued pressure from state-sponsored espionage campaigns anticipated.",
+                "planned_initiatives": "Enhanced monitoring and detection capabilities recommended.",
+                "watch_items": "Major industry events, product launches, and partnership announcements."
+            },
+            "recommendations": [
+                ("Executive Awareness", "Consider targeted security awareness for executives given social engineering campaigns."),
+                ("Vendor Risk Review", "Evaluate security posture of critical software and equipment vendors."),
+                ("Manufacturing Security", "Review network segmentation between IT and OT systems."),
+                ("Incident Response", "Confirm response plans address regulatory disclosure requirements."),
+                ("Board Reporting", "CTI team available to support board communication preparation.")
+            ]
         }

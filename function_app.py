@@ -1,8 +1,8 @@
 """
 Azure Functions entry point for CTI Report Generator.
 
-HTTP-triggered function that orchestrates the threat intelligence
-collection, analysis, and report generation pipeline.
+HTTP-triggered functions for generating weekly tactical and quarterly strategic
+threat intelligence reports.
 """
 import azure.functions as func  # type: ignore
 import logging
@@ -17,16 +17,16 @@ from config import azure_config, analysis_config
 app = func.FunctionApp()
 
 
-@app.function_name(name="GenerateCTIReport")
-@app.route(route="GenerateCTIReport", auth_level=func.AuthLevel.FUNCTION)
-async def generate_cti_report(req: func.HttpRequest) -> func.HttpResponse:
+@app.function_name(name="GenerateWeeklyReport")
+@app.route(route="GenerateWeeklyReport", auth_level=func.AuthLevel.FUNCTION)
+async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Generate a weekly CTI report.
+    Generate a weekly tactical CTI report.
 
     Pipeline:
     1. Retrieve credentials from Key Vault
     2. Collect threat data from all enabled sources (parallel)
-    3. Analyze threats with AI
+    3. Analyze threats with AI (tactical analysis)
     4. Generate Word document
     5. Upload to Azure Blob Storage
     6. Return download URL
@@ -34,7 +34,7 @@ async def generate_cti_report(req: func.HttpRequest) -> func.HttpResponse:
     Returns:
         HTTP response with report URL and statistics
     """
-    logging.info('CTI Report Generation function triggered')
+    logging.info('Weekly CTI Report Generation triggered')
 
     try:
         # Step 1: Get API credentials from Key Vault
@@ -68,9 +68,9 @@ async def generate_cti_report(req: func.HttpRequest) -> func.HttpResponse:
             if not result.success:
                 logging.warning(f"Collection failed for {source}: {result.error}")
 
-        # Step 3: Analyze threats with AI agent
+        # Step 3: Analyze threats with AI agent (tactical mode)
         deployment_name = analysis_config.deployment_name
-        logging.info(f'Analyzing threat data with {deployment_name}...')
+        logging.info(f'Analyzing threat data with {deployment_name} (tactical mode)...')
 
         agent = ThreatAnalystAgent(
             credentials['openai_endpoint'],
@@ -87,8 +87,7 @@ async def generate_cti_report(req: func.HttpRequest) -> func.HttpResponse:
         )
 
         # Step 4: Generate Word document and upload to blob storage
-        # Storage credentials come from Key Vault (same as other secrets)
-        logging.info('Generating Word document and uploading to Azure Blob Storage...')
+        logging.info('Generating Weekly Word document and uploading to Azure Blob Storage...')
         storage_account_name = credentials['storage_account_name']
         storage_account_key = credentials['storage_account_key']
 
@@ -106,11 +105,12 @@ async def generate_cti_report(req: func.HttpRequest) -> func.HttpResponse:
             raise Exception(f"Report generation failed: {report_result.get('error', 'Unknown error')}")
 
         # Step 5: Return success response with download URL
-        logging.info(f'Report generated successfully: {report_result["filename"]}')
+        logging.info(f'Weekly report generated successfully: {report_result["filename"]}')
         return func.HttpResponse(
             json.dumps({
                 'status': 'success',
-                'message': 'CTI report generated successfully',
+                'report_type': 'weekly',
+                'message': 'Weekly CTI report generated successfully',
                 'report_url': report_result['url'],
                 'filename': report_result['filename'],
                 'statistics': analysis.get('statistics', {}),
@@ -128,12 +128,147 @@ async def generate_cti_report(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception as e:
-        logging.error(f'Error generating CTI report: {str(e)}', exc_info=True)
+        logging.error(f'Error generating weekly report: {str(e)}', exc_info=True)
         return func.HttpResponse(
             json.dumps({
                 'status': 'error',
-                'message': f'Failed to generate report: {str(e)}'
+                'report_type': 'weekly',
+                'message': f'Failed to generate weekly report: {str(e)}'
             }, indent=2),
             mimetype='application/json',
             status_code=500
         )
+
+
+@app.function_name(name="GenerateQuarterlyReport")
+@app.route(route="GenerateQuarterlyReport", auth_level=func.AuthLevel.FUNCTION)
+async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Generate a quarterly strategic CTI report.
+
+    Pipeline:
+    1. Retrieve credentials from Key Vault
+    2. Collect threat data (focused on Intel471 and CrowdStrike for strategic analysis)
+    3. Analyze threats with AI (strategic analysis mode)
+    4. Generate Word document
+    5. Upload to Azure Blob Storage
+    6. Return download URL
+
+    Returns:
+        HTTP response with report URL and statistics
+    """
+    logging.info('Quarterly Strategic CTI Report Generation triggered')
+
+    try:
+        # Step 1: Get API credentials from Key Vault
+        vault_url = azure_config.get_key_vault_url()
+        logging.info(f"Retrieving credentials from Key Vault: {vault_url}")
+        credentials = get_all_api_keys(vault_url)
+
+        # Step 2: Collect threat intelligence data
+        # For quarterly reports, we focus on Intel471 and CrowdStrike
+        logging.info('Collecting strategic threat intelligence data...')
+        collector_results = await collect_all(credentials)
+
+        # Extract data from results
+        data_by_source = get_data_by_source(collector_results)
+
+        # Primary sources for strategic analysis
+        intel471_data = data_by_source.get("Intel471", [])
+        crowdstrike_data = data_by_source.get("CrowdStrike", [])
+
+        # Log collection statistics
+        logging.info(
+            f'Strategic data collected - Intel471: {len(intel471_data)}, '
+            f'CrowdStrike: {len(crowdstrike_data)}'
+        )
+
+        # Log any collection failures
+        for source, result in collector_results.items():
+            if not result.success:
+                logging.warning(f"Collection failed for {source}: {result.error}")
+
+        # Step 3: Analyze threats with AI agent (strategic mode)
+        deployment_name = analysis_config.deployment_name
+        logging.info(f'Analyzing threat data with {deployment_name} (strategic mode)...')
+
+        agent = ThreatAnalystAgent(
+            credentials['openai_endpoint'],
+            credentials['openai_key'],
+            deployment_name=deployment_name
+        )
+
+        # Use strategic analysis for quarterly reports
+        analysis = await agent.analyze_strategic(
+            intel471_data=intel471_data,
+            crowdstrike_data=crowdstrike_data,
+            breach_data=None  # Can be populated from external breach feed
+        )
+
+        # Step 4: Generate Word document and upload to blob storage
+        logging.info('Generating Quarterly Word document and uploading to Azure Blob Storage...')
+        storage_account_name = credentials['storage_account_name']
+        storage_account_key = credentials['storage_account_key']
+
+        if not storage_account_name or not storage_account_key:
+            raise ValueError("Storage account credentials not found in Key Vault")
+
+        report_result = create_and_upload_report(
+            report_type="quarterly",
+            analysis_result=analysis,
+            storage_account_name=storage_account_name,
+            storage_account_key=storage_account_key
+        )
+
+        if not report_result.get("success", False):
+            raise Exception(f"Report generation failed: {report_result.get('error', 'Unknown error')}")
+
+        # Step 5: Return success response with download URL
+        logging.info(f'Quarterly report generated successfully: {report_result["filename"]}')
+        return func.HttpResponse(
+            json.dumps({
+                'status': 'success',
+                'report_type': 'quarterly',
+                'message': 'Quarterly strategic CTI report generated successfully',
+                'report_url': report_result['url'],
+                'filename': report_result['filename'],
+                'risk_assessment': analysis.get('risk_assessment', {}),
+                'collection_summary': {
+                    'Intel471': {
+                        'success': collector_results.get('Intel471', {}).success if hasattr(collector_results.get('Intel471', {}), 'success') else False,
+                        'record_count': len(intel471_data)
+                    },
+                    'CrowdStrike': {
+                        'success': collector_results.get('CrowdStrike', {}).success if hasattr(collector_results.get('CrowdStrike', {}), 'success') else False,
+                        'record_count': len(crowdstrike_data)
+                    }
+                }
+            }, indent=2),
+            mimetype='application/json',
+            status_code=200
+        )
+
+    except Exception as e:
+        logging.error(f'Error generating quarterly report: {str(e)}', exc_info=True)
+        return func.HttpResponse(
+            json.dumps({
+                'status': 'error',
+                'report_type': 'quarterly',
+                'message': f'Failed to generate quarterly report: {str(e)}'
+            }, indent=2),
+            mimetype='application/json',
+            status_code=500
+        )
+
+
+# Legacy endpoint - redirect to weekly for backwards compatibility
+@app.function_name(name="GenerateCTIReport")
+@app.route(route="GenerateCTIReport", auth_level=func.AuthLevel.FUNCTION)
+async def generate_cti_report(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Legacy endpoint - generates weekly report for backwards compatibility.
+
+    Deprecated: Use GenerateWeeklyReport or GenerateQuarterlyReport instead.
+    """
+    logging.warning('Legacy GenerateCTIReport endpoint called - redirecting to GenerateWeeklyReport')
+    return await generate_weekly_report(req)

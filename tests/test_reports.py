@@ -13,6 +13,7 @@ from reports.registry import (
     REPORT_REGISTRY,
 )
 from reports.weekly_report import WeeklyReportGenerator
+from reports.quarterly_report import QuarterlyReportGenerator
 
 
 class TestBrandColors:
@@ -245,3 +246,195 @@ class TestBaseReportGenerator:
             "January", "February", "March", "April", "May", "June",
             "July", "August", "September", "October", "November", "December"
         ])
+
+
+class TestQuarterlyReportGenerator:
+    """Tests for the QuarterlyReportGenerator."""
+
+    @pytest.fixture
+    def generator(self):
+        """Create a fresh generator instance."""
+        return QuarterlyReportGenerator()
+
+    @pytest.fixture
+    def sample_strategic_analysis(self):
+        """Sample strategic analysis result for testing."""
+        return {
+            "executive_summary": "The threat landscape remained elevated throughout the quarter.",
+            "risk_assessment": {
+                "nation_state": "HIGH",
+                "nation_state_trend": "↑",
+                "ransomware": "HIGH",
+                "ransomware_trend": "Unchanged",
+                "supply_chain": "MEDIUM",
+                "supply_chain_trend": "Unchanged",
+                "insider": "LOW",
+                "insider_trend": "Unchanged"
+            },
+            "breach_landscape": {
+                "total_incidents": 47,
+                "prev_total_incidents": 36,
+                "total_impact_millions": 127,
+                "prev_total_impact": 89,
+                "ransomware_count": 18,
+                "prev_ransomware": 12,
+                "records_exposed_millions": 4.2,
+                "prev_records": 2.8
+            },
+            "incidents_by_type": [
+                {"type": "Ransomware", "current_count": 18, "prev_count": 12, "notable_example": "MedTech Corp breach"},
+                {"type": "Data Breach", "current_count": 14, "prev_count": 11, "notable_example": "GenomicsLab incident"},
+            ],
+            "common_factors": "Unpatched systems (34%), compromised credentials (28%)",
+            "geopolitical_threats": {
+                "china": {
+                    "strategic_context": "China's strategic interest in biotech",
+                    "activity": "APT41 conducted multiple intrusions",
+                    "implications": "IP theft risk for proprietary research"
+                },
+                "russia": {
+                    "strategic_context": "Russian ransomware ecosystem",
+                    "activity": "Ransomware incidents increased 31%",
+                    "implications": "Operational disruption risk"
+                },
+                "north_korea": {
+                    "strategic_context": "NK dual-purpose operations",
+                    "activity": "LinkedIn social engineering campaigns",
+                    "implications": "Credential compromise risk"
+                }
+            },
+            "looking_ahead": {
+                "threat_outlook": "Continued pressure from state-sponsored campaigns",
+                "planned_initiatives": "Enhanced detection capabilities",
+                "watch_items": "Major industry events and announcements"
+            },
+            "recommendations": [
+                ("Executive Awareness", "Targeted security awareness for executives"),
+                ("Vendor Risk Review", "Evaluate vendor security posture"),
+            ]
+        }
+
+    def test_report_type(self, generator):
+        """report_type should return 'quarterly'."""
+        assert generator.report_type == "quarterly"
+
+    def test_filename_prefix(self, generator):
+        """filename_prefix should return 'CTI_Quarterly_Strategic_Brief'."""
+        assert generator.filename_prefix == "CTI_Quarterly_Strategic_Brief"
+
+    def test_get_filename_format(self, generator):
+        """get_filename should return properly formatted filename."""
+        filename = generator.get_filename()
+        assert filename.startswith("CTI_Quarterly_Strategic_Brief_")
+        assert filename.endswith(".docx")
+
+    def test_quarterly_registered(self):
+        """QuarterlyReportGenerator should be registered."""
+        assert "quarterly" in REPORT_REGISTRY
+        assert REPORT_REGISTRY["quarterly"] == QuarterlyReportGenerator
+
+    def test_get_report_generator_quarterly(self):
+        """get_report_generator should return QuarterlyReportGenerator for 'quarterly'."""
+        generator = get_report_generator("quarterly")
+        assert generator is not None
+        assert isinstance(generator, QuarterlyReportGenerator)
+
+    def test_generate_creates_document(self, generator, sample_strategic_analysis):
+        """generate should create a valid Document object."""
+        doc = generator.generate(sample_strategic_analysis)
+        assert doc is not None
+        assert generator.doc is not None
+
+    def test_generate_with_empty_data(self, generator):
+        """generate should handle empty analysis result gracefully."""
+        doc = generator.generate({})
+        assert doc is not None
+
+    def test_to_bytes_after_generate(self, generator, sample_strategic_analysis):
+        """to_bytes should return bytes after generate is called."""
+        generator.generate(sample_strategic_analysis)
+        doc_bytes = generator.to_bytes()
+        assert isinstance(doc_bytes, bytes)
+        assert len(doc_bytes) > 0
+        # DOCX files start with PK (zip signature)
+        assert doc_bytes[:2] == b"PK"
+
+    def test_quarter_calculation(self, generator, sample_strategic_analysis):
+        """Quarter should be calculated correctly."""
+        generator.generate(sample_strategic_analysis)
+        # Quarter should be 1-4
+        assert 1 <= generator.quarter <= 4
+        # Quarter start should be first of month
+        assert generator.quarter_start.day == 1
+        # Quarter months should be correct
+        if generator.quarter == 1:
+            assert generator.quarter_start.month == 1
+            assert generator.quarter_end.month == 3
+        elif generator.quarter == 2:
+            assert generator.quarter_start.month == 4
+            assert generator.quarter_end.month == 6
+        elif generator.quarter == 3:
+            assert generator.quarter_start.month == 7
+            assert generator.quarter_end.month == 9
+        else:  # Q4
+            assert generator.quarter_start.month == 10
+            assert generator.quarter_end.month == 12
+
+    def test_document_has_paragraphs(self, generator, sample_strategic_analysis):
+        """Generated document should have paragraphs."""
+        doc = generator.generate(sample_strategic_analysis)
+        assert len(doc.paragraphs) > 0
+
+    def test_document_has_tables(self, generator, sample_strategic_analysis):
+        """Generated document should have tables (risk cards, breach stats, etc.)."""
+        doc = generator.generate(sample_strategic_analysis)
+        assert len(doc.tables) > 0
+
+    def test_document_contains_title(self, generator, sample_strategic_analysis):
+        """Document should contain the report title."""
+        doc = generator.generate(sample_strategic_analysis)
+        text_content = "\n".join([p.text for p in doc.paragraphs])
+        assert "Cyber Threat Intelligence" in text_content
+        assert "Quarterly Strategic Brief" in text_content
+
+    def test_document_contains_executive_summary(self, generator, sample_strategic_analysis):
+        """Document should contain executive summary section."""
+        doc = generator.generate(sample_strategic_analysis)
+        text_content = "\n".join([p.text for p in doc.paragraphs])
+        assert "Executive Summary" in text_content
+        assert "elevated" in text_content
+
+    def test_document_contains_geopolitical_section(self, generator, sample_strategic_analysis):
+        """Document should contain geopolitical threat landscape."""
+        doc = generator.generate(sample_strategic_analysis)
+        text_content = "\n".join([p.text for p in doc.paragraphs])
+        assert "Geopolitical Threat Landscape" in text_content
+        # Should have country sections
+        assert "China" in text_content
+        assert "Russia" in text_content
+
+    def test_document_contains_recommendations(self, generator, sample_strategic_analysis):
+        """Document should contain recommendations for leadership."""
+        doc = generator.generate(sample_strategic_analysis)
+        text_content = "\n".join([p.text for p in doc.paragraphs])
+        assert "Recommendations for Leadership" in text_content
+
+
+class TestReportTypesList:
+    """Tests for list_report_types functionality."""
+
+    def test_list_includes_weekly(self):
+        """list_report_types should include 'weekly'."""
+        types = list_report_types()
+        assert "weekly" in types
+
+    def test_list_includes_quarterly(self):
+        """list_report_types should include 'quarterly'."""
+        types = list_report_types()
+        assert "quarterly" in types
+
+    def test_both_types_registered(self):
+        """Both weekly and quarterly should be registered."""
+        assert len(REPORT_REGISTRY) >= 2
+        assert "weekly" in REPORT_REGISTRY
+        assert "quarterly" in REPORT_REGISTRY
