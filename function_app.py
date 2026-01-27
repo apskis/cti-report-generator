@@ -44,7 +44,7 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
 
         # Step 2: Collect threat intelligence data from all sources in parallel
         logging.info('Collecting threat intelligence data from enabled sources...')
-        collector_results = await collect_all(credentials)
+        collector_results = await collect_all(credentials, report_type="weekly")
 
         # Extract data from results
         data_by_source = get_data_by_source(collector_results)
@@ -168,7 +168,7 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
         # Step 2: Collect threat intelligence data
         # For quarterly reports, we focus on Intel471 and CrowdStrike
         logging.info('Collecting strategic threat intelligence data...')
-        collector_results = await collect_all(credentials)
+        collector_results = await collect_all(credentials, report_type="quarterly")
 
         # Extract data from results
         data_by_source = get_data_by_source(collector_results)

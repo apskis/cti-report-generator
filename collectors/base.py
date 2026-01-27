@@ -28,14 +28,16 @@ class BaseCollector(ABC):
     - collect(): Main data collection method
     """
 
-    def __init__(self, credentials: Dict[str, str]):
+    def __init__(self, credentials: Dict[str, str], report_type: str = "weekly"):
         """
         Initialize collector with credentials.
 
         Args:
             credentials: Dictionary containing API credentials
+            report_type: Type of report being generated ("weekly" or "quarterly")
         """
         self.credentials = credentials
+        self.report_type = report_type
         self.logger = logging.getLogger(f"{__name__}.{self.source_name}")
 
     @property
@@ -82,7 +84,7 @@ class BaseCollector(ABC):
         return int(dt.timestamp())
 
     @abstractmethod
-    async def collect(self) -> CollectorResult:
+    async def collect(self, report_type: str = "weekly") -> CollectorResult:
         """
         Collect threat intelligence data from this source.
 
@@ -96,7 +98,7 @@ class BaseCollector(ABC):
         """
         pass
 
-    async def safe_collect(self) -> CollectorResult:
+    async def safe_collect(self, report_type: str = "weekly") -> CollectorResult:
         """
         Wrapper around collect() that catches all exceptions.
 
@@ -112,7 +114,7 @@ class BaseCollector(ABC):
                     data=[],
                     record_count=0
                 )
-            return await self.collect()
+            return await self.collect(report_type=report_type)
         except Exception as e:
             self.logger.error(f"Unexpected error in {self.source_name} collector: {e}", exc_info=True)
             return CollectorResult(

@@ -320,8 +320,8 @@ async def collect_and_analyze(report_type: str) -> dict:
     credentials = get_all_api_keys(vault_url)
 
     # Collect data
-    logger.info("Collecting threat intelligence data...")
-    collector_results = await collect_all(credentials)
+    logger.info(f"Collecting threat intelligence data for {report_type} report...")
+    collector_results = await collect_all(credentials, report_type=report_type)
     data_by_source = get_data_by_source(collector_results)
 
     # Log what we collected

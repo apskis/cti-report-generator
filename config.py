@@ -18,6 +18,7 @@ class CollectorConfig:
     # Lookback periods (days)
     nvd_lookback_days: int = 7
     intel471_lookback_days: int = 7
+    intel471_quarterly_lookback_days: int = 90  # Quarter = 90 days
     crowdstrike_lookback_days: int = 7
     threatq_lookback_days: int = 7
     rapid7_lookback_days: int = 30
@@ -25,6 +26,8 @@ class CollectorConfig:
     # Result limits per source
     nvd_max_results: int = 100
     intel471_reports_limit: int = 50
+    intel471_quarterly_reports_limit: int = 1000  # Higher limit for quarterly (fetching all report types)
+    intel471_breach_alerts_limit: int = 100  # Higher limit for breach alerts (many available)
     intel471_indicators_limit: int = 20
     crowdstrike_actors_limit: int = 50
     crowdstrike_indicators_limit: int = 50

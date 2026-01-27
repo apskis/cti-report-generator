@@ -30,7 +30,7 @@ COLLECTOR_REGISTRY: Dict[str, Type[BaseCollector]] = {
 }
 
 
-def get_collector(name: str, credentials: Dict[str, str]) -> BaseCollector | None:
+def get_collector(name: str, credentials: Dict[str, str], report_type: str = "weekly") -> BaseCollector | None:
     """
     Get a collector instance by name.
 
@@ -43,12 +43,12 @@ def get_collector(name: str, credentials: Dict[str, str]) -> BaseCollector | Non
     """
     collector_class = COLLECTOR_REGISTRY.get(name.lower())
     if collector_class:
-        return collector_class(credentials)
+        return collector_class(credentials, report_type=report_type)
     logger.warning(f"Unknown collector: {name}")
     return None
 
 
-def get_all_collectors(credentials: Dict[str, str]) -> List[BaseCollector]:
+def get_all_collectors(credentials: Dict[str, str], report_type: str = "weekly") -> List[BaseCollector]:
     """
     Get instances of all registered collectors.
 
@@ -59,12 +59,12 @@ def get_all_collectors(credentials: Dict[str, str]) -> List[BaseCollector]:
         List of collector instances
     """
     return [
-        collector_class(credentials)
+        collector_class(credentials, report_type=report_type)
         for collector_class in COLLECTOR_REGISTRY.values()
     ]
 
 
-def get_enabled_collector_instances(credentials: Dict[str, str]) -> List[BaseCollector]:
+def get_enabled_collector_instances(credentials: Dict[str, str], report_type: str = "weekly") -> List[BaseCollector]:
     """
     Get instances of only enabled collectors.
 
@@ -81,7 +81,7 @@ def get_enabled_collector_instances(credentials: Dict[str, str]) -> List[BaseCol
     collectors = []
 
     for name in enabled_names:
-        collector = get_collector(name, credentials)
+        collector = get_collector(name, credentials, report_type=report_type)
         if collector and collector.enabled:
             collectors.append(collector)
         elif collector and not collector.enabled:
@@ -92,7 +92,8 @@ def get_enabled_collector_instances(credentials: Dict[str, str]) -> List[BaseCol
 
 async def collect_all(
     credentials: Dict[str, str],
-    parallel: bool = True
+    parallel: bool = True,
+    report_type: str = "weekly"
 ) -> Dict[str, CollectorResult]:
     """
     Run all enabled collectors and return results.
@@ -104,14 +105,14 @@ async def collect_all(
     Returns:
         Dictionary mapping source name to CollectorResult
     """
-    collectors = get_enabled_collector_instances(credentials)
-    logger.info(f"Running {len(collectors)} collectors: {[c.source_name for c in collectors]}")
+    collectors = get_enabled_collector_instances(credentials, report_type=report_type)
+    logger.info(f"Running {len(collectors)} collectors: {[c.source_name for c in collectors]} (report_type: {report_type})")
 
     results: Dict[str, CollectorResult] = {}
 
     if parallel:
-        # Run all collectors in parallel
-        tasks = [collector.safe_collect() for collector in collectors]
+        # Run all collectors in parallel, passing report_type
+        tasks = [collector.safe_collect(report_type=report_type) for collector in collectors]
         collector_results = await asyncio.gather(*tasks)
 
         for collector, result in zip(collectors, collector_results):
@@ -119,7 +120,7 @@ async def collect_all(
     else:
         # Run sequentially (useful for debugging)
         for collector in collectors:
-            result = await collector.safe_collect()
+            result = await collector.safe_collect(report_type=report_type)
             results[collector.source_name] = result
 
     # Log summary

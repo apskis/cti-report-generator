@@ -494,10 +494,17 @@ APT groups targeting the healthcare, biotech, or manufacturing sectors, and indi
         russia_actors = [a for a in crowdstrike_data if self._is_russia_related(a)]
         nk_actors = [a for a in crowdstrike_data if self._is_nk_related(a)]
 
+        # Get target industries from config
+        from config import industry_filter_config
+        target_industries = ", ".join(industry_filter_config.target_industries)
+        
         return f"""Analyze this threat intelligence data and provide a QUARTERLY STRATEGIC BRIEF for executive leadership.
 
+IMPORTANT: Filter Intel471 reports by relevance to these industries/sectors: {target_industries}
+Focus on reports (BREACH ALERT, SPOT REPORT, SITUATION REPORT, MALWARE REPORT) that mention or target these sectors.
+
 DATA SUMMARY:
-- Intel471 Threat Reports: {len(intel471_data)} records
+- Intel471 Threat Reports: {len(intel471_data)} records (filtered for relevance to: {target_industries})
 - CrowdStrike APT Activity: {len(crowdstrike_data)} records
   - China-linked actors: {len(china_actors)}
   - Russia-linked actors: {len(russia_actors)}
@@ -505,8 +512,8 @@ DATA SUMMARY:
 - Industry Breach Incidents: {len(breach_data)} records
 
 RAW DATA:
-Intel471 Data (sample):
-{json.dumps(intel471_data[:20], indent=2)}
+Intel471 Data (sample - filter by industry relevance):
+{json.dumps(intel471_data[:50], indent=2)}
 
 CrowdStrike APT Data:
 {json.dumps(crowdstrike_data[:30], indent=2)}
@@ -578,6 +585,8 @@ Please provide your STRATEGIC analysis in the following JSON format:
 }}
 
 Focus on STRATEGIC insights for leadership, not tactical details.
+When analyzing Intel471 data, prioritize reports relevant to: {target_industries}
+Include breach alerts, spot reports, situation reports, and malware reports that target or mention these sectors.
 Respond ONLY with valid JSON. Do not include any markdown formatting or code blocks."""
 
     def _is_china_related(self, actor: Dict) -> bool:

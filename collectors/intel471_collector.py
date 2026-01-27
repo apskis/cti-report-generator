@@ -50,13 +50,19 @@ class Intel471Collector(BaseCollector):
 
     @property
     def lookback_days(self) -> int:
+        """Get lookback days based on report type."""
+        if self.report_type == "quarterly":
+            return collector_config.intel471_quarterly_lookback_days
         return collector_config.intel471_lookback_days
 
-    async def collect(self) -> CollectorResult:
+    async def collect(self, report_type: str = "weekly") -> CollectorResult:
         """
         Fetch threat intelligence from Intel471.
 
-        Collects both reports and indicators, filtered for biotech relevance.
+        For quarterly reports: Fetches all report types (BREACH ALERT, SPOT REPORT,
+        SITUATION REPORT, MALWARE REPORT) going back 90 days. OpenAI will filter by industry.
+        
+        For weekly reports: Fetches reports with keyword filtering.
 
         Returns:
             CollectorResult with list of threat reports and indicators
@@ -83,11 +89,21 @@ class Intel471Collector(BaseCollector):
             threats: List[Dict[str, Any]] = []
 
             async with HTTPClient() as client:
-                # Fetch reports
-                reports = await self._fetch_reports(client, auth, start_date, end_date)
-                threats.extend(reports)
+                if report_type == "quarterly":
+                    # For quarterly: Fetch all report types (breach, spot, situation, malware)
+                    # No keyword filtering - let OpenAI filter by industry
+                    all_reports = await self._fetch_all_report_types(client, auth, start_date, end_date)
+                    threats.extend(all_reports)
+                else:
+                    # For weekly: Fetch reports with keyword filtering
+                    reports = await self._fetch_reports(client, auth, start_date, end_date)
+                    threats.extend(reports)
 
-                # Fetch indicators
+                    # Fetch breach alerts (important even if not biotech-specific)
+                    breach_alerts = await self._fetch_breach_alerts(client, auth, start_date, end_date)
+                    threats.extend(breach_alerts)
+
+                # Fetch indicators (for both weekly and quarterly)
                 indicators = await self._fetch_indicators(client, auth, start_date, end_date)
                 threats.extend(indicators)
 
@@ -154,12 +170,13 @@ class Intel471Collector(BaseCollector):
                 data = await response.json()
 
                 for report in data.get("reports", []):
-                    # Check relevance to biotech/healthcare
-                    subject = report.get("subject", "").lower()
-                    tags = report.get("tags", [])
-
-                    if not self._is_relevant_biotech(subject, tags):
-                        continue
+                    # For quarterly reports, include all reports (OpenAI will filter by industry)
+                    # For weekly reports, filter by biotech keywords
+                    if self.report_type != "quarterly":
+                        subject = report.get("subject", "").lower()
+                        tags = report.get("tags", [])
+                        if not self._is_relevant_biotech(subject, tags):
+                            continue
 
                     threat = self._parse_report(report)
                     threats.append(threat)
@@ -171,6 +188,297 @@ class Intel471Collector(BaseCollector):
 
         except Exception as e:
             logger.error(f"Error fetching Intel471 reports: {e}")
+
+        return threats
+
+    async def _fetch_all_report_types(
+        self,
+        client: HTTPClient,
+        auth: aiohttp.BasicAuth,
+        start_date: datetime,
+        end_date: datetime
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch all report types for quarterly reports: BREACH ALERT, SPOT REPORT,
+        SITUATION REPORT, and MALWARE REPORT.
+
+        No keyword filtering - OpenAI will filter by industry/sector.
+
+        Args:
+            client: HTTP client
+            auth: Basic auth credentials
+            start_date: Start of date range
+            end_date: End of date range
+
+        Returns:
+            List of all report dictionaries
+        """
+        reports_url = f"{self.BASE_URL}/reports"
+
+        # Document types to fetch for quarterly reports
+        document_types = [
+            "BREACH ALERT",
+            "SPOT REPORT",
+            "SITUATION REPORT",
+            "MALWARE REPORT"
+        ]
+
+        all_threats = []
+        limit = collector_config.intel471_quarterly_reports_limit
+
+        # Fetch each document type
+        for doc_type in document_types:
+            params = {
+                "from": self.format_date_timestamp_ms(start_date),
+                "until": self.format_date_timestamp_ms(end_date),
+                "count": limit,  # Fetch up to limit per type
+                "v": self.API_VERSION,
+                "documentType": doc_type
+            }
+
+            try:
+                response = await client.get_raw_response(reports_url, auth=auth, params=params)
+
+                if response.status == 200:
+                    data = await response.json()
+                    reports = data.get("reports", [])
+
+                    for report in reports:
+                        threat = self._parse_report(report)
+                        # Ensure threat_type reflects the document type
+                        threat["threat_type"] = doc_type
+                        all_threats.append(threat)
+
+                    logger.info(f"Retrieved {len(reports)} {doc_type} reports from Intel471")
+                else:
+                    # If documentType parameter doesn't work, fetch all and filter client-side
+                    logger.info(f"documentType parameter not working for {doc_type}, fetching all and filtering...")
+                    all_reports = await self._fetch_all_reports_and_filter(client, auth, start_date, end_date, doc_type)
+                    all_threats.extend(all_reports)
+
+            except Exception as e:
+                logger.warning(f"Error fetching {doc_type} reports: {e}")
+                # Fallback: fetch all and filter client-side
+                all_reports = await self._fetch_all_reports_and_filter(client, auth, start_date, end_date, doc_type)
+                all_threats.extend(all_reports)
+
+        logger.info(f"Retrieved {len(all_threats)} total reports (all types) from Intel471 for quarterly report")
+        return all_threats
+
+    async def _fetch_all_reports_and_filter(
+        self,
+        client: HTTPClient,
+        auth: aiohttp.BasicAuth,
+        start_date: datetime,
+        end_date: datetime,
+        target_doc_type: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Fallback: Fetch all reports and filter by documentType client-side.
+
+        Args:
+            client: HTTP client
+            auth: Basic auth credentials
+            start_date: Start of date range
+            end_date: End of date range
+            target_doc_type: Document type to filter for
+
+        Returns:
+            List of filtered report dictionaries
+        """
+        reports_url = f"{self.BASE_URL}/reports"
+
+        params = {
+            "from": self.format_date_timestamp_ms(start_date),
+            "until": self.format_date_timestamp_ms(end_date),
+            "count": collector_config.intel471_quarterly_reports_limit * 2,  # Fetch more to account for filtering
+            "v": self.API_VERSION
+        }
+
+        threats = []
+
+        try:
+            response = await client.get_raw_response(reports_url, auth=auth, params=params)
+
+            if response.status == 200:
+                data = await response.json()
+
+                for report in data.get("reports", []):
+                    document_type = report.get("documentType", "").upper()
+                    if document_type == target_doc_type.upper():
+                        threat = self._parse_report(report)
+                        threat["threat_type"] = target_doc_type
+                        threats.append(threat)
+
+                logger.info(f"Retrieved {len(threats)} {target_doc_type} reports (client-side filtered)")
+            else:
+                response_text = await response.text()
+                logger.warning(f"Intel471 reports API returned status {response.status}: {response_text[:500]}")
+
+        except Exception as e:
+            logger.warning(f"Error fetching and filtering reports: {e}")
+
+        return threats
+
+    async def _fetch_breach_alerts(
+        self,
+        client: HTTPClient,
+        auth: aiohttp.BasicAuth,
+        start_date: datetime,
+        end_date: datetime
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch breach alerts from Intel471.
+
+        Breach alerts are important for threat intelligence even if they don't
+        specifically mention biotech keywords. We include all breach alerts
+        targeting relevant industries.
+
+        Args:
+            client: HTTP client
+            auth: Basic auth credentials
+            start_date: Start of date range
+            end_date: End of date range
+
+        Returns:
+            List of breach alert dictionaries
+        """
+        alerts_url = f"{self.BASE_URL}/alerts"
+
+        # CRITICAL: Intel471 uses MILLISECONDS
+        params = {
+            "from": self.format_date_timestamp_ms(start_date),
+            "until": self.format_date_timestamp_ms(end_date),
+            "count": collector_config.intel471_breach_alerts_limit,
+            "v": self.API_VERSION,
+            "documentType": "BREACH ALERT"  # Filter for breach alerts specifically
+        }
+
+        threats = []
+
+        try:
+            response = await client.get_raw_response(alerts_url, auth=auth, params=params)
+
+            if response.status == 200:
+                data = await response.json()
+
+                for alert in data.get("alerts", []):
+                    # For breach alerts, we're less restrictive - include if:
+                    # 1. It mentions biotech keywords, OR
+                    # 2. It targets relevant industries (manufacturing, healthcare, etc.)
+                    subject = alert.get("subject", "").lower()
+                    tags = alert.get("tags", [])
+                    document_type = alert.get("documentType", "").upper()
+
+                    # Always include breach alerts - they're important threat intelligence
+                    # even if not directly biotech-related
+                    is_breach = "BREACH" in document_type or "breach" in subject
+
+                    if is_breach or self._is_relevant_biotech(subject, tags):
+                        threat = self._parse_report(alert)  # Breach alerts use same format as reports
+                        threat["threat_type"] = "Breach Alert"  # Mark as breach
+                        threats.append(threat)
+
+                logger.info(f"Retrieved {len(threats)} breach alerts from Intel471")
+            else:
+                response_text = await response.text()
+                logger.warning(f"Intel471 alerts API returned status {response.status}: {response_text[:500]}")
+                # If alerts endpoint doesn't work, try fetching from reports with documentType filter
+                logger.info("Attempting to fetch breach alerts from reports endpoint...")
+                return await self._fetch_breach_alerts_from_reports(client, auth, start_date, end_date)
+
+        except Exception as e:
+            logger.warning(f"Error fetching Intel471 breach alerts: {e}")
+            # Fallback: try fetching from reports endpoint
+            logger.info("Attempting to fetch breach alerts from reports endpoint as fallback...")
+            return await self._fetch_breach_alerts_from_reports(client, auth, start_date, end_date)
+
+        return threats
+
+    async def _fetch_breach_alerts_from_reports(
+        self,
+        client: HTTPClient,
+        auth: aiohttp.BasicAuth,
+        start_date: datetime,
+        end_date: datetime
+    ) -> List[Dict[str, Any]]:
+        """
+        Fallback method to fetch breach alerts from reports endpoint.
+
+        Some Intel471 API versions may not have a separate alerts endpoint,
+        so we query the reports endpoint and filter client-side for breach alerts.
+
+        Args:
+            client: HTTP client
+            auth: Basic auth credentials
+            start_date: Start of date range
+            end_date: End of date range
+
+        Returns:
+            List of breach alert dictionaries
+        """
+        reports_url = f"{self.BASE_URL}/reports"
+
+        # Try with documentType filter first
+        params_with_filter = {
+            "from": self.format_date_timestamp_ms(start_date),
+            "until": self.format_date_timestamp_ms(end_date),
+            "count": collector_config.intel471_breach_alerts_limit,
+            "v": self.API_VERSION,
+            "documentType": "BREACH ALERT"
+        }
+
+        threats = []
+
+        try:
+            # First try with documentType filter
+            response = await client.get_raw_response(reports_url, auth=auth, params=params_with_filter)
+
+            if response.status == 200:
+                data = await response.json()
+                reports = data.get("reports", [])
+            else:
+                # If documentType parameter doesn't work, fetch all reports and filter client-side
+                logger.info("documentType parameter not supported, fetching all reports and filtering client-side...")
+                params_no_filter = {
+                    "from": self.format_date_timestamp_ms(start_date),
+                    "until": self.format_date_timestamp_ms(end_date),
+                    "count": collector_config.intel471_breach_alerts_limit * 2,  # Fetch more to account for filtering
+                    "v": self.API_VERSION
+                }
+                response = await client.get_raw_response(reports_url, auth=auth, params=params_no_filter)
+                if response.status == 200:
+                    data = await response.json()
+                    reports = data.get("reports", [])
+                else:
+                    response_text = await response.text()
+                    logger.warning(f"Intel471 reports API returned status {response.status}: {response_text[:500]}")
+                    return threats
+
+            # Filter for breach alerts
+            for report in reports:
+                document_type = report.get("documentType", "").upper()
+                subject = report.get("subject", "").lower()
+                tags = report.get("tags", [])
+
+                # Check if this is a breach alert
+                is_breach = (
+                    "BREACH" in document_type or
+                    "breach" in subject or
+                    any("breach" in str(tag).lower() for tag in tags)
+                )
+
+                if is_breach:
+                    # For breach alerts, include all of them - they're important threat intelligence
+                    # even if not biotech-specific
+                    threat = self._parse_report(report)
+                    threat["threat_type"] = "Breach Alert"
+                    threats.append(threat)
+
+            logger.info(f"Retrieved {len(threats)} breach alerts from Intel471 reports endpoint")
+
+        except Exception as e:
+            logger.warning(f"Error fetching breach alerts from reports endpoint: {e}")
 
         return threats
 
