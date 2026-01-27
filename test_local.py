@@ -6,20 +6,23 @@ Allows testing both weekly and quarterly reports without Azure Functions runtime
 Generates reports locally (saves to disk) or uploads to Azure Blob Storage.
 
 Usage:
-    # Generate weekly report locally (no Azure dependencies)
-    python test_local.py weekly --local
+    # Generate weekly report with MOCK data (for UI/formatting testing)
+    python test_local.py weekly --local --mock
 
-    # Generate quarterly report locally
-    python test_local.py quarterly --local
+    # Generate quarterly report with MOCK data
+    python test_local.py quarterly --local --mock
 
-    # Generate weekly report with Azure upload (requires Key Vault access)
+    # Generate weekly report with REAL API data, save locally
+    python test_local.py weekly --local --real
+
+    # Generate quarterly report with REAL API data, save locally
+    python test_local.py quarterly --local --real
+
+    # Generate with REAL data and upload to Azure Blob Storage
     python test_local.py weekly --azure
 
-    # Generate with mock data (for UI/formatting testing)
-    python test_local.py weekly --mock --local
-
-    # Specify output directory
-    python test_local.py weekly --local --output ./reports
+    # Specify output directory for local generation
+    python test_local.py weekly --local --mock --output ./reports
 """
 import argparse
 import asyncio
@@ -226,6 +229,7 @@ biomanufacturing IP and clinical trial data.""",
 async def generate_report_local(
     report_type: str,
     use_mock: bool = False,
+    use_real: bool = False,
     output_dir: str = ".",
     use_azure: bool = False
 ) -> str:
@@ -235,8 +239,9 @@ async def generate_report_local(
     Args:
         report_type: 'weekly' or 'quarterly'
         use_mock: Use mock data instead of collecting from APIs
+        use_real: Use real API data (requires Key Vault access)
         output_dir: Directory to save the report
-        use_azure: Upload to Azure Blob Storage
+        use_azure: Upload to Azure Blob Storage (implies use_real)
 
     Returns:
         Path to generated report or Azure URL
@@ -250,20 +255,20 @@ async def generate_report_local(
     if generator is None:
         raise ValueError(f"Unknown report type: {report_type}")
 
-    # Get analysis data
+    # Determine data source
     if use_mock:
-        logger.info("Using mock data for report generation")
+        logger.info("Using MOCK data for report generation (UI/formatting test)")
         if report_type == "weekly":
             analysis = get_mock_weekly_analysis()
         else:
             analysis = get_mock_quarterly_analysis()
-    elif use_azure:
+    elif use_real or use_azure:
         # Collect real data from APIs
-        logger.info("Collecting data from threat intelligence APIs...")
+        logger.info("Collecting REAL data from threat intelligence APIs...")
         analysis = await collect_and_analyze(report_type)
     else:
-        # Use mock data for local generation without Azure
-        logger.info("Using mock data (no Azure credentials)")
+        # Default to mock if nothing specified
+        logger.info("Using MOCK data (default - use --real for API data)")
         if report_type == "weekly":
             analysis = get_mock_weekly_analysis()
         else:
@@ -319,6 +324,10 @@ async def collect_and_analyze(report_type: str) -> dict:
     collector_results = await collect_all(credentials)
     data_by_source = get_data_by_source(collector_results)
 
+    # Log what we collected
+    for source, data in data_by_source.items():
+        logger.info(f"  {source}: {len(data)} records")
+
     # Initialize agent
     agent = ThreatAnalystAgent(
         credentials['openai_endpoint'],
@@ -328,6 +337,7 @@ async def collect_and_analyze(report_type: str) -> dict:
 
     if report_type == "weekly":
         # Tactical analysis
+        logger.info("Running tactical AI analysis for weekly report...")
         return await agent.analyze_threats(
             data_by_source.get("NVD", []),
             data_by_source.get("Intel471", []),
@@ -337,6 +347,7 @@ async def collect_and_analyze(report_type: str) -> dict:
         )
     else:
         # Strategic analysis
+        logger.info("Running strategic AI analysis for quarterly report...")
         return await agent.analyze_strategic(
             intel471_data=data_by_source.get("Intel471", []),
             crowdstrike_data=data_by_source.get("CrowdStrike", []),
@@ -349,18 +360,25 @@ def main():
         description="Local test script for CTI Report Generation",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+Data Source Options:
+  --mock    Use hardcoded example data (no Azure/API access needed)
+  --real    Use real data from APIs (requires Key Vault access)
+
 Examples:
-    # Generate weekly report locally with mock data
-    python test_local.py weekly --local
+  # MOCK DATA - Test report formatting without any API calls
+  python test_local.py weekly --local --mock
+  python test_local.py quarterly --local --mock
 
-    # Generate quarterly report locally with mock data
-    python test_local.py quarterly --local
+  # REAL DATA - Pull from actual threat intel APIs, save locally
+  python test_local.py weekly --local --real
+  python test_local.py quarterly --local --real
 
-    # Generate and upload to Azure (requires Key Vault access)
-    python test_local.py weekly --azure
+  # REAL DATA + AZURE UPLOAD - Full production pipeline
+  python test_local.py weekly --azure
+  python test_local.py quarterly --azure
 
-    # Specify output directory for local generation
-    python test_local.py weekly --local --output ./reports
+  # Custom output directory
+  python test_local.py weekly --local --mock --output ./test_reports
         """
     )
 
@@ -373,19 +391,25 @@ Examples:
     parser.add_argument(
         "--local",
         action="store_true",
-        help="Generate report locally (save to disk)"
+        help="Save report locally (to disk)"
     )
 
     parser.add_argument(
         "--azure",
         action="store_true",
-        help="Generate report and upload to Azure Blob Storage"
+        help="Upload report to Azure Blob Storage (uses real data)"
     )
 
     parser.add_argument(
         "--mock",
         action="store_true",
-        help="Use mock data (default for --local)"
+        help="Use MOCK/example data (no API calls, for UI testing)"
+    )
+
+    parser.add_argument(
+        "--real",
+        action="store_true",
+        help="Use REAL data from APIs (requires Key Vault access)"
     )
 
     parser.add_argument(
@@ -403,18 +427,42 @@ Examples:
     if args.local and args.azure:
         parser.error("Cannot use both --local and --azure")
 
+    if args.mock and args.real:
+        parser.error("Cannot use both --mock and --real")
+
+    # Default to mock for --local if neither specified
+    use_mock = args.mock or (args.local and not args.real)
+    use_real = args.real or args.azure
+
+    # Determine data source for display
+    if use_mock:
+        data_source = "MOCK (example data)"
+    else:
+        data_source = "REAL (API feeds + AI analysis)"
+
     # Run the generation
     try:
+        print(f"\n{'='*60}")
+        print(f"CTI Report Generator")
+        print(f"{'='*60}")
+        print(f"Report Type: {args.report_type.upper()}")
+        print(f"Data Source: {data_source}")
+        print(f"Output: {'Azure Blob Storage' if args.azure else f'Local ({args.output})'}")
+        print(f"{'='*60}\n")
+
         result = asyncio.run(generate_report_local(
             report_type=args.report_type,
-            use_mock=args.mock or args.local,
+            use_mock=use_mock,
+            use_real=use_real,
             output_dir=args.output,
             use_azure=args.azure
         ))
 
         print(f"\n{'='*60}")
-        print(f"Report generated successfully!")
-        print(f"Type: {args.report_type.upper()}")
+        print(f"SUCCESS!")
+        print(f"{'='*60}")
+        print(f"Report Type: {args.report_type.upper()}")
+        print(f"Data Source: {data_source}")
         if args.azure:
             print(f"URL: {result}")
         else:
