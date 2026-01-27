@@ -130,4 +130,5 @@ def get_enabled_collectors() -> List[str]:
     enabled = os.environ.get("ENABLED_COLLECTORS", "")
     if enabled:
         return [c.strip().lower() for c in enabled.split(",")]
-    return ["nvd", "intel471", "crowdstrike", "threatq", "rapid7"]
+    # ThreatQ disabled - secrets not configured yet
+    return ["nvd", "intel471", "crowdstrike", "rapid7"]
