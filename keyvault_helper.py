@@ -89,6 +89,7 @@ def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
     Retrieve all API keys needed for threat intelligence collection.
 
     Uses parallel fetching for improved performance.
+    Only fetches secrets for enabled collectors.
 
     Args:
         vault_url: URL of the Azure Key Vault (defaults to config)
@@ -96,11 +97,33 @@ def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
     Returns:
         Dictionary containing all API keys
     """
+    from config import get_enabled_collectors
+    
     vault_url = vault_url or azure_config.get_key_vault_url()
     logger.info(f"Retrieving all API keys from vault: {vault_url}")
 
-    # Define all secrets to retrieve
+    # Get enabled collectors
+    enabled_collectors = set(get_enabled_collectors())
+    
+    # Define all secrets to retrieve, organized by collector
     # All credentials stored in Key Vault for security
+    collector_secrets = {
+        'nvd': ['nvd_key'],
+        'threatq': ['threatq_key', 'threatq_url'],  # Optional - collector handles missing gracefully
+        'intel471': ['intel471_email', 'intel471_key'],
+        'crowdstrike': ['crowdstrike_id', 'crowdstrike_secret', 'crowdstrike_base_url'],
+        'rapid7': ['rapid7_key', 'rapid7_region'],
+    }
+    
+    # Always required (not collector-specific)
+    required_secrets = {
+        'openai_key': 'openai-api-key',
+        'openai_endpoint': 'openai-endpoint',
+        'storage_account_name': 'storage-account-name',
+        'storage_account_key': 'storage-account-key'
+    }
+    
+    # Map of key names to secret names
     secrets_map = {
         # Threat Intelligence API credentials
         'nvd_key': 'nvd-api-key',
@@ -113,13 +136,27 @@ def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
         'crowdstrike_base_url': 'crowdstrike-base-url',
         'rapid7_key': 'rapid7-api-key',
         'rapid7_region': 'rapid7-region',
-        # Azure OpenAI credentials
-        'openai_key': 'openai-api-key',
-        'openai_endpoint': 'openai-endpoint',
-        # Azure Storage credentials
-        'storage_account_name': 'storage-account-name',
-        'storage_account_key': 'storage-account-key'
     }
+    
+    # Add required secrets
+    secrets_map.update(required_secrets)
+    
+    # Build list of secrets to fetch based on enabled collectors
+    secrets_to_fetch = {}
+    
+    # Add required secrets (always needed)
+    for key_name, secret_name in required_secrets.items():
+        secrets_to_fetch[key_name] = secret_name
+    
+    # Add collector-specific secrets for enabled collectors
+    for collector_name, key_names in collector_secrets.items():
+        if collector_name in enabled_collectors:
+            for key_name in key_names:
+                if key_name in secrets_map:
+                    secrets_to_fetch[key_name] = secrets_map[key_name]
+    
+    # Special handling: ThreatQ secrets are optional (collector handles missing gracefully)
+    optional_secrets = {'threatq_key', 'threatq_url'}
 
     api_keys = {}
 
@@ -129,12 +166,21 @@ def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
         key_name, secret_name = item
         try:
             return key_name, get_secret(vault_url, secret_name)
+        except ResourceNotFoundError as e:
+            # ThreatQ secrets are optional - log warning but don't fail
+            if key_name in optional_secrets:
+                logger.warning(f"Optional secret '{key_name}' (secret: '{secret_name}') not found in vault. "
+                             f"ThreatQ collector will be disabled.")
+                return key_name, ""
+            # For other secrets, raise exception
+            logger.error(f"Failed to retrieve required API key '{key_name}' (secret: '{secret_name}'): {e}")
+            raise Exception(f"Failed to retrieve required API key '{key_name}': {e}")
         except Exception as e:
             logger.error(f"Failed to retrieve API key '{key_name}' (secret: '{secret_name}'): {e}")
             raise Exception(f"Failed to retrieve required API key '{key_name}': {e}")
 
     with ThreadPoolExecutor(max_workers=6) as executor:
-        results = list(executor.map(fetch_secret, secrets_map.items()))
+        results = list(executor.map(fetch_secret, secrets_to_fetch.items()))
 
     for key_name, value in results:
         api_keys[key_name] = value
