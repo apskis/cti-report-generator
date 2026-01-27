@@ -5,12 +5,15 @@ Generates quarterly strategic threat intelligence briefs for leadership.
 """
 from datetime import datetime, timedelta
 import logging
+import os
 from typing import Dict, Any, List
 
 from docx import Document
-from docx.shared import Pt, Inches
+from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 
 from reports.base import BaseReportGenerator, BrandColors, FontSizes
 from reports.registry import register_report_generator
@@ -129,10 +132,27 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         return f"Q{self.quarter - 1} {self._get_year()}"
 
     def _add_header(self) -> None:
-        """Add report header with ID, title, and date range."""
+        """Add report header with banner image, ID, title, and date range."""
         year = self._get_year()
 
-        # Report ID (e.g., CTI-QTR-2026-Q1)
+        # Add banner image at the top
+        # Banner is in the root directory of the project
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        banner_path = os.path.join(root_dir, "illumina_report_banner-EIS.png")
+        
+        # Also try current working directory (if running from root)
+        alt_path = "illumina_report_banner-EIS.png"
+        
+        if os.path.exists(banner_path):
+            self._add_image(banner_path, width=Inches(6.5))
+            self.doc.add_paragraph()  # Add spacing after banner
+        elif os.path.exists(alt_path):
+            self._add_image(alt_path, width=Inches(6.5))
+            self.doc.add_paragraph()
+        else:
+            logger.warning(f"Banner image not found at: {banner_path} or {alt_path}")
+
+        # Report ID (e.g., CTI-QTR-2026-Q1) - appears on banner in example, but we'll add it here too
         report_id = f"CTI-QTR-{year}-Q{self.quarter}"
         id_para = self.doc.add_paragraph()
         id_run = id_para.add_run(report_id)
@@ -244,25 +264,69 @@ and vulnerabilities observed are consistent with those historically used against
             cat_run = cat_para.add_run(category)
             cat_run.font.size = FontSizes.BODY_SMALL
             cat_run.font.bold = True
+            cat_run.font.color.rgb = BrandColors.GRAY_DARK  # Dark text for readability
             cat_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-            # Risk level
+            # Risk level with colored background box
+            # Create a nested table cell or use paragraph shading for the colored box
             level_para = cell.add_paragraph()
+            level_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             level_run = level_para.add_run(level)
             level_run.font.size = Pt(14)
             level_run.font.bold = True
+            
+            # Set text color and background based on risk level
+            # Use paragraph shading to create the colored box effect
             if level == RiskLevel.HIGH:
-                level_run.font.color.rgb = BrandColors.RED_CRITICAL
+                level_run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)  # White text
+                # Shade the paragraph background (creates colored box)
+                pPr = level_para._element.get_or_add_pPr()
+                shd = pPr.find(qn("w:shd"))
+                if shd is None:
+                    shd = OxmlElement("w:shd")
+                    pPr.append(shd)
+                shd.set(qn("w:fill"), "FF0000")  # Red background
             elif level == RiskLevel.MEDIUM:
-                level_run.font.color.rgb = BrandColors.ORANGE_HIGH
-            level_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                level_run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)  # White text
+                pPr = level_para._element.get_or_add_pPr()
+                shd = pPr.find(qn("w:shd"))
+                if shd is None:
+                    shd = OxmlElement("w:shd")
+                    pPr.append(shd)
+                shd.set(qn("w:fill"), "FFA500")  # Orange background
+            elif level == RiskLevel.LOW:
+                level_run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)  # White text
+                pPr = level_para._element.get_or_add_pPr()
+                shd = pPr.find(qn("w:shd"))
+                if shd is None:
+                    shd = OxmlElement("w:shd")
+                    pPr.append(shd)
+                shd.set(qn("w:fill"), "008000")  # Green background
+            else:
+                # Default styling if level doesn't match
+                level_run.font.color.rgb = BrandColors.GRAY_DARK
 
             # Trend vs previous quarter
             prev_quarter = self._get_previous_quarter()
             trend_para = cell.add_paragraph()
-            trend_run = trend_para.add_run(f"vs {prev_quarter}: {trend}")
+            
+            # Format trend with percentage if it's a number
+            trend_text = str(trend)
+            if isinstance(trend, str) and ("+" in trend or "%" in trend):
+                # Trend shows increase/decrease
+                trend_display = f"vs {prev_quarter}: {trend}"
+                trend_run = trend_para.add_run(trend_display)
+                # Color increases green
+                if "+" in trend:
+                    trend_run.font.color.rgb = BrandColors.GREEN_LOW
+                else:
+                    trend_run.font.color.rgb = BrandColors.GRAY_MEDIUM  # Gray for unchanged
+            else:
+                trend_display = f"vs {prev_quarter}: {trend}"
+                trend_run = trend_para.add_run(trend_display)
+                trend_run.font.color.rgb = BrandColors.GRAY_MEDIUM  # Gray for unchanged
+            
             trend_run.font.size = FontSizes.FOOTNOTE
-            trend_run.font.color.rgb = BrandColors.GRAY_MEDIUM
             trend_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
         self.doc.add_paragraph()
@@ -330,7 +394,8 @@ and vulnerabilities observed are consistent with those historically used against
                 header_cells[i].text = header
                 header_cells[i].paragraphs[0].runs[0].font.bold = True
                 header_cells[i].paragraphs[0].runs[0].font.size = FontSizes.SUBTITLE
-                self._set_cell_shading(header_cells[i], "E0E0E0")
+                header_cells[i].paragraphs[0].runs[0].font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)  # White text
+                self._set_cell_shading(header_cells[i], BrandColors.ORANGE_TABLE_HEADER)  # Orange background
 
             for incident in incidents:
                 row = table.add_row()
@@ -371,7 +436,7 @@ and vulnerabilities observed are consistent with those historically used against
             num_run = num_para.add_run(number)
             num_run.font.size = Pt(24)
             num_run.font.bold = True
-            num_run.font.color.rgb = BrandColors.ORANGE_PRIMARY
+            num_run.font.color.rgb = BrandColors.ORANGE_PRIMARY  # Orange for emphasis
             num_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
             # Title
@@ -379,13 +444,21 @@ and vulnerabilities observed are consistent with those historically used against
             title_run = title_para.add_run(title)
             title_run.font.size = FontSizes.BODY_SMALL
             title_run.font.bold = True
+            title_run.font.color.rgb = BrandColors.GRAY_DARK  # Dark text
             title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-            # Subtitle (previous quarter comparison)
+            # Subtitle (previous quarter comparison) - check for percentage increases
             sub_para = cell.add_paragraph()
-            sub_run = sub_para.add_run(subtitle)
-            sub_run.font.size = FontSizes.FOOTNOTE
-            sub_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+            # Extract percentage from subtitle if present
+            if "+" in subtitle and "%" in subtitle:
+                # Has percentage increase - color it green
+                sub_run = sub_para.add_run(subtitle)
+                sub_run.font.size = FontSizes.FOOTNOTE
+                sub_run.font.color.rgb = BrandColors.GREEN_LOW  # Green for increases
+            else:
+                sub_run = sub_para.add_run(subtitle)
+                sub_run.font.size = FontSizes.FOOTNOTE
+                sub_run.font.color.rgb = BrandColors.GRAY_MEDIUM  # Gray for other text
             sub_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     def _add_geopolitical_landscape(self, analysis_result: Dict[str, Any]) -> None:
@@ -418,14 +491,17 @@ and vulnerabilities observed are consistent with those historically used against
 
     def _add_country_section(self, country: str, data: Dict[str, Any]) -> None:
         """Add a country-specific threat section."""
-        # Country heading
+        # Country heading - styled in blue/teal color
         country_names = {
             "china": "China",
             "russia": "Russia",
             "north_korea": "North Korea",
             "iran": "Iran"
         }
-        self.doc.add_heading(country_names.get(country, country.title()), level=2)
+        country_heading = self.doc.add_heading(country_names.get(country, country.title()), level=2)
+        # Style country headings in blue/teal
+        for run in country_heading.runs:
+            run.font.color.rgb = RGBColor(0x00, 0xBF, 0xFF)  # Light blue/teal color
 
         # Strategic Context
         strategic_context = data.get("strategic_context", self._get_default_strategic_context(country))
@@ -481,7 +557,10 @@ and vulnerabilities observed are consistent with those historically used against
         next_quarter = self.quarter + 1 if self.quarter < 4 else 1
         next_year = self._get_year() if self.quarter < 4 else self._get_year() + 1
 
-        self.doc.add_heading(f"Looking Ahead: Q{next_quarter} {next_year}", level=1)
+        looking_ahead_heading = self.doc.add_heading(f"Looking Ahead: Q{next_quarter} {next_year}", level=1)
+        # Style "Looking Ahead" heading in blue/teal
+        for run in looking_ahead_heading.runs:
+            run.font.color.rgb = RGBColor(0x00, 0xBF, 0xFF)  # Light blue/teal color
 
         looking_ahead = analysis_result.get("looking_ahead", {})
 
@@ -516,7 +595,10 @@ and vulnerabilities observed are consistent with those historically used against
         """Add recommendations for leadership section."""
         logger.info("Adding Recommendations for Leadership section")
 
-        self.doc.add_heading("Recommendations for Leadership", level=1)
+        recommendations_heading = self.doc.add_heading("Recommendations for Leadership", level=1)
+        # Style "Recommendations" heading in orange
+        for run in recommendations_heading.runs:
+            run.font.color.rgb = BrandColors.ORANGE_PRIMARY
 
         recommendations = analysis_result.get("recommendations", [])
 
@@ -552,10 +634,18 @@ and vulnerabilities observed are consistent with those historically used against
 
         # Contact info
         contact = self.doc.add_paragraph()
-        contact_run = contact.add_run("Prepared by: Cyber Threat Intelligence  |  cti@company.com")
+        contact_run = contact.add_run("Prepared by: Cyber Threat Intelligence  |  cti@illumina.com")
         contact_run.font.size = FontSizes.BODY_SMALL
         contact_run.font.bold = True
+        contact_run.font.color.rgb = BrandColors.GRAY_DARK  # Dark text
         contact.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Make email a hyperlink (if possible)
+        # Note: python-docx doesn't directly support hyperlinks in runs, 
+        # but we can style it to look like one
+        for run in contact.runs:
+            if "cti@illumina.com" in run.text:
+                run.font.underline = True
 
         self.doc.add_paragraph()
 
@@ -569,5 +659,10 @@ and vulnerabilities observed are consistent with those historically used against
         )
         sources_run.font.size = FontSizes.FOOTNOTE
         sources_run.font.bold = True
-        sources_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+        sources_run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)  # White text
         sources.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Underline "open source intelligence" if present
+        for run in sources.runs:
+            if "open source intelligence" in run.text.lower():
+                run.font.underline = True

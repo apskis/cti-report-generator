@@ -14,6 +14,7 @@ from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn, nsmap
 from docx.oxml import OxmlElement
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,8 @@ class BrandColors:
     RED_CRITICAL = RGBColor(0xFF, 0x00, 0x00)  # Red for critical severity
     ORANGE_HIGH = RGBColor(0xFF, 0xA5, 0x00)  # Orange for high severity
     YELLOW_P1 = "FFFF00"  # Yellow highlight for P1
+    GREEN_LOW = RGBColor(0x00, 0x80, 0x00)  # Green for LOW risk
+    ORANGE_TABLE_HEADER = "E65100"  # Orange for table headers (hex string for shading)
 
 
 class FontSizes:
@@ -245,3 +248,27 @@ class BaseReportGenerator(ABC):
     def _get_year(self) -> int:
         """Get year for the report date."""
         return self.created_at.year
+
+    def _add_image(self, image_path: str, width: Inches | None = None, height: Inches | None = None) -> None:
+        """
+        Add an image to the document.
+        
+        Args:
+            image_path: Path to the image file
+            width: Optional width in Inches (defaults to page width)
+            height: Optional height in Inches (maintains aspect ratio if only width specified)
+        """
+        if not os.path.exists(image_path):
+            logger.warning(f"Image file not found: {image_path}")
+            return
+        
+        para = self.doc.add_paragraph()
+        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        run = para.add_run()
+        
+        # Default to page width if not specified
+        if width is None:
+            width = Inches(6.5)  # Standard page width minus margins
+        
+        run.add_picture(image_path, width=width, height=height)
