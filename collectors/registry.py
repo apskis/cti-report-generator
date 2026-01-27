@@ -6,7 +6,7 @@ enabling easy addition/removal of data sources.
 """
 import asyncio
 import logging
-from typing import Dict, Type, List, Any, Optional
+from typing import Dict, Type, List, Any
 
 from collectors.base import BaseCollector
 from collectors.nvd_collector import NVDCollector
@@ -30,7 +30,7 @@ COLLECTOR_REGISTRY: Dict[str, Type[BaseCollector]] = {
 }
 
 
-def get_collector(name: str, credentials: Dict[str, str]) -> Optional[BaseCollector]:
+def get_collector(name: str, credentials: Dict[str, str]) -> BaseCollector | None:
     """
     Get a collector instance by name.
 

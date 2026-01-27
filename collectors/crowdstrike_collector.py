@@ -4,7 +4,7 @@ CrowdStrike collector.
 Fetches APT intelligence from CrowdStrike Falcon Intelligence API.
 """
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 from collectors.base import BaseCollector
 from collectors.http_utils import HTTPClient, NonRetryableHTTPError, validate_url
@@ -115,7 +115,7 @@ class CrowdStrikeCollector(BaseCollector):
         base_url: str,
         client_id: str,
         client_secret: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Obtain OAuth2 access token from CrowdStrike.
 

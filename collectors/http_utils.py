@@ -5,7 +5,7 @@ Provides exponential backoff retry mechanism for transient failures.
 """
 import asyncio
 import logging
-from typing import Optional, Dict, Any, Callable
+from typing import Dict, Any, Callable
 from functools import wraps
 
 import aiohttp  # type: ignore
@@ -42,9 +42,9 @@ def is_retryable_status(status_code: int) -> bool:
 
 async def retry_with_backoff(
     func: Callable,
-    max_retries: Optional[int] = None,
-    base_delay: Optional[float] = None,
-    max_delay: Optional[float] = None,
+    max_retries: int | None = None,
+    base_delay: float | None = None,
+    max_delay: float | None = None,
     retryable_exceptions: tuple = (RetryableHTTPError, aiohttp.ClientError, asyncio.TimeoutError)
 ):
     """
@@ -104,8 +104,8 @@ class HTTPClient:
 
     def __init__(
         self,
-        timeout: Optional[int] = None,
-        max_retries: Optional[int] = None
+        timeout: int | None = None,
+        max_retries: int | None = None
     ):
         """
         Initialize HTTP client.
@@ -118,7 +118,7 @@ class HTTPClient:
             total=timeout or collector_config.http_timeout_seconds
         )
         self.max_retries = max_retries or collector_config.max_retries
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
 
     async def __aenter__(self):
         """Enter async context, create session."""
@@ -168,9 +168,9 @@ class HTTPClient:
     async def get(
         self,
         url: str,
-        headers: Optional[Dict[str, str]] = None,
-        params: Optional[Dict[str, Any]] = None,
-        auth: Optional[aiohttp.BasicAuth] = None,
+        headers: Dict[str, str] | None = None,
+        params: Dict[str, Any] | None = None,
+        auth: aiohttp.BasicAuth | None = None,
         expected_status: tuple = (200,)
     ) -> Dict[str, Any]:
         """
@@ -197,10 +197,10 @@ class HTTPClient:
     async def post(
         self,
         url: str,
-        headers: Optional[Dict[str, str]] = None,
-        data: Optional[Dict[str, Any]] = None,
-        json_data: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
+        headers: Dict[str, str] | None = None,
+        data: Dict[str, Any] | None = None,
+        json_data: Dict[str, Any] | None = None,
+        params: Dict[str, Any] | None = None,
         expected_status: tuple = (200, 201)
     ) -> Dict[str, Any]:
         """
@@ -228,9 +228,9 @@ class HTTPClient:
     async def get_raw_response(
         self,
         url: str,
-        headers: Optional[Dict[str, str]] = None,
-        params: Optional[Dict[str, Any]] = None,
-        auth: Optional[aiohttp.BasicAuth] = None
+        headers: Dict[str, str] | None = None,
+        params: Dict[str, Any] | None = None,
+        auth: aiohttp.BasicAuth | None = None
     ) -> aiohttp.ClientResponse:
         """
         Perform GET request and return raw response (for custom handling).
@@ -250,10 +250,10 @@ class HTTPClient:
     async def post_raw_response(
         self,
         url: str,
-        headers: Optional[Dict[str, str]] = None,
-        data: Optional[Dict[str, Any]] = None,
-        json_data: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None
+        headers: Dict[str, str] | None = None,
+        data: Dict[str, Any] | None = None,
+        json_data: Dict[str, Any] | None = None,
+        params: Dict[str, Any] | None = None
     ) -> aiohttp.ClientResponse:
         """
         Perform POST request and return raw response (for custom handling).

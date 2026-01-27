@@ -13,7 +13,7 @@ from azure.core.credentials import AzureNamedKeyCredential  # type: ignore
 from datetime import datetime, timedelta
 from io import BytesIO
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from config import report_config
 
@@ -237,7 +237,7 @@ def upload_to_blob(
     document: Document,
     storage_account_name: str,
     storage_account_key: str,
-    container_name: Optional[str] = None
+    container_name: str | None = None
 ) -> str:
     """
     Upload a Word document to Azure Blob Storage and generate a SAS URL.
