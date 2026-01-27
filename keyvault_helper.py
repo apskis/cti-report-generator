@@ -7,7 +7,7 @@ via Azure CLI authentication.
 """
 import asyncio
 import logging
-from typing import Dict, Optional
+from typing import Dict
 from concurrent.futures import ThreadPoolExecutor
 
 from azure.identity import DefaultAzureCredential  # type: ignore
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Module-level credential instance for reuse
 # DefaultAzureCredential is thread-safe and should be reused
-_credential: Optional[DefaultAzureCredential] = None
+_credential: DefaultAzureCredential | None = None
 _client_cache: Dict[str, SecretClient] = {}
 
 
@@ -84,7 +84,7 @@ def get_secret(vault_url: str, secret_name: str) -> str:
         raise
 
 
-def get_all_api_keys(vault_url: Optional[str] = None) -> Dict[str, str]:
+def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
     """
     Retrieve all API keys needed for threat intelligence collection.
 
@@ -143,7 +143,7 @@ def get_all_api_keys(vault_url: Optional[str] = None) -> Dict[str, str]:
     return api_keys
 
 
-async def get_all_api_keys_async(vault_url: Optional[str] = None) -> Dict[str, str]:
+async def get_all_api_keys_async(vault_url: str | None = None) -> Dict[str, str]:
     """
     Async wrapper for get_all_api_keys.
 
@@ -159,7 +159,7 @@ async def get_all_api_keys_async(vault_url: Optional[str] = None) -> Dict[str, s
     return await loop.run_in_executor(None, get_all_api_keys, vault_url)
 
 
-def get_api_credentials(vault_url: Optional[str] = None) -> APICredentials:
+def get_api_credentials(vault_url: str | None = None) -> APICredentials:
     """
     Retrieve all API credentials as a typed dataclass.
 
@@ -173,7 +173,7 @@ def get_api_credentials(vault_url: Optional[str] = None) -> APICredentials:
     return APICredentials(**api_keys)
 
 
-async def get_api_credentials_async(vault_url: Optional[str] = None) -> APICredentials:
+async def get_api_credentials_async(vault_url: str | None = None) -> APICredentials:
     """
     Async version of get_api_credentials.
 

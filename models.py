@@ -9,7 +9,7 @@ used throughout the application. Using structured types provides:
 - Clearer interfaces between components
 """
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime
 from enum import Enum
 
@@ -206,9 +206,9 @@ class ThreatAnalysisResult:
 class ReportResult:
     """Result from report generation and upload."""
     success: bool
-    filename: Optional[str] = None
-    url: Optional[str] = None
-    error: Optional[str] = None
+    filename: str | None = None
+    url: str | None = None
+    error: str | None = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -232,7 +232,7 @@ class CollectorResult:
     source: str
     success: bool
     data: List[Dict[str, Any]] = field(default_factory=list)
-    error: Optional[str] = None
+    error: str | None = None
     record_count: int = 0
 
     def to_dict(self) -> Dict[str, Any]:

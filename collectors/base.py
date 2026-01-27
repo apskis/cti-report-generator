@@ -6,7 +6,7 @@ All collectors should inherit from BaseCollector and implement the collect() met
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 from config import collector_config
 from models import CollectorResult
@@ -54,7 +54,7 @@ class BaseCollector(ABC):
         """Default lookback period in days. Override per collector as needed."""
         return 7
 
-    def get_date_range(self, days: Optional[int] = None) -> tuple:
+    def get_date_range(self, days: int | None = None) -> tuple:
         """
         Calculate start and end dates for data collection.
 
@@ -123,7 +123,7 @@ class BaseCollector(ABC):
                 record_count=0
             )
 
-    def _is_relevant_biotech(self, text: str, tags: Optional[List[str]] = None) -> bool:
+    def _is_relevant_biotech(self, text: str, tags: List[str] | None = None) -> bool:
         """
         Check if content is relevant to biotech/healthcare sector.
 
