@@ -11,7 +11,7 @@ import json
 from keyvault_helper import get_all_api_keys
 from collectors import collect_all, get_data_by_source
 from threat_analyst_agent import ThreatAnalystAgent
-from report_generator import create_and_upload_report
+from reports.blob_storage import create_and_upload_report
 from config import azure_config, analysis_config
 
 app = func.FunctionApp()
@@ -96,9 +96,10 @@ async def generate_cti_report(req: func.HttpRequest) -> func.HttpResponse:
             raise ValueError("Storage account credentials not found in Key Vault")
 
         report_result = create_and_upload_report(
-            analysis,
-            storage_account_name,
-            storage_account_key
+            report_type="weekly",
+            analysis_result=analysis,
+            storage_account_name=storage_account_name,
+            storage_account_key=storage_account_key
         )
 
         if not report_result.get("success", False):
