@@ -1,0 +1,247 @@
+"""
+Tests for report generators.
+"""
+import pytest
+from unittest.mock import patch, MagicMock
+from datetime import datetime, timedelta
+
+from reports.base import BaseReportGenerator, BrandColors, FontSizes
+from reports.registry import (
+    get_report_generator,
+    register_report_generator,
+    list_report_types,
+    REPORT_REGISTRY,
+)
+from reports.weekly_report import WeeklyReportGenerator
+
+
+class TestBrandColors:
+    """Tests for brand color constants."""
+
+    def test_orange_primary_value(self):
+        assert BrandColors.ORANGE_PRIMARY is not None
+
+    def test_gray_colors_defined(self):
+        assert BrandColors.GRAY_DARK is not None
+        assert BrandColors.GRAY_MEDIUM is not None
+
+    def test_severity_colors_defined(self):
+        assert BrandColors.RED_CRITICAL is not None
+        assert BrandColors.ORANGE_HIGH is not None
+
+
+class TestFontSizes:
+    """Tests for font size constants."""
+
+    def test_title_size(self):
+        assert FontSizes.TITLE.pt == 18
+
+    def test_body_size(self):
+        assert FontSizes.BODY.pt == 10.5
+
+    def test_subtitle_size(self):
+        assert FontSizes.SUBTITLE.pt == 9
+
+
+class TestReportRegistry:
+    """Tests for the report registry."""
+
+    def test_weekly_report_registered(self):
+        """WeeklyReportGenerator should be auto-registered on import."""
+        assert "weekly" in REPORT_REGISTRY
+        assert REPORT_REGISTRY["weekly"] == WeeklyReportGenerator
+
+    def test_get_report_generator_weekly(self):
+        """get_report_generator should return WeeklyReportGenerator for 'weekly'."""
+        generator = get_report_generator("weekly")
+        assert generator is not None
+        assert isinstance(generator, WeeklyReportGenerator)
+
+    def test_get_report_generator_case_insensitive(self):
+        """get_report_generator should be case-insensitive."""
+        generator = get_report_generator("WEEKLY")
+        assert generator is not None
+        assert isinstance(generator, WeeklyReportGenerator)
+
+    def test_get_report_generator_unknown_type(self):
+        """get_report_generator should return None for unknown types."""
+        generator = get_report_generator("unknown_type")
+        assert generator is None
+
+    def test_list_report_types(self):
+        """list_report_types should include 'weekly'."""
+        types = list_report_types()
+        assert "weekly" in types
+
+
+class TestWeeklyReportGenerator:
+    """Tests for the WeeklyReportGenerator."""
+
+    @pytest.fixture
+    def generator(self):
+        """Create a fresh generator instance."""
+        return WeeklyReportGenerator()
+
+    @pytest.fixture
+    def sample_analysis_result(self):
+        """Sample analysis result for testing."""
+        return {
+            "executive_summary": "This week we identified 5 new vulnerabilities.",
+            "statistics": {
+                "total_cves": 10,
+                "critical_count": 2,
+                "high_count": 3,
+                "exploited_count": 1,
+                "apt_groups": 2,
+                "new_this_week": 5,
+                "persistent_count": 3,
+                "resolved_count": 2,
+            },
+            "cve_analysis": [
+                {
+                    "cve_id": "CVE-2026-1234",
+                    "affected_product": "TestApp",
+                    "exposure": "Remote code execution",
+                    "exploited_by": "APT29",
+                    "risk": "CRITICAL",
+                    "weeks_detected": 4,
+                },
+                {
+                    "cve_id": "CVE-2026-5678",
+                    "affected_product": "TestLib",
+                    "exposure": "SQL injection",
+                    "exploited_by": "None known",
+                    "risk": "HIGH",
+                    "weeks_detected": 1,
+                },
+            ],
+            "apt_activity": [
+                {
+                    "actor": "APT29",
+                    "country": "Russia",
+                    "motivation": "Espionage",
+                    "activity": "Targeting healthcare organizations",
+                    "ttps": ["T1566", "T1059", "T1027"],
+                    "what_to_monitor": "Phishing emails with healthcare themes",
+                },
+            ],
+            "recommendations": [
+                "Patch CVE-2026-1234 immediately",
+                "Review access controls for TestApp",
+                "Enable MFA for all admin accounts",
+            ],
+            "exploitation_indicators": [
+                "CVE-2026-1234 (TestApp): Unusual outbound connections on port 443",
+            ],
+        }
+
+    def test_report_type(self, generator):
+        """report_type should return 'weekly'."""
+        assert generator.report_type == "weekly"
+
+    def test_filename_prefix(self, generator):
+        """filename_prefix should return 'CTI_Weekly_Report'."""
+        assert generator.filename_prefix == "CTI_Weekly_Report"
+
+    def test_get_filename_format(self, generator):
+        """get_filename should return properly formatted filename."""
+        filename = generator.get_filename()
+        assert filename.startswith("CTI_Weekly_Report_")
+        assert filename.endswith(".docx")
+        # Should contain date in YYYY-MM-DD format
+        date_str = generator.created_at.strftime("%Y-%m-%d")
+        assert date_str in filename
+
+    def test_generate_creates_document(self, generator, sample_analysis_result):
+        """generate should create a valid Document object."""
+        doc = generator.generate(sample_analysis_result)
+        assert doc is not None
+        assert generator.doc is not None
+
+    def test_generate_with_empty_data(self, generator):
+        """generate should handle empty analysis result gracefully."""
+        doc = generator.generate({})
+        assert doc is not None
+
+    def test_to_bytes_after_generate(self, generator, sample_analysis_result):
+        """to_bytes should return bytes after generate is called."""
+        generator.generate(sample_analysis_result)
+        doc_bytes = generator.to_bytes()
+        assert isinstance(doc_bytes, bytes)
+        assert len(doc_bytes) > 0
+        # DOCX files start with PK (zip signature)
+        assert doc_bytes[:2] == b"PK"
+
+    def test_to_bytes_before_generate_raises(self, generator):
+        """to_bytes should raise if generate wasn't called."""
+        with pytest.raises(ValueError, match="Document not generated"):
+            generator.to_bytes()
+
+    def test_week_calculation(self, generator, sample_analysis_result):
+        """Week dates should be calculated correctly."""
+        generator.generate(sample_analysis_result)
+        # week_start should be a Monday
+        assert generator.week_start.weekday() == 0
+        # week_end should be a Sunday
+        assert generator.week_end.weekday() == 6
+        # Should be 6 days apart
+        delta = generator.week_end - generator.week_start
+        assert delta.days == 6
+
+    def test_document_has_paragraphs(self, generator, sample_analysis_result):
+        """Generated document should have paragraphs."""
+        doc = generator.generate(sample_analysis_result)
+        assert len(doc.paragraphs) > 0
+
+    def test_document_has_tables(self, generator, sample_analysis_result):
+        """Generated document should have tables (metric cards, CVE table, etc.)."""
+        doc = generator.generate(sample_analysis_result)
+        assert len(doc.tables) > 0
+
+    def test_document_contains_title(self, generator, sample_analysis_result):
+        """Document should contain the report title."""
+        doc = generator.generate(sample_analysis_result)
+        text_content = "\n".join([p.text for p in doc.paragraphs])
+        assert "Cyber Threat Intelligence Weekly Report" in text_content
+
+    def test_document_contains_executive_summary(self, generator, sample_analysis_result):
+        """Document should contain executive summary section."""
+        doc = generator.generate(sample_analysis_result)
+        text_content = "\n".join([p.text for p in doc.paragraphs])
+        assert "Executive Summary" in text_content
+        assert "This week we identified 5 new vulnerabilities" in text_content
+
+    def test_document_contains_recommendations(self, generator, sample_analysis_result):
+        """Document should contain recommendations."""
+        doc = generator.generate(sample_analysis_result)
+        text_content = "\n".join([p.text for p in doc.paragraphs])
+        assert "Recommended Actions" in text_content
+        assert "Patch CVE-2026-1234" in text_content
+
+
+class TestBaseReportGenerator:
+    """Tests for BaseReportGenerator utility methods."""
+
+    @pytest.fixture
+    def generator(self):
+        return WeeklyReportGenerator()
+
+    def test_get_week_number(self, generator):
+        """_get_week_number should return valid ISO week number."""
+        week = generator._get_week_number()
+        assert 1 <= week <= 53
+
+    def test_get_year(self, generator):
+        """_get_year should return current year."""
+        year = generator._get_year()
+        assert year == datetime.now().year
+
+    def test_format_date_range(self, generator):
+        """_format_date_range should produce readable date range."""
+        date_range = generator._format_date_range()
+        assert "to" in date_range
+        # Should contain month name
+        assert any(month in date_range for month in [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"
+        ])
