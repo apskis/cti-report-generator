@@ -486,13 +486,21 @@ These rules apply to ALL projects regardless of language or framework.
 
 ## Secrets & Credentials Management
 
-1. **NEVER commit sensitive data**: API keys, passwords, tokens, credentials, private keys, or any secrets. Use environment variables (.env files) and add .env to .gitignore.
+1. **NEVER commit sensitive data**: API keys, passwords, tokens, credentials, private keys, or any secrets. Use environment variables (.env files) and add .env to .gitignore. **Exception**: For Azure Functions projects, use `local.settings.json` instead of `.env` files (see CURSOR_RULES_AZURE.md).
 
-2. **Include .env.example**: Create a template showing required environment variables without actual values.
+2. **Include configuration template**: Create a template showing required environment variables without actual values. Use `.env.example` for standard projects, or `local.settings.json.template` for Azure Functions projects.
 ```
-   # .env.example
+   # .env.example (standard projects)
    API_KEY=your_api_key_here
    DATABASE_URL=your_database_url_here
+   
+   # OR local.settings.json.template (Azure Functions)
+   {
+     "Values": {
+       "API_KEY": "your_api_key_here",
+       "DATABASE_URL": "your_database_url_here"
+     }
+   }
 ```
 
 3. **Use different credentials for each environment**: Never use production credentials in development or staging. Keep environments isolated.
@@ -668,8 +676,8 @@ These rules apply to ALL projects regardless of language or framework.
 ### Before Writing Code
 - [ ] Understand data sensitivity and compliance requirements
 - [ ] Plan authentication and authorization strategy
-- [ ] Set up secret management (environment variables)
-- [ ] Configure .gitignore to exclude secrets and sensitive files
+- [ ] Set up secret management (environment variables, or local.settings.json for Azure Functions)
+- [ ] Configure .gitignore to exclude secrets and sensitive files (.env or local.settings.json)
 
 ### During Development
 - [ ] Validate ALL user inputs server-side

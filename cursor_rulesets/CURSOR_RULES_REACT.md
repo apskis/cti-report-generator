@@ -296,7 +296,7 @@ These rules are specific to React and Next.js projects. Also reference CURSOR_RU
 
 107. Use .env.local for local development secrets (git-ignored by default).
 
-108. Use .env.example to document required environment variables.
+108. Use .env.example to document required environment variables. (For Azure Functions, use local.settings.json.template instead.)
 
 ---
 

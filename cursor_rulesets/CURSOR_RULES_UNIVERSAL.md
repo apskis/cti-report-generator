@@ -10,7 +10,7 @@ These rules apply to ALL projects regardless of language, framework, or platform
 
 3. Keep README.md updated: installation steps, dependencies, how to run locally, how to deploy, environment setup.
 
-4. Include environment variable template file (.env.example, config.example.json, etc.) showing required variables without actual values.
+4. Include environment variable template file (.env.example, config.example.json, etc.) showing required variables without actual values. **Exception**: For Azure Functions projects, use `local.settings.json.template` instead of `.env.example` (see CURSOR_RULES_AZURE.md).
 
 5. Document dependencies with version pinning (package-lock.json, requirements.txt, Gemfile.lock, etc.).
 
@@ -190,7 +190,7 @@ These rules apply to ALL projects regardless of language, framework, or platform
 ### Project Setup
 - Create CHANGES.md
 - Keep README.md updated
-- Include config templates (.env.example)
+- Include config templates (.env.example, or local.settings.json.template for Azure projects)
 - Use appropriate dependency management
 
 ### Code Quality

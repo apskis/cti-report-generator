@@ -56,7 +56,7 @@ my-extension/
 │   └── lib/                       # Third-party configurations
 │       └── api-client.ts          # API client setup
 ├── dist/                          # Build output (gitignored)
-├── .env.example
+├── .env.example                    # (or local.settings.json.template for Azure Functions)
 ├── .gitignore
 ├── package.json
 ├── tsconfig.json

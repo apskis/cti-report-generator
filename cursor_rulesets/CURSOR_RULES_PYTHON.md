@@ -8,7 +8,7 @@
 
 3. Keep README.md updated: installation steps, dependencies (requirements.txt or pyproject.toml), how to run locally, environment setup.
 
-4. Include a .env.example file showing required environment variables (without actual values).
+4. Include a .env.example file showing required environment variables (without actual values). **Exception**: For Azure Functions projects, use `local.settings.json.template` instead (see CURSOR_RULES_AZURE.md).
 
 5. Include requirements.txt or pyproject.toml with pinned versions for reproducibility.
 
@@ -173,7 +173,7 @@
 ### Project Setup
 - Create CHANGES.md for tracking
 - Include requirements.txt or pyproject.toml
-- Include .env.example
+- Include .env.example (or local.settings.json.template for Azure Functions)
 - Keep README.md updated
 - Use virtual environments
 

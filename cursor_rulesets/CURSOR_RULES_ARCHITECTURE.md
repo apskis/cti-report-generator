@@ -97,7 +97,7 @@ my-app/
 │   ├── unit/
 │   ├── integration/
 │   └── e2e/
-├── .env.example
+├── .env.example                    # (or local.settings.json.template for Azure Functions)
 ├── .env.local
 ├── .gitignore
 ├── next.config.js
@@ -160,7 +160,7 @@ my-api/
 │   ├── unit/
 │   ├── integration/
 │   └── e2e/
-├── .env.example
+├── .env.example                    # (or local.settings.json.template for Azure Functions)
 ├── .env
 ├── .gitignore
 ├── tsconfig.json
@@ -215,7 +215,7 @@ my-project/
 ├── config/                     # Configuration files
 │   ├── config.yaml
 │   └── logging.yaml
-├── .env.example
+├── .env.example                    # (or local.settings.json.template for Azure Functions)
 ├── .gitignore
 ├── requirements.txt
 ├── setup.py
@@ -771,7 +771,7 @@ What does this do? Why does it exist?
 How to set up locally
 
 ## Configuration
-What environment variables are needed? (reference .env.example)
+What environment variables are needed? (reference .env.example or local.settings.json.template for Azure Functions)
 
 ## Usage
 How to run, test, deploy
