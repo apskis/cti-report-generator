@@ -32,7 +32,7 @@ class NVDCollector(BaseCollector):
     def lookback_days(self) -> int:
         return collector_config.nvd_lookback_days
 
-    async def collect(self) -> CollectorResult:
+    async def collect(self, report_type: str = "weekly") -> CollectorResult:
         """
         Fetch CVEs from NVD API (CRITICAL and HIGH severity only).
 

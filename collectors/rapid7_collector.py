@@ -44,7 +44,7 @@ class Rapid7Collector(BaseCollector):
     def lookback_days(self) -> int:
         return collector_config.rapid7_lookback_days
 
-    async def collect(self) -> CollectorResult:
+    async def collect(self, report_type: str = "weekly") -> CollectorResult:
         """
         Fetch vulnerability data from Rapid7 InsightVM.
 

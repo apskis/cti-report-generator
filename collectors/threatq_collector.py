@@ -39,7 +39,7 @@ class ThreatQCollector(BaseCollector):
         # Only enable if URL is provided
         return bool(threatq_url)
 
-    async def collect(self) -> CollectorResult:
+    async def collect(self, report_type: str = "weekly") -> CollectorResult:
         """
         Fetch indicators from ThreatQ.
 

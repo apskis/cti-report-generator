@@ -36,7 +36,7 @@ class CrowdStrikeCollector(BaseCollector):
     def lookback_days(self) -> int:
         return collector_config.crowdstrike_lookback_days
 
-    async def collect(self) -> CollectorResult:
+    async def collect(self, report_type: str = "weekly") -> CollectorResult:
         """
         Fetch APT intelligence from CrowdStrike.
 

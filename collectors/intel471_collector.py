@@ -202,7 +202,8 @@ class Intel471Collector(BaseCollector):
         Fetch all report types for quarterly reports: BREACH ALERT, SPOT REPORT,
         SITUATION REPORT, and MALWARE REPORT.
 
-        No keyword filtering - OpenAI will filter by industry/sector.
+        Fetches all reports in batches (API limit is 100 per request), then filters
+        client-side for the target document types. No keyword filtering - OpenAI will filter by industry/sector.
 
         Args:
             client: HTTP client
@@ -211,29 +212,31 @@ class Intel471Collector(BaseCollector):
             end_date: End of date range
 
         Returns:
-            List of all report dictionaries
+            List of all report dictionaries matching target types
         """
         reports_url = f"{self.BASE_URL}/reports"
 
         # Document types to fetch for quarterly reports
-        document_types = [
+        target_document_types = {
             "BREACH ALERT",
             "SPOT REPORT",
             "SITUATION REPORT",
             "MALWARE REPORT"
-        ]
+        }
 
-        all_threats = []
-        limit = collector_config.intel471_quarterly_reports_limit
+        all_reports = []
+        max_count_per_request = 100  # Intel471 API limit
+        max_requests = 20  # Fetch up to 2000 reports (20 * 100)
 
-        # Fetch each document type
-        for doc_type in document_types:
+        # Fetch all reports in batches (without documentType filter - more reliable)
+        logger.info(f"Fetching all Intel471 reports going back {self.lookback_days} days (batches of {max_count_per_request})...")
+        
+        for request_num in range(max_requests):
             params = {
                 "from": self.format_date_timestamp_ms(start_date),
                 "until": self.format_date_timestamp_ms(end_date),
-                "count": limit,  # Fetch up to limit per type
-                "v": self.API_VERSION,
-                "documentType": doc_type
+                "count": max_count_per_request,
+                "v": self.API_VERSION
             }
 
             try:
@@ -242,28 +245,48 @@ class Intel471Collector(BaseCollector):
                 if response.status == 200:
                     data = await response.json()
                     reports = data.get("reports", [])
-
-                    for report in reports:
-                        threat = self._parse_report(report)
-                        # Ensure threat_type reflects the document type
-                        threat["threat_type"] = doc_type
-                        all_threats.append(threat)
-
-                    logger.info(f"Retrieved {len(reports)} {doc_type} reports from Intel471")
+                    
+                    if not reports:
+                        logger.info(f"No more reports available (request {request_num + 1})")
+                        break
+                    
+                    all_reports.extend(reports)
+                    logger.info(f"Fetched {len(reports)} reports (batch {request_num + 1}, total: {len(all_reports)})")
+                    
+                    # If we got fewer than requested, we've reached the end
+                    if len(reports) < max_count_per_request:
+                        logger.info(f"Reached end of available reports")
+                        break
                 else:
-                    # If documentType parameter doesn't work, fetch all and filter client-side
-                    logger.info(f"documentType parameter not working for {doc_type}, fetching all and filtering...")
-                    all_reports = await self._fetch_all_reports_and_filter(client, auth, start_date, end_date, doc_type)
-                    all_threats.extend(all_reports)
+                    response_text = await response.text()
+                    logger.warning(f"Intel471 reports API returned status {response.status}: {response_text[:500]}")
+                    break
 
             except Exception as e:
-                logger.warning(f"Error fetching {doc_type} reports: {e}")
-                # Fallback: fetch all and filter client-side
-                all_reports = await self._fetch_all_reports_and_filter(client, auth, start_date, end_date, doc_type)
-                all_threats.extend(all_reports)
+                logger.warning(f"Error fetching reports (batch {request_num + 1}): {e}")
+                break
 
-        logger.info(f"Retrieved {len(all_threats)} total reports (all types) from Intel471 for quarterly report")
-        return all_threats
+        # Filter for target document types
+        filtered_threats = []
+        for report in all_reports:
+            document_type = report.get("documentType", "").upper()
+            if document_type in target_document_types:
+                threat = self._parse_report(report)
+                threat["threat_type"] = document_type
+                filtered_threats.append(threat)
+
+        logger.info(f"Retrieved {len(filtered_threats)} reports matching target types (from {len(all_reports)} total reports)")
+        logger.info(f"Breakdown: {self._count_by_type(filtered_threats)}")
+        
+        return filtered_threats
+
+    def _count_by_type(self, threats: List[Dict[str, Any]]) -> str:
+        """Count threats by type for logging."""
+        counts = {}
+        for threat in threats:
+            doc_type = threat.get("threat_type", "Unknown")
+            counts[doc_type] = counts.get(doc_type, 0) + 1
+        return ", ".join([f"{k}: {v}" for k, v in counts.items()])
 
     async def _fetch_all_reports_and_filter(
         self,
@@ -271,7 +294,8 @@ class Intel471Collector(BaseCollector):
         auth: aiohttp.BasicAuth,
         start_date: datetime,
         end_date: datetime,
-        target_doc_type: str
+        target_doc_type: str,
+        max_results: int = 100
     ) -> List[Dict[str, Any]]:
         """
         Fallback: Fetch all reports and filter by documentType client-side.
@@ -288,35 +312,55 @@ class Intel471Collector(BaseCollector):
         """
         reports_url = f"{self.BASE_URL}/reports"
 
-        params = {
-            "from": self.format_date_timestamp_ms(start_date),
-            "until": self.format_date_timestamp_ms(end_date),
-            "count": collector_config.intel471_quarterly_reports_limit * 2,  # Fetch more to account for filtering
-            "v": self.API_VERSION
-        }
+        # Make multiple requests to get more data (API limit is 100 per request)
+        max_count_per_request = 100
+        requests_needed = min((max_results + max_count_per_request - 1) // max_count_per_request, 10)  # Cap at 10 requests
+        all_reports = []
+        
+        for request_num in range(requests_needed):
+            params = {
+                "from": self.format_date_timestamp_ms(start_date),
+                "until": self.format_date_timestamp_ms(end_date),
+                "count": max_count_per_request,  # API max is 100
+                "v": self.API_VERSION
+            }
+            
+            # Try offset if API supports it
+            if request_num > 0:
+                params["offset"] = request_num * max_count_per_request
 
+            try:
+                response = await client.get_raw_response(reports_url, auth=auth, params=params)
+
+                if response.status == 200:
+                    data = await response.json()
+                    reports = data.get("reports", [])
+                    all_reports.extend(reports)
+                    
+                    logger.info(f"Fetched {len(reports)} reports (request {request_num + 1}) for filtering")
+                    
+                    # If we got fewer than requested, we've reached the end
+                    if len(reports) < max_count_per_request:
+                        break
+                else:
+                    response_text = await response.text()
+                    logger.warning(f"Intel471 reports API returned status {response.status}: {response_text[:500]}")
+                    break
+
+            except Exception as e:
+                logger.warning(f"Error fetching reports (request {request_num + 1}): {e}")
+                break
+
+        # Filter for target document type
         threats = []
+        for report in all_reports:
+            document_type = report.get("documentType", "").upper()
+            if document_type == target_doc_type.upper():
+                threat = self._parse_report(report)
+                threat["threat_type"] = target_doc_type
+                threats.append(threat)
 
-        try:
-            response = await client.get_raw_response(reports_url, auth=auth, params=params)
-
-            if response.status == 200:
-                data = await response.json()
-
-                for report in data.get("reports", []):
-                    document_type = report.get("documentType", "").upper()
-                    if document_type == target_doc_type.upper():
-                        threat = self._parse_report(report)
-                        threat["threat_type"] = target_doc_type
-                        threats.append(threat)
-
-                logger.info(f"Retrieved {len(threats)} {target_doc_type} reports (client-side filtered)")
-            else:
-                response_text = await response.text()
-                logger.warning(f"Intel471 reports API returned status {response.status}: {response_text[:500]}")
-
-        except Exception as e:
-            logger.warning(f"Error fetching and filtering reports: {e}")
+        logger.info(f"Retrieved {len(threats)} {target_doc_type} reports (client-side filtered from {len(all_reports)} total)")
 
         return threats
 
