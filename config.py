@@ -59,7 +59,7 @@ class IndustryFilterConfig:
     target_industries: tuple = (
         "Technology", "Healthcare", "Pharmaceutical",
         "Life Sciences", "Biotechnology", "Medical Devices",
-        "Research", "Education"
+        "Research", "Education", "Manufacturing"
     )
 
 

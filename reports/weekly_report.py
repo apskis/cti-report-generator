@@ -310,7 +310,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         intro = self.doc.add_paragraph()
         intro_run = intro.add_run(
             "The following threat actors have been observed targeting organizations "
-            "in the biotech, pharmaceutical, and healthcare sectors this week."
+            "in the biotech, pharmaceutical, healthcare, manufacturing, and related sectors this week."
         )
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # System prompt for the analyst - can be loaded from file for easier tuning
 DEFAULT_SYSTEM_PROMPT = """You are a Senior Cyber Threat Intelligence Analyst for a genomics company.
 Your role is to analyze threat data from multiple sources, correlate findings across CVEs and threat actors,
-prioritize threats based on relevance to the biotech and life sciences industry, and generate clear,
+prioritize threats based on relevance to the biotech, life sciences, and manufacturing industries, and generate clear,
 actionable intelligence reports for technical and executive audiences.
 
 Focus on threats that could impact:
@@ -226,7 +226,7 @@ RAW DATA:
 
 Please provide your analysis in the following JSON format:
 {{
-  "executive_summary": "2-3 paragraph summary highlighting the most critical threats and their potential impact on genomics/biotech operations",
+  "executive_summary": "2-3 paragraph summary highlighting the most critical threats and their potential impact on genomics/biotech/manufacturing operations",
   "top_threats": [
     {{
       "threat": "Description of threat",
@@ -241,7 +241,7 @@ Please provide your analysis in the following JSON format:
       "severity": "Critical/High/Medium",
       "exploited": true/false,
       "description": "Brief description",
-      "impact": "Potential impact on biotech operations"
+      "impact": "Potential impact on biotech/manufacturing operations"
     }}
   ],
   "apt_activity": [
@@ -250,7 +250,7 @@ Please provide your analysis in the following JSON format:
       "country": "Country of origin",
       "motivation": "Primary motivation",
       "ttps": ["TTP1", "TTP2"],
-      "relevance": "Why this matters to genomics/biotech"
+      "relevance": "Why this matters to genomics/biotech/manufacturing"
     }}
   ],
   "recommendations": [
@@ -337,7 +337,7 @@ for emerging threats and ensure all security controls remain active."""
             executive_summary = f"""This week's threat intelligence analysis identified {total_threats} potential security
 concerns across multiple data sources. While automated analysis encountered technical issues, manual review of the collected
 data should be performed to identify critical threats. Priority should be given to any CVEs with active exploitation,
-APT groups targeting the healthcare or biotech sectors, and indicators showing signs of compromise in our threat feeds."""
+APT groups targeting the healthcare, biotech, or manufacturing sectors, and indicators showing signs of compromise in our threat feeds."""
 
         return {
             "executive_summary": executive_summary,
@@ -376,7 +376,7 @@ APT groups targeting the healthcare or biotech sectors, and indicators showing s
             "recommendations": [
                 "Review threat intelligence data sources to ensure proper configuration",
                 "Manually triage collected CVEs and prioritize based on organizational risk",
-                "Monitor for any APT activity targeting the biotech and healthcare sectors",
+                "Monitor for any APT activity targeting the biotech, healthcare, and manufacturing sectors",
                 "Ensure all security monitoring and alerting systems are operational",
                 "Schedule follow-up analysis once data collection issues are resolved"
             ],
