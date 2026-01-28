@@ -249,6 +249,27 @@ class BaseReportGenerator(ABC):
         """Get year for the report date."""
         return self.created_at.year
 
+    def _get_banner_path(self) -> str | None:
+        """
+        Get the path to the report banner image.
+        
+        Returns:
+            Path to Bulletin_banner.jpg if found, None otherwise
+        """
+        # Try root directory first
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        banner_path = os.path.join(root_dir, "Bulletin_banner.jpg")
+        
+        if os.path.exists(banner_path):
+            return banner_path
+        
+        # Try current working directory
+        alt_path = "Bulletin_banner.jpg"
+        if os.path.exists(alt_path):
+            return alt_path
+        
+        return None
+
     def _add_image(self, image_path: str, width: Inches | None = None, height: Inches | None = None) -> None:
         """
         Add an image to the document.
@@ -272,3 +293,15 @@ class BaseReportGenerator(ABC):
             width = Inches(6.5)  # Standard page width minus margins
         
         run.add_picture(image_path, width=width, height=height)
+
+    def _add_banner_header(self) -> None:
+        """
+        Add the standard banner image to the report header.
+        This method should be called at the start of _add_header() in subclasses.
+        """
+        banner_path = self._get_banner_path()
+        if banner_path:
+            self._add_image(banner_path, width=Inches(6.5))
+            self.doc.add_paragraph()  # Add spacing after banner
+        else:
+            logger.warning("Bulletin_banner.jpg not found - banner will be omitted from report")

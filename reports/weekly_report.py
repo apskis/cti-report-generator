@@ -97,7 +97,10 @@ class WeeklyReportGenerator(BaseReportGenerator):
         self.week_end = self.week_start + timedelta(days=6)
 
     def _add_header(self) -> None:
-        """Add report header with ID, title, and date range."""
+        """Add report header with banner image, ID, title, and date range."""
+        # Add banner image at the top
+        self._add_banner_header()
+        
         # Report ID (e.g., CTI-WK-2026-04)
         week_num = self._get_week_number()
         year = self._get_year()

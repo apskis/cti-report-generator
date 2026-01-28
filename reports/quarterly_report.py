@@ -136,23 +136,9 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         year = self._get_year()
 
         # Add banner image at the top
-        # Banner is in the root directory of the project
-        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        banner_path = os.path.join(root_dir, "illumina_report_banner-EIS.png")
-        
-        # Also try current working directory (if running from root)
-        alt_path = "illumina_report_banner-EIS.png"
-        
-        if os.path.exists(banner_path):
-            self._add_image(banner_path, width=Inches(6.5))
-            self.doc.add_paragraph()  # Add spacing after banner
-        elif os.path.exists(alt_path):
-            self._add_image(alt_path, width=Inches(6.5))
-            self.doc.add_paragraph()
-        else:
-            logger.warning(f"Banner image not found at: {banner_path} or {alt_path}")
+        self._add_banner_header()
 
-        # Report ID (e.g., CTI-QTR-2026-Q1) - appears on banner in example, but we'll add it here too
+        # Report ID (e.g., CTI-QTR-2026-Q1)
         report_id = f"CTI-QTR-{year}-Q{self.quarter}"
         id_para = self.doc.add_paragraph()
         id_run = id_para.add_run(report_id)
