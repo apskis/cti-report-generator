@@ -30,7 +30,9 @@ Focus on threats that could impact:
 - Laboratory equipment and IoT devices
 - Healthcare systems and patient data
 - Supply chain and vendor security
-- Regulatory compliance (HIPAA, FDA, etc.)"""
+- Regulatory compliance (HIPAA, FDA, etc.)
+
+Do not use Hyphens."""
 
 # Strategic analysis system prompt for quarterly reports
 STRATEGIC_SYSTEM_PROMPT = """You are a Senior Cyber Threat Intelligence Analyst preparing a quarterly strategic brief for executive leadership and the board of directors.
@@ -48,7 +50,9 @@ Write for a non-technical executive audience. Focus on:
 - Investment and resource allocation decisions
 - Peer organization comparisons and industry benchmarks
 
-Avoid tactical details like specific CVEs or IOCs unless they have strategic significance."""
+Avoid tactical details like specific CVEs or IOCs unless they have strategic significance.
+
+Do not use Hyphens."""
 
 
 def load_system_prompt(prompt_file: str = "prompts/analyst_system.txt") -> str:
@@ -295,7 +299,9 @@ Priority Guidelines:
 - P2: High-severity vulnerabilities or significant APT activity targeting our sector
 - P3: Important but lower-urgency threats requiring monitoring
 
-Respond ONLY with valid JSON. Do not include any markdown formatting or code blocks."""
+Respond ONLY with valid JSON. Do not include any markdown formatting or code blocks.
+
+Do not use Hyphens."""
 
     def _parse_response(self, response_text: str) -> Dict[str, Any]:
         """
@@ -589,7 +595,9 @@ Please provide your STRATEGIC analysis in the following JSON format:
 Focus on STRATEGIC insights for leadership, not tactical details.
 When analyzing Intel471 data, prioritize reports relevant to: {target_industries}
 Include breach alerts, spot reports, situation reports, and malware reports that target or mention these sectors.
-Respond ONLY with valid JSON. Do not include any markdown formatting or code blocks."""
+Respond ONLY with valid JSON. Do not include any markdown formatting or code blocks.
+
+Do not use Hyphens."""
 
     def _is_china_related(self, actor: Dict) -> bool:
         """Check if an actor is China-related."""
