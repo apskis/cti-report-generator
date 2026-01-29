@@ -160,6 +160,70 @@ func start
 curl -X POST http://localhost:7071/api/GenerateCTIReport
 ```
 
+## Local Testing
+
+### Testing Commands Reference
+
+#### MOCK Data (No API/Azure access needed)
+
+Test report formatting and UI without any external calls:
+
+```bash
+# Weekly report with mock data
+python test_local.py weekly --local --mock
+
+# Quarterly report with mock data  
+python test_local.py quarterly --local --mock
+
+# With custom output directory
+python test_local.py weekly --local --mock --output ./test_reports
+```
+
+#### REAL Data - Save Locally (Requires Key Vault access)
+
+Pull actual data from Intel471, CrowdStrike, NVD, etc., run AI analysis, save to disk:
+
+```bash
+# Weekly report with real API data
+python test_local.py weekly --local --real
+
+# Quarterly report with real API data
+python test_local.py quarterly --local --real
+```
+
+#### REAL Data - Azure Upload (Full production pipeline)
+
+Pull real data, run AI analysis, upload to Azure Blob Storage:
+
+```bash
+# Weekly report - full pipeline
+python test_local.py weekly --azure
+
+# Quarterly report - full pipeline
+python test_local.py quarterly --azure
+```
+
+#### Azure Functions (Alternative)
+
+Run the full Azure Functions locally:
+
+```bash
+func start
+```
+
+Then call:
+
+- `http://localhost:7071/api/GenerateWeeklyReport`
+- `http://localhost:7071/api/GenerateQuarterlyReport`
+
+#### Quick Reference Table
+
+| Command | Data Source | Output | Requires |
+|---------|-------------|--------|----------|
+| `--local --mock` | Hardcoded examples | Local file | Nothing |
+| `--local --real` | APIs + AI | Local file | Key Vault |
+| `--azure` | APIs + AI | Azure Blob | Key Vault |
+
 ## Configuration
 
 ### Environment Variables
