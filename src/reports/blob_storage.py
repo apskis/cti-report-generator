@@ -10,8 +10,8 @@ from typing import Dict, Any
 from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
 from azure.core.credentials import AzureNamedKeyCredential
 
-from config import report_config
-from reports.base import BaseReportGenerator
+from src.core.config import report_config
+from src.reports.base import BaseReportGenerator
 
 logger = logging.getLogger(__name__)
 

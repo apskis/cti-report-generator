@@ -9,10 +9,10 @@ from typing import List, Dict, Any
 
 import aiohttp  # type: ignore
 
-from collectors.base import BaseCollector
-from collectors.http_utils import HTTPClient, NonRetryableHTTPError
-from config import collector_config, industry_filter_config
-from models import ThreatReport, CollectorResult
+from src.collectors.base import BaseCollector
+from src.collectors.http_utils import HTTPClient, NonRetryableHTTPError
+from src.core.config import collector_config, industry_filter_config
+from src.core.models import ThreatReport, CollectorResult
 
 logger = logging.getLogger(__name__)
 

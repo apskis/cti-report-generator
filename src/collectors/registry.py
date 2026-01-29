@@ -8,14 +8,14 @@ import asyncio
 import logging
 from typing import Dict, Type, List, Any
 
-from collectors.base import BaseCollector
-from collectors.nvd_collector import NVDCollector
-from collectors.intel471_collector import Intel471Collector
-from collectors.crowdstrike_collector import CrowdStrikeCollector
-from collectors.threatq_collector import ThreatQCollector
-from collectors.rapid7_collector import Rapid7Collector
-from config import get_enabled_collectors
-from models import CollectorResult
+from src.collectors.base import BaseCollector
+from src.collectors.nvd_collector import NVDCollector
+from src.collectors.intel471_collector import Intel471Collector
+from src.collectors.crowdstrike_collector import CrowdStrikeCollector
+from src.collectors.threatq_collector import ThreatQCollector
+from src.collectors.rapid7_collector import Rapid7Collector
+from src.core.config import get_enabled_collectors
+from src.core.models import CollectorResult
 
 logger = logging.getLogger(__name__)
 

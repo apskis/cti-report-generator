@@ -13,8 +13,8 @@ from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion  # type: i
 from semantic_kernel.connectors.ai.open_ai import AzureChatPromptExecutionSettings  # type: ignore
 from semantic_kernel.contents import ChatHistory  # type: ignore
 
-from config import analysis_config
-from models import ThreatAnalysisResult
+from src.core.config import analysis_config
+from src.core.models import ThreatAnalysisResult
 
 logger = logging.getLogger(__name__)
 

@@ -6,10 +6,10 @@ Fetches APT intelligence from CrowdStrike Falcon Intelligence API.
 import logging
 from typing import List, Dict, Any
 
-from collectors.base import BaseCollector
-from collectors.http_utils import HTTPClient, NonRetryableHTTPError, validate_url
-from config import collector_config, industry_filter_config
-from models import APTActor, CollectorResult
+from src.collectors.base import BaseCollector
+from src.collectors.http_utils import HTTPClient, NonRetryableHTTPError, validate_url
+from src.core.config import collector_config, industry_filter_config
+from src.core.models import APTActor, CollectorResult
 
 logger = logging.getLogger(__name__)
 

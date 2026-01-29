@@ -5,15 +5,15 @@ import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timedelta
 
-from reports.base import BaseReportGenerator, BrandColors, FontSizes
-from reports.registry import (
+from src.reports.base import BaseReportGenerator, BrandColors, FontSizes
+from src.reports.registry import (
     get_report_generator,
     register_report_generator,
     list_report_types,
     REPORT_REGISTRY,
 )
-from reports.weekly_report import WeeklyReportGenerator
-from reports.quarterly_report import QuarterlyReportGenerator
+from src.reports.weekly_report import WeeklyReportGenerator
+from src.reports.quarterly_report import QuarterlyReportGenerator
 
 
 class TestBrandColors:

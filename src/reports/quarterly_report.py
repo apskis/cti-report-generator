@@ -16,8 +16,8 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
-from reports.base import BaseReportGenerator, BrandColors, FontSizes
-from reports.registry import register_report_generator
+from src.reports.base import BaseReportGenerator, BrandColors, FontSizes
+from src.reports.registry import register_report_generator
 
 logger = logging.getLogger(__name__)
 

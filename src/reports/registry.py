@@ -6,7 +6,7 @@ Provides dynamic registration and lookup of report generators.
 import logging
 from typing import Dict, Type
 
-from reports.base import BaseReportGenerator
+from src.reports.base import BaseReportGenerator
 
 logger = logging.getLogger(__name__)
 

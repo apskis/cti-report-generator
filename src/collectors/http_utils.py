@@ -10,7 +10,7 @@ from functools import wraps
 
 import aiohttp  # type: ignore
 
-from config import collector_config
+from src.core.config import collector_config
 
 logger = logging.getLogger(__name__)
 

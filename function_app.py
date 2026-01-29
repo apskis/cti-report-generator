@@ -8,11 +8,13 @@ import azure.functions as func  # type: ignore
 import logging
 import json
 
-from keyvault_helper import get_all_api_keys
-from collectors import collect_all, get_data_by_source
-from threat_analyst_agent import ThreatAnalystAgent
-from reports.blob_storage import create_and_upload_report
-from config import azure_config, analysis_config
+from src.core.keyvault import get_all_api_keys
+from src.collectors import collect_all, get_data_by_source
+from src.agents.threat_analyst import ThreatAnalystAgent
+from src.reports.blob_storage import create_and_upload_report
+from src.core.config import azure_config, analysis_config
+
+logger = logging.getLogger(__name__)
 
 app = func.FunctionApp()
 
@@ -34,16 +36,16 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
     Returns:
         HTTP response with report URL and statistics
     """
-    logging.info('Weekly CTI Report Generation triggered')
+    logger.info('Weekly CTI Report Generation triggered')
 
     try:
         # Step 1: Get API credentials from Key Vault
         vault_url = azure_config.get_key_vault_url()
-        logging.info(f"Retrieving credentials from Key Vault: {vault_url}")
+        logger.info(f"Retrieving credentials from Key Vault: {vault_url}")
         credentials = get_all_api_keys(vault_url)
 
         # Step 2: Collect threat intelligence data from all sources in parallel
-        logging.info('Collecting threat intelligence data from enabled sources...')
+        logger.info('Collecting threat intelligence data from enabled sources...')
         collector_results = await collect_all(credentials, report_type="weekly")
 
         # Extract data from results
@@ -57,7 +59,7 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         rapid7_data = data_by_source.get("Rapid7", [])
 
         # Log collection statistics
-        logging.info(
+        logger.info(
             f'Data collected - CVEs: {len(cve_data)}, Intel471: {len(intel471_data)}, '
             f'CrowdStrike: {len(crowdstrike_data)}, ThreatQ: {len(threatq_data)}, '
             f'Rapid7: {len(rapid7_data)}'
@@ -66,11 +68,11 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         # Log any collection failures
         for source, result in collector_results.items():
             if not result.success:
-                logging.warning(f"Collection failed for {source}: {result.error}")
+                logger.warning(f"Collection failed for {source}: {result.error}")
 
         # Step 3: Analyze threats with AI agent (tactical mode)
         deployment_name = analysis_config.deployment_name
-        logging.info(f'Analyzing threat data with {deployment_name} (tactical mode)...')
+        logger.info(f'Analyzing threat data with {deployment_name} (tactical mode)...')
 
         agent = ThreatAnalystAgent(
             credentials['openai_endpoint'],
@@ -87,7 +89,7 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         )
 
         # Step 4: Generate Word document and upload to blob storage
-        logging.info('Generating Weekly Word document and uploading to Azure Blob Storage...')
+        logger.info('Generating Weekly Word document and uploading to Azure Blob Storage...')
         storage_account_name = credentials['storage_account_name']
         storage_account_key = credentials['storage_account_key']
 
@@ -105,7 +107,7 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
             raise Exception(f"Report generation failed: {report_result.get('error', 'Unknown error')}")
 
         # Step 5: Return success response with download URL
-        logging.info(f'Weekly report generated successfully: {report_result["filename"]}')
+        logger.info(f'Weekly report generated successfully: {report_result["filename"]}')
         return func.HttpResponse(
             json.dumps({
                 'status': 'success',
@@ -128,7 +130,7 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception as e:
-        logging.error(f'Error generating weekly report: {str(e)}', exc_info=True)
+        logger.error(f'Error generating weekly report: {str(e)}', exc_info=True)
         return func.HttpResponse(
             json.dumps({
                 'status': 'error',
@@ -157,17 +159,17 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
     Returns:
         HTTP response with report URL and statistics
     """
-    logging.info('Quarterly Strategic CTI Report Generation triggered')
+    logger.info('Quarterly Strategic CTI Report Generation triggered')
 
     try:
         # Step 1: Get API credentials from Key Vault
         vault_url = azure_config.get_key_vault_url()
-        logging.info(f"Retrieving credentials from Key Vault: {vault_url}")
+        logger.info(f"Retrieving credentials from Key Vault: {vault_url}")
         credentials = get_all_api_keys(vault_url)
 
         # Step 2: Collect threat intelligence data
         # For quarterly reports, we focus on Intel471 and CrowdStrike
-        logging.info('Collecting strategic threat intelligence data...')
+        logger.info('Collecting strategic threat intelligence data...')
         collector_results = await collect_all(credentials, report_type="quarterly")
 
         # Extract data from results
@@ -178,7 +180,7 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
         crowdstrike_data = data_by_source.get("CrowdStrike", [])
 
         # Log collection statistics
-        logging.info(
+        logger.info(
             f'Strategic data collected - Intel471: {len(intel471_data)}, '
             f'CrowdStrike: {len(crowdstrike_data)}'
         )
@@ -186,11 +188,11 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
         # Log any collection failures
         for source, result in collector_results.items():
             if not result.success:
-                logging.warning(f"Collection failed for {source}: {result.error}")
+                logger.warning(f"Collection failed for {source}: {result.error}")
 
         # Step 3: Analyze threats with AI agent (strategic mode)
         deployment_name = analysis_config.deployment_name
-        logging.info(f'Analyzing threat data with {deployment_name} (strategic mode)...')
+        logger.info(f'Analyzing threat data with {deployment_name} (strategic mode)...')
 
         agent = ThreatAnalystAgent(
             credentials['openai_endpoint'],
@@ -218,7 +220,7 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
         )
 
         # Step 4: Generate Word document and upload to blob storage
-        logging.info('Generating Quarterly Word document and uploading to Azure Blob Storage...')
+        logger.info('Generating Quarterly Word document and uploading to Azure Blob Storage...')
         storage_account_name = credentials['storage_account_name']
         storage_account_key = credentials['storage_account_key']
 
@@ -236,7 +238,7 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
             raise Exception(f"Report generation failed: {report_result.get('error', 'Unknown error')}")
 
         # Step 5: Return success response with download URL
-        logging.info(f'Quarterly report generated successfully: {report_result["filename"]}')
+        logger.info(f'Quarterly report generated successfully: {report_result["filename"]}')
         return func.HttpResponse(
             json.dumps({
                 'status': 'success',
@@ -261,7 +263,7 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception as e:
-        logging.error(f'Error generating quarterly report: {str(e)}', exc_info=True)
+        logger.error(f'Error generating quarterly report: {str(e)}', exc_info=True)
         return func.HttpResponse(
             json.dumps({
                 'status': 'error',
@@ -282,5 +284,5 @@ async def generate_cti_report(req: func.HttpRequest) -> func.HttpResponse:
 
     Deprecated: Use GenerateWeeklyReport or GenerateQuarterlyReport instead.
     """
-    logging.warning('Legacy GenerateCTIReport endpoint called - redirecting to GenerateWeeklyReport')
+    logger.warning('Legacy GenerateCTIReport endpoint called - redirecting to GenerateWeeklyReport')
     return await generate_weekly_report(req)

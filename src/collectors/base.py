@@ -8,8 +8,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
-from config import collector_config
-from models import CollectorResult
+from src.core.config import collector_config
+from src.core.models import CollectorResult
 
 
 class BaseCollector(ABC):
@@ -136,7 +136,7 @@ class BaseCollector(ABC):
         Returns:
             True if content is relevant
         """
-        from config import industry_filter_config
+        from src.core.config import industry_filter_config
 
         text_lower = text.lower()
         keywords = industry_filter_config.biotech_keywords
@@ -163,7 +163,7 @@ class BaseCollector(ABC):
         Returns:
             True if any industry is relevant
         """
-        from config import industry_filter_config
+        from src.core.config import industry_filter_config
 
         target = set(industry_filter_config.target_industries)
         return bool(set(industries) & target)

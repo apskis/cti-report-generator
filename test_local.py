@@ -247,7 +247,7 @@ async def generate_report_local(
     Returns:
         Path to generated report or Azure URL
     """
-    from reports import get_report_generator
+    from src.reports import get_report_generator
 
     logger.info(f"Generating {report_type} report...")
 
@@ -283,9 +283,9 @@ async def generate_report_local(
     if use_azure:
         # Upload to Azure
         logger.info("Uploading to Azure Blob Storage...")
-        from keyvault_helper import get_all_api_keys
-        from reports.blob_storage import upload_to_blob
-        from config import azure_config
+        from src.core.keyvault import get_all_api_keys
+        from src.reports.blob_storage import upload_to_blob
+        from src.core.config import azure_config
 
         credentials = get_all_api_keys(azure_config.get_key_vault_url())
         url = upload_to_blob(
@@ -310,10 +310,10 @@ async def generate_report_local(
 
 async def collect_and_analyze(report_type: str) -> dict:
     """Collect data and run analysis (requires Azure credentials)."""
-    from keyvault_helper import get_all_api_keys
-    from collectors import collect_all, get_data_by_source
-    from threat_analyst_agent import ThreatAnalystAgent
-    from config import azure_config, analysis_config
+    from src.core.keyvault import get_all_api_keys
+    from src.collectors import collect_all, get_data_by_source
+    from src.agents.threat_analyst import ThreatAnalystAgent
+    from src.core.config import azure_config, analysis_config
 
     # Get credentials
     vault_url = azure_config.get_key_vault_url()
