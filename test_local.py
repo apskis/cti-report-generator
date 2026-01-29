@@ -187,11 +187,12 @@ biomanufacturing IP and clinical trial data.""",
             "prev_records": 2.8
         },
         "incidents_by_type": [
-            {"type": "Ransomware", "current_count": 18, "prev_count": 12, "notable_example": "MedTech Corp - 23 days operational disruption"},
-            {"type": "Data Breach", "current_count": 14, "prev_count": 11, "notable_example": "GenomicsLab - 2.1M patient records exposed"},
-            {"type": "Supply Chain", "current_count": 8, "prev_count": 7, "notable_example": "LabEquip vendor compromise - 12 customers affected"},
-            {"type": "Business Email Compromise", "current_count": 5, "prev_count": 4, "notable_example": "BioPharm Inc - $3.2M wire fraud"},
-            {"type": "Insider Threat", "current_count": 2, "prev_count": 2, "notable_example": "ResearchCo - departing employee data theft"},
+            {"type": "Ransomware", "current_count": 18, "prev_count": 12, "notable_example": "Pharma manufacturer: 12-day production halt, FDA notification"},
+            {"type": "Data Theft / Exfiltration", "current_count": 11, "prev_count": 9, "notable_example": "Genomics institute: 2.3M patient samples accessed"},
+            {"type": "Manufacturing / OT Disruption", "current_count": 5, "prev_count": 3, "notable_example": "Medical device mfg: assembly line shutdown, 8-day recovery"},
+            {"type": "Business Email Compromise", "current_count": 6, "prev_count": 5, "notable_example": "CRO: $3.8M fraudulent wire transfers"},
+            {"type": "Third-Party / Vendor", "current_count": 4, "prev_count": 4, "notable_example": "Lab software vendor: credentials exposed for 200+ customers"},
+            {"type": "Unauthorized Access", "current_count": 3, "prev_count": 3, "notable_example": "Biotech: former employee accessed IP post-termination"},
         ],
         "common_factors": "Exploitation of unpatched internet-facing systems (34%), compromised credentials without MFA (28%), third-party vendor compromise (19%), and social engineering (19%).",
         "geopolitical_threats": {

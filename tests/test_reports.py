@@ -282,8 +282,12 @@ class TestQuarterlyReportGenerator:
                 "prev_records": 2.8
             },
             "incidents_by_type": [
-                {"type": "Ransomware", "current_count": 18, "prev_count": 12, "notable_example": "MedTech Corp breach"},
-                {"type": "Data Breach", "current_count": 14, "prev_count": 11, "notable_example": "GenomicsLab incident"},
+                {"type": "Ransomware", "current_count": 18, "prev_count": 12, "notable_example": "Pharma manufacturer: 12-day production halt, FDA notification"},
+                {"type": "Data Theft / Exfiltration", "current_count": 11, "prev_count": 9, "notable_example": "Genomics institute: 2.3M patient samples accessed"},
+                {"type": "Manufacturing / OT Disruption", "current_count": 5, "prev_count": 3, "notable_example": "Medical device mfg: assembly line shutdown, 8-day recovery"},
+                {"type": "Business Email Compromise", "current_count": 6, "prev_count": 5, "notable_example": "CRO: $3.8M fraudulent wire transfers"},
+                {"type": "Third-Party / Vendor", "current_count": 4, "prev_count": 4, "notable_example": "Lab software vendor: credentials exposed for 200+ customers"},
+                {"type": "Unauthorized Access", "current_count": 3, "prev_count": 3, "notable_example": "Biotech: former employee accessed IP post-termination"},
             ],
             "common_factors": "Unpatched systems (34%), compromised credentials (28%)",
             "geopolitical_threats": {
