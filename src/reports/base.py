@@ -79,19 +79,25 @@ class BrandColors:
     WKS_HIGHLIGHT_BG_RGB = (0x37, 0x2E, 0x00)
     WKS_HIGHLIGHT_TEXT = RGBColor(0xCC, 0xA0, 0x44)
 
-    # Light-mode table colors (matching CTI_Weekly_Report_Template_Example.docx)
+    # Light-mode table colors (from CTI_Weekly_Report_Template_Spec.json)
     # Table header: orange background
     TABLE_HEADER_BG = "E65100"  # Orange for header row
-    # Exploited By column: white background, colored TEXT
-    EXPLOITED_ACTOR_TEXT = RGBColor(0x00, 0x96, 0x88)  # Teal/green for threat actors
-    EXPLOITED_NONE_TEXT = RGBColor(0xE6, 0x7E, 0x22)  # Orange for "None observed"
-    EXPLOITED_POC_TEXT = RGBColor(0xE6, 0x7E, 0x22)  # Orange for "PoC available"
-    # Risk column: colored BACKGROUND
-    RISK_HIGH_BG_LIGHT = "FF9800"  # Orange background for High/Critical
-    RISK_MED_BG_LIGHT = "FFC107"  # Yellow/amber background for Medium
-    RISK_LOW_BG_LIGHT = "8BC34A"  # Green background for Low
-    # Wks 3+ column: orange background
-    WKS_HIGHLIGHT_BG_LIGHT = "FF9800"  # Orange background for 3+ weeks
+    # Exploited By column backgrounds
+    EXPLOITED_ACTOR_BG = "FFEBEE"  # Light pink for threat actors
+    EXPLOITED_NONE_BG = "E8F5E9"  # Light green for "None observed"
+    EXPLOITED_POC_BG = "FFF8E1"  # Light yellow for "PoC available"
+    # Risk column backgrounds
+    RISK_HIGH_BG_LIGHT = "FFEBEE"  # Light pink for High/Critical
+    RISK_MED_BG_LIGHT = "FFF3E0"  # Light orange for Medium
+    RISK_LOW_BG_LIGHT = "E8F5E9"  # Light green for Low
+    # Wks column backgrounds
+    WKS_3PLUS_BG = "FFF8E1"  # Light yellow for 3+ weeks
+    WKS_OVERDUE_BG = "FFEBEE"  # Light red for long overdue (4+)
+    # Metric card background
+    METRIC_CARD_BG = "F5F5F5"  # Light gray for metric cards
+    # Sector Threat Activity table
+    SECTOR_ORIGIN_BG = "F5F5F5"  # Light gray for Origin/Motivation
+    SECTOR_MONITOR_BG = "E3F2FD"  # Light blue for What to Monitor
 
 
 class FontSizes:

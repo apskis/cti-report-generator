@@ -261,15 +261,15 @@ class WeeklyReportGenerator(BaseReportGenerator):
         spacer2.paragraph_format.space_after = Pt(6)
 
     def _create_metric_cards(self, metrics: List[tuple]) -> None:
-        """Create a row of metric cards with explicit white backgrounds."""
+        """Create a row of metric cards with light gray backgrounds per spec."""
         table = self.doc.add_table(rows=1, cols=len(metrics))
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
         for col_idx, (number, title, subtitle) in enumerate(metrics):
             cell = table.rows[0].cells[col_idx]
 
-            # Set explicit WHITE background so it displays correctly in dark mode
-            self._set_cell_shading(cell, "FFFFFF")
+            # Light gray background per CTI_Weekly_Report_Template_Spec.json
+            self._set_cell_shading(cell, BrandColors.METRIC_CARD_BG)
             # Add border to make card visible
             self._set_cell_borders(cell, "CCCCCC", "4")
 
@@ -389,7 +389,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 self._set_cell_borders(cell, "CCCCCC")
                 self._set_cell_margins_tight(cell, 2)
 
-            # Data rows: styled per reference design (CTI_Weekly_Report_Template_Example.docx)
+            # Data rows: styled per CTI_Weekly_Report_Template_Spec.json
             for cve in cve_analysis:
                 row = table.add_row()
                 cells = row.cells
@@ -419,74 +419,68 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     weeks_num = int(weeks) if weeks is not None else 0
                     weeks_display = "New" if weeks_num == 0 or weeks_num == 1 else str(weeks_num)
                 cells[5].text = weeks_display
-                is_persistent = weeks_num >= 3
 
-                # CVE ID, Affected Product, Exposure: white background, dark text
+                # CVE ID, Affected Product, Exposure: NO fill, just borders
                 for idx in (0, 1, 2):
-                    self._set_cell_shading(cells[idx], "FFFFFF")
+                    self._clear_cell_shading(cells[idx])
                     self._set_cell_borders(cells[idx], "CCCCCC")
                     for para in cells[idx].paragraphs:
                         for run in para.runs:
                             run.font.size = FontSizes.SUBTITLE
                             run.font.color.rgb = BrandColors.TEXT_DARK
 
-                # Exploited By: white background, colored TEXT
-                self._set_cell_shading(cells[3], "FFFFFF")
-                self._set_cell_borders(cells[3], "CCCCCC")
+                # Exploited By: pastel background based on content
                 exploited_upper = exploited_by.upper() if exploited_by else ""
-                # Determine text color based on content
                 if any(kw in exploited_upper for kw in ["APT", "PANDA", "BEAR", "KITTEN", "DRAGON", "SPIDER", "ACTOR", "GROUP", "RANSOMWARE", "MULTIPLE"]):
-                    # Threat actor names - teal/green text
-                    text_color = BrandColors.EXPLOITED_ACTOR_TEXT
+                    # Threat actor names - light pink background
+                    self._set_cell_shading(cells[3], BrandColors.EXPLOITED_ACTOR_BG)
                 elif "NONE" in exploited_upper or "N/A" in exploited_upper:
-                    # None observed/known - orange text
-                    text_color = BrandColors.EXPLOITED_NONE_TEXT
+                    # None observed/known - light green background
+                    self._set_cell_shading(cells[3], BrandColors.EXPLOITED_NONE_BG)
                 elif "POC" in exploited_upper or "PROOF" in exploited_upper:
-                    # PoC available - orange text
-                    text_color = BrandColors.EXPLOITED_POC_TEXT
+                    # PoC available - light yellow background
+                    self._set_cell_shading(cells[3], BrandColors.EXPLOITED_POC_BG)
                 else:
-                    # Other (assume actor) - teal text
-                    text_color = BrandColors.EXPLOITED_ACTOR_TEXT
+                    # Other (assume actor) - light pink background
+                    self._set_cell_shading(cells[3], BrandColors.EXPLOITED_ACTOR_BG)
+                self._set_cell_borders(cells[3], "CCCCCC")
                 for para in cells[3].paragraphs:
                     for run in para.runs:
                         run.font.size = FontSizes.SUBTITLE
-                        run.font.color.rgb = text_color
+                        run.font.color.rgb = BrandColors.TEXT_DARK
 
-                # Risk: colored BACKGROUND based on severity
+                # Risk: pastel background based on severity
                 risk_upper = risk_text.upper() if risk_text else ""
                 if risk_upper in ("CRITICAL", "HIGH", "P1", "P2"):
                     self._set_cell_shading(cells[4], BrandColors.RISK_HIGH_BG_LIGHT)
-                    risk_text_color = BrandColors.WHITE
                 elif risk_upper in ("MEDIUM", "MODERATE", "P3"):
                     self._set_cell_shading(cells[4], BrandColors.RISK_MED_BG_LIGHT)
-                    risk_text_color = BrandColors.TEXT_DARK
                 else:
-                    # Low or unknown
+                    # Low or unknown - light green
                     self._set_cell_shading(cells[4], BrandColors.RISK_LOW_BG_LIGHT)
-                    risk_text_color = BrandColors.TEXT_DARK
                 self._set_cell_borders(cells[4], "CCCCCC")
                 for para in cells[4].paragraphs:
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     for run in para.runs:
                         run.font.size = FontSizes.SUBTITLE
-                        run.font.color.rgb = risk_text_color
+                        run.font.color.rgb = BrandColors.TEXT_DARK
                         run.font.bold = True
 
-                # Wks: orange background if 3+, white otherwise
-                if is_persistent:
-                    self._set_cell_shading(cells[5], BrandColors.WKS_HIGHLIGHT_BG_LIGHT)
-                    wks_text_color = BrandColors.WHITE
+                # Wks: pastel background if 3+, no fill otherwise
+                if weeks_num >= 4:
+                    # Long overdue - light red
+                    self._set_cell_shading(cells[5], BrandColors.WKS_OVERDUE_BG)
+                elif weeks_num >= 3:
+                    # 3+ weeks - light yellow
+                    self._set_cell_shading(cells[5], BrandColors.WKS_3PLUS_BG)
                 else:
-                    self._set_cell_shading(cells[5], "FFFFFF")
-                    wks_text_color = BrandColors.TEXT_DARK
+                    self._clear_cell_shading(cells[5])
                 self._set_cell_borders(cells[5], "CCCCCC")
                 for para in cells[5].paragraphs:
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     for run in para.runs:
                         run.font.size = FontSizes.SUBTITLE
-                        run.font.color.rgb = wks_text_color
-                        if is_persistent:
-                            run.font.bold = True
+                        run.font.color.rgb = BrandColors.TEXT_DARK
 
             # Caption below table
             caption = self.doc.add_paragraph()
@@ -526,10 +520,10 @@ class WeeklyReportGenerator(BaseReportGenerator):
         apt_activity = analysis_result.get("apt_activity", [])
 
         if apt_activity:
-            # Create threat actor table (Claude: light gray header, white cells, black text)
+            # Create threat actor table per CTI_Weekly_Report_Template_Spec.json
             table = self.doc.add_table(rows=1, cols=3)
 
-            # Header row: light gray background, black text
+            # Header row: orange background, white text
             headers = ["Origin / Motivation", "Activity Observed", "What to Monitor"]
             header_cells = table.rows[0].cells
             for i, header in enumerate(headers):
@@ -537,36 +531,42 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 para = header_cells[i].paragraphs[0]
                 para.runs[0].font.bold = True
                 para.runs[0].font.size = FontSizes.SUBTITLE
-                para.runs[0].font.color.rgb = RGBColor(0x00, 0x00, 0x00)
-                self._set_cell_shading(header_cells[i], "E0E0E0")
+                para.runs[0].font.color.rgb = BrandColors.WHITE
+                self._set_cell_shading(header_cells[i], BrandColors.TABLE_HEADER_BG)
+                self._set_cell_borders(header_cells[i], "CCCCCC")
 
-            # Data rows: white background, black text
+            # Data rows: styled per spec
             for apt in apt_activity:
                 row = table.add_row()
                 cells = row.cells
 
-                actor = apt.get("actor", apt.get("name", "Unknown"))
+                # Column 0: Origin/Motivation - light gray background
                 country = apt.get("country", apt.get("origin", "Unknown"))
                 motivation = apt.get("motivation", "Unknown")
-                cells[0].text = f"{actor}\n({country})\n{motivation}"
+                cells[0].text = f"{country}\n{motivation}"
+                self._set_cell_shading(cells[0], BrandColors.SECTOR_ORIGIN_BG)
+                self._set_cell_borders(cells[0], "CCCCCC")
 
+                # Column 1: Activity Observed - no fill
+                actor = apt.get("actor", apt.get("name", "Unknown"))
                 activity = apt.get("activity", apt.get("description", ""))
-                ttps = apt.get("ttps", [])
-                if ttps and isinstance(ttps, list):
-                    activity += f"\nTTPs: {', '.join(ttps[:3])}"
-                cells[1].text = activity
+                cells[1].text = f"{actor}, {activity}" if activity else actor
+                self._clear_cell_shading(cells[1])
+                self._set_cell_borders(cells[1], "CCCCCC")
 
+                # Column 2: What to Monitor - light blue background
                 monitoring = apt.get("what_to_monitor", apt.get("indicators", ""))
                 if isinstance(monitoring, list):
                     monitoring = "; ".join(monitoring[:3])
                 cells[2].text = monitoring
+                self._set_cell_shading(cells[2], BrandColors.SECTOR_MONITOR_BG)
+                self._set_cell_borders(cells[2], "CCCCCC")
 
                 for cell in cells:
-                    self._set_cell_shading(cell, "FFFFFF")
                     for para in cell.paragraphs:
                         for run in para.runs:
                             run.font.size = FontSizes.SUBTITLE
-                            run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+                            run.font.color.rgb = BrandColors.TEXT_DARK
         else:
             self.doc.add_paragraph("No threat actor activity data available.")
 
