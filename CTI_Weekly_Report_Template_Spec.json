@@ -1,0 +1,744 @@
+{
+  "template_name": "CTI_Weekly_Report_Template_Example.docx",
+  "description": "Structured specification of document structure and formatting for AI/code to apply when generating reports.",
+  "page_setup": {
+    "page_width_inches": 8.5,
+    "page_height_inches": 11.0,
+    "left_margin_inches": 0.75,
+    "right_margin_inches": 0.75,
+    "top_margin_inches": 1.25,
+    "bottom_margin_inches": 0.88
+  },
+  "body": [
+    {
+      "type": "paragraph",
+      "content": {
+        "alignment": "RIGHT (2)",
+        "space_after_pt": 3.0,
+        "runs": [
+          {
+            "text": "CTI-WK-2026-04",
+            "font_name": "Arial",
+            "font_size_pt": 9.0,
+            "color_hex": "666666"
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "space_after_pt": 3.0,
+        "runs": [
+          {
+            "text": "Cyber Threat Intelligence Weekly Report",
+            "font_name": "Arial",
+            "font_size_pt": 18.0,
+            "bold": true,
+            "color_hex": "E65100"
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "space_after_pt": 15.0,
+        "runs": [
+          {
+            "text": "Week 4 | January 20 to 26, 2026",
+            "font_name": "Arial",
+            "font_size_pt": 10.0,
+            "color_hex": "666666"
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "Heading 1",
+        "runs": [
+          {
+            "text": "Executive Summary"
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "space_after_pt": 10.0,
+        "runs": [
+          {
+            "text": "This week's collection identified 4 new vulnerabilities in our environment, with 3 CVEs confirmed to be under active exploitation by threat actors targeting the biotech sector. Of particular concern: CVE-2026-22907 (Grafana) is being exploited by China-nexus groups known for targeting genomics research, and Russian criminal groups continue distributing Lumma Stealer via fake GitHub repositories. Additionally, 4 vulnerabilities remain unresolved from prior weeks, including CVE-2021-47757 which has persisted for 6 weeks on 28 servers despite active exploitation in the wild.",
+            "font_name": "Arial",
+            "font_size_pt": 10.5
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "Heading 1",
+        "runs": [
+          {
+            "text": "This Week at a Glance"
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "space_after_pt": 8.0,
+        "runs": [
+          {
+            "text": "Vulnerability and threat actor metrics from automated collection (January 20 to 26, 2026).",
+            "font_name": "Arial",
+            "font_size_pt": 9.0,
+            "italic": true,
+            "color_hex": "666666"
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "content": {
+        "rows": 1,
+        "cols": 3,
+        "cells": [
+          {
+            "cells": [
+              {
+                "text": "4\nNew This Week\nFirst appearance in Rapid7 scans",
+                "shading_hex": "F5F5F5"
+              },
+              {
+                "text": "4\nPersistent (3+ Wks)\nUnresolved from prior reports",
+                "shading_hex": "F5F5F5"
+              },
+              {
+                "text": "2\nResolved\nRemediated since last week",
+                "shading_hex": "F5F5F5"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "space_before_pt": 6.0,
+        "_comment": "empty paragraph (spacer)"
+      }
+    },
+    {
+      "type": "table",
+      "content": {
+        "rows": 1,
+        "cols": 3,
+        "cells": [
+          {
+            "cells": [
+              {
+                "text": "8\nTotal Exposed\nCVEs on Illumina assets",
+                "shading_hex": "F5F5F5"
+              },
+              {
+                "text": "3\nActively Exploited\nConfirmed threat actor use",
+                "shading_hex": "F5F5F5"
+              },
+              {
+                "text": "3\nActor Groups\nTargeting biotech sector",
+                "shading_hex": "F5F5F5"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "Heading 1",
+        "runs": [
+          {
+            "text": "Vulnerability Exposure"
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "content": {
+        "rows": 9,
+        "cols": 6,
+        "cells": [
+          {
+            "cells": [
+              {
+                "text": "CVE ID",
+                "shading_hex": "E65100"
+              },
+              {
+                "text": "Affected Product",
+                "shading_hex": "E65100"
+              },
+              {
+                "text": "Exposure",
+                "shading_hex": "E65100"
+              },
+              {
+                "text": "Exploited By",
+                "shading_hex": "E65100"
+              },
+              {
+                "text": "Risk",
+                "shading_hex": "E65100"
+              },
+              {
+                "text": "Wks",
+                "shading_hex": "E65100"
+              }
+            ]
+          },
+          {
+            "cells": [
+              {
+                "text": "CVE-2026-22907"
+              },
+              {
+                "text": "Grafana LDAP Injection (RCE)"
+              },
+              {
+                "text": "12 servers"
+              },
+              {
+                "text": "GENESIS PANDA",
+                "shading_hex": "FFEBEE"
+              },
+              {
+                "text": "High",
+                "shading_hex": "FFEBEE"
+              },
+              {
+                "text": "New",
+                "shading_hex": "FFFFFF"
+              }
+            ]
+          },
+          {
+            "cells": [
+              {
+                "text": "CVE-2026-22908"
+              },
+              {
+                "text": "GLPI SQL Injection (RCE)"
+              },
+              {
+                "text": "3 servers"
+              },
+              {
+                "text": "Ransomware actors",
+                "shading_hex": "FFEBEE"
+              },
+              {
+                "text": "High",
+                "shading_hex": "FFEBEE"
+              },
+              {
+                "text": "New",
+                "shading_hex": "FFFFFF"
+              }
+            ]
+          },
+          {
+            "cells": [
+              {
+                "text": "CVE-2025-67084"
+              },
+              {
+                "text": "Healthcare Platform Auth Bypass"
+              },
+              {
+                "text": "Production"
+              },
+              {
+                "text": "None observed",
+                "shading_hex": "E8F5E9"
+              },
+              {
+                "text": "High",
+                "shading_hex": "FFEBEE"
+              },
+              {
+                "text": "3",
+                "shading_hex": "FFF8E1"
+              }
+            ]
+          },
+          {
+            "cells": [
+              {
+                "text": "CVE-2021-47757"
+              },
+              {
+                "text": "Linux Kernel Priv Escalation"
+              },
+              {
+                "text": "28 servers"
+              },
+              {
+                "text": "Multiple actors",
+                "shading_hex": "FFEBEE"
+              },
+              {
+                "text": "Medium",
+                "shading_hex": "FFF3E0"
+              },
+              {
+                "text": "6",
+                "shading_hex": "FFEBEE"
+              }
+            ]
+          },
+          {
+            "cells": [
+              {
+                "text": "CVE-2026-0713"
+              },
+              {
+                "text": "Windows Print Spooler RCE"
+              },
+              {
+                "text": "142 endpoints"
+              },
+              {
+                "text": "PoC available",
+                "shading_hex": "FFF8E1"
+              },
+              {
+                "text": "Medium",
+                "shading_hex": "FFF3E0"
+              },
+              {
+                "text": "2",
+                "shading_hex": "FFFFFF"
+              }
+            ]
+          },
+          {
+            "cells": [
+              {
+                "text": "CVE-2026-1842"
+              },
+              {
+                "text": "Apache Tomcat Request Smuggling"
+              },
+              {
+                "text": "6 servers"
+              },
+              {
+                "text": "None observed",
+                "shading_hex": "E8F5E9"
+              },
+              {
+                "text": "Medium",
+                "shading_hex": "FFF3E0"
+              },
+              {
+                "text": "New",
+                "shading_hex": "FFFFFF"
+              }
+            ]
+          },
+          {
+            "cells": [
+              {
+                "text": "CVE-2025-98213"
+              },
+              {
+                "text": "OpenSSH Memory Corruption"
+              },
+              {
+                "text": "47 servers"
+              },
+              {
+                "text": "None observed",
+                "shading_hex": "E8F5E9"
+              },
+              {
+                "text": "Low",
+                "shading_hex": "E8F5E9"
+              },
+              {
+                "text": "4",
+                "shading_hex": "FFEBEE"
+              }
+            ]
+          },
+          {
+            "cells": [
+              {
+                "text": "CVE-2026-0291"
+              },
+              {
+                "text": "PostgreSQL Priv Escalation"
+              },
+              {
+                "text": "4 databases"
+              },
+              {
+                "text": "None observed",
+                "shading_hex": "E8F5E9"
+              },
+              {
+                "text": "Low",
+                "shading_hex": "E8F5E9"
+              },
+              {
+                "text": "New",
+                "shading_hex": "FFFFFF"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "space_before_pt": 4.0,
+        "runs": [
+          {
+            "text": "Wks = consecutive weeks detected. Items at 3+ weeks highlighted. Source: Rapid7 InsightVM scans.",
+            "font_name": "Arial",
+            "font_size_pt": 8.0,
+            "italic": true,
+            "color_hex": "666666"
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "Heading 1",
+        "runs": [
+          {
+            "text": "Sector Threat Activity"
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "space_after_pt": 8.0,
+        "runs": [
+          {
+            "text": "The following threat actors have been observed targeting organizations in the biotech, pharmaceutical, and healthcare sectors. This does not indicate direct targeting of Illumina but represents elevated risk to our industry.",
+            "font_name": "Arial",
+            "font_size_pt": 10.0,
+            "italic": true,
+            "color_hex": "555555"
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "content": {
+        "rows": 4,
+        "cols": 3,
+        "cells": [
+          {
+            "cells": [
+              {
+                "text": "Origin / Motivation",
+                "shading_hex": "E65100"
+              },
+              {
+                "text": "Activity Observed",
+                "shading_hex": "E65100"
+              },
+              {
+                "text": "What to Monitor",
+                "shading_hex": "E65100"
+              }
+            ]
+          },
+          {
+            "cells": [
+              {
+                "text": "China\nEspionage",
+                "shading_hex": "F5F5F5"
+              },
+              {
+                "text": "GENESIS PANDA, APT41 deploying ShadowPad via supply chain compromise; targeting research institutions with spearphishing"
+              },
+              {
+                "text": "DLL side-loading from signed apps; connections to dynamic DNS (no-ip.com, ddns.net); encoded PowerShell from Office processes",
+                "shading_hex": "E3F2FD"
+              }
+            ]
+          },
+          {
+            "cells": [
+              {
+                "text": "North Korea\nEspionage",
+                "shading_hex": "F5F5F5"
+              },
+              {
+                "text": "VELVET CHOLLIMA, Lazarus conducting LinkedIn credential harvesting against biotech employees"
+              },
+              {
+                "text": "Okta auth from unusual geolocations post-LinkedIn engagement; Proofpoint TAP alerts for SSO phishing pages",
+                "shading_hex": "E3F2FD"
+              }
+            ]
+          },
+          {
+            "cells": [
+              {
+                "text": "Russia\nCriminal",
+                "shading_hex": "F5F5F5"
+              },
+              {
+                "text": "TRAVELING SPIDER, GRACEFUL SPIDER, LockBit affiliates using Lumma Stealer for initial access; ransomware attacks on healthcare"
+              },
+              {
+                "text": "Execution from GitHub archives; browser credential store access; HTTPS to newly registered TLDs (.top, .xyz)",
+                "shading_hex": "E3F2FD"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "space_before_pt": 10.0,
+        "_comment": "empty paragraph (spacer)"
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "Heading 2",
+        "runs": [
+          {
+            "text": "Exploitation Indicators for This Week's CVEs"
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "List Paragraph",
+        "space_after_pt": 3.0,
+        "runs": [
+          {
+            "text": "CVE-2026-22907 (Grafana): ",
+            "font_name": "Arial",
+            "font_size_pt": 10.0,
+            "bold": true
+          },
+          {
+            "text": "Malformed LDAP queries in auth logs; unexpected LDAP binds from Grafana to directory services",
+            "font_name": "Arial",
+            "font_size_pt": 10.0
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "List Paragraph",
+        "space_after_pt": 3.0,
+        "runs": [
+          {
+            "text": "CVE-2026-22908 (GLPI): ",
+            "font_name": "Arial",
+            "font_size_pt": 10.0,
+            "bold": true
+          },
+          {
+            "text": "SQL errors in application logs; UNION SELECT or stacked queries from web frontend",
+            "font_name": "Arial",
+            "font_size_pt": 10.0
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "List Paragraph",
+        "space_after_pt": 3.0,
+        "runs": [
+          {
+            "text": "CVE-2026-0713 (Print Spooler): ",
+            "font_name": "Arial",
+            "font_size_pt": 10.0,
+            "bold": true
+          },
+          {
+            "text": "Spoolsv.exe spawning cmd/powershell; DLL writes to spool\\drivers directory",
+            "font_name": "Arial",
+            "font_size_pt": 10.0
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "Heading 1",
+        "runs": [
+          {
+            "text": "Recommended Actions"
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "List Paragraph",
+        "space_after_pt": 3.0,
+        "runs": [
+          {
+            "text": "Review Rapid7 scan results for the 8 exposed vulnerabilities; validate asset ownership and remediation timelines",
+            "font_name": "Arial",
+            "font_size_pt": 10.0
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "List Paragraph",
+        "space_after_pt": 3.0,
+        "runs": [
+          {
+            "text": "Persistent findings: ",
+            "font_name": "Arial",
+            "font_size_pt": 10.0,
+            "bold": true
+          },
+          {
+            "text": "CVE-2021-47757 (6 wks), CVE-2025-98213 (4 wks), CVE-2025-67084 (3 wks) require escalation or compensating controls",
+            "font_name": "Arial",
+            "font_size_pt": 10.0
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "List Paragraph",
+        "space_after_pt": 3.0,
+        "runs": [
+          {
+            "text": "Brief development teams on GitHub-based Lumma Stealer campaigns (ref: CTI-25-00003)",
+            "font_name": "Arial",
+            "font_size_pt": 10.0
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "List Paragraph",
+        "space_after_pt": 3.0,
+        "runs": [
+          {
+            "text": "Review LinkedIn connection requests for research and executive staff given social engineering activity",
+            "font_name": "Arial",
+            "font_size_pt": 10.0
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "List Paragraph",
+        "space_after_pt": 3.0,
+        "runs": [
+          {
+            "text": "Verify CrowdStrike has ShadowPad and Lumma Stealer behavioral IOAs enabled",
+            "font_name": "Arial",
+            "font_size_pt": 10.0
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "style": "List Paragraph",
+        "space_after_pt": 10.0,
+        "runs": [
+          {
+            "text": "Confirm Splunk is receiving logs from Grafana, GLPI, and healthcare platform instances",
+            "font_name": "Arial",
+            "font_size_pt": 10.0
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "space_before_pt": 10.0,
+        "runs": [
+          {
+            "text": "Questions or suspicious activity: ",
+            "font_name": "Arial",
+            "font_size_pt": 10.0,
+            "bold": true
+          },
+          {
+            "text": "secops@illumina.com | ServiceNow | cti@illumina.com",
+            "font_name": "Arial",
+            "font_size_pt": 10.0,
+            "color_hex": "1565C0"
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": {
+        "space_before_pt": 15.0,
+        "runs": [
+          {
+            "text": "Data Sources: ",
+            "font_name": "Arial",
+            "font_size_pt": 8.0,
+            "bold": true,
+            "color_hex": "666666"
+          },
+          {
+            "text": "Compiled via automated collection from NVD, CrowdStrike Falcon Intelligence, Intel471, and Rapid7 InsightVM. Threat actor attribution reflects analyst assessment based on available intelligence and does not indicate confirmed targeting of Illumina.",
+            "font_name": "Arial",
+            "font_size_pt": 8.0,
+            "color_hex": "666666"
+          }
+        ]
+      }
+    }
+  ]
+}
