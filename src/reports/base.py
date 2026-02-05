@@ -170,7 +170,7 @@ class BaseReportGenerator(ABC):
     # =========================================================================
 
     def _set_cell_shading(self, cell, color_hex: str) -> None:
-        """Apply solid background shading to a table cell. Uses w:val='solid' so fill is applied."""
+        """Apply background shading to a table cell using w:fill color."""
         tc_pr = cell._element.get_or_add_tcPr()
         existing_shd = tc_pr.find(qn("w:shd"))
         if existing_shd is not None:
@@ -181,7 +181,7 @@ class BaseReportGenerator(ABC):
         if len(color_hex) != 6:
             return
         shd.set(qn("w:fill"), color_hex)
-        shd.set(qn("w:val"), "solid")
+        shd.set(qn("w:val"), "clear")  # "clear" = no pattern, use w:fill as background
         shd.set(qn("w:color"), "auto")
 
     def _clear_cell_shading(self, cell) -> None:
