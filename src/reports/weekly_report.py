@@ -261,15 +261,15 @@ class WeeklyReportGenerator(BaseReportGenerator):
         spacer2.paragraph_format.space_after = Pt(6)
 
     def _create_metric_cards(self, metrics: List[tuple]) -> None:
-        """Create a row of metric cards with white backgrounds and borders."""
+        """Create a row of metric cards with light gray backgrounds per spec."""
         table = self.doc.add_table(rows=1, cols=len(metrics))
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
         for col_idx, (number, title, subtitle) in enumerate(metrics):
             cell = table.rows[0].cells[col_idx]
 
-            # Explicit WHITE background for proper display in all modes
-            self._set_cell_shading(cell, "FFFFFF")
+            # Light gray background per CTI_Weekly_Report_Template_Spec.json (F5F5F5)
+            self._set_cell_shading(cell, BrandColors.METRIC_CARD_BG)
             # Add border to make card visible
             self._set_cell_borders(cell, "CCCCCC", "4")
 
@@ -420,9 +420,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     weeks_display = "New" if weeks_num == 0 or weeks_num == 1 else str(weeks_num)
                 cells[5].text = weeks_display
 
-                # CVE ID, Affected Product, Exposure: WHITE fill for proper display
+                # CVE ID, Affected Product, Exposure: no fill (inherit background)
                 for idx in (0, 1, 2):
-                    self._set_cell_shading(cells[idx], "FFFFFF")
+                    self._clear_cell_shading(cells[idx])
                     self._set_cell_borders(cells[idx], "CCCCCC")
                     for para in cells[idx].paragraphs:
                         for run in para.runs:
@@ -466,7 +466,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                         run.font.color.rgb = BrandColors.TEXT_DARK
                         run.font.bold = True
 
-                # Wks: pastel background if 3+, white otherwise
+                # Wks: pastel background if 3+, no fill otherwise
                 if weeks_num >= 4:
                     # Long overdue - light red
                     self._set_cell_shading(cells[5], BrandColors.WKS_OVERDUE_BG)
@@ -474,7 +474,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     # 3+ weeks - light yellow
                     self._set_cell_shading(cells[5], BrandColors.WKS_3PLUS_BG)
                 else:
-                    self._set_cell_shading(cells[5], "FFFFFF")
+                    self._clear_cell_shading(cells[5])
                 self._set_cell_borders(cells[5], "CCCCCC")
                 for para in cells[5].paragraphs:
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -547,11 +547,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 self._set_cell_shading(cells[0], BrandColors.SECTOR_ORIGIN_BG)
                 self._set_cell_borders(cells[0], "CCCCCC")
 
-                # Column 1: Activity Observed - white fill
+                # Column 1: Activity Observed - no fill (inherit background)
                 actor = apt.get("actor", apt.get("name", "Unknown"))
                 activity = apt.get("activity", apt.get("description", ""))
                 cells[1].text = f"{actor}, {activity}" if activity else actor
-                self._set_cell_shading(cells[1], "FFFFFF")
+                self._clear_cell_shading(cells[1])
                 self._set_cell_borders(cells[1], "CCCCCC")
 
                 # Column 2: What to Monitor - light blue background
