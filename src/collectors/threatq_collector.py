@@ -18,10 +18,10 @@ Key implementation notes:
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 
-from collectors.base import BaseCollector
-from collectors.http_utils import HTTPClient, NonRetryableHTTPError, validate_url
-from config import collector_config
-from models import ThreatIndicator, CollectorResult
+from src.collectors.base import BaseCollector
+from src.collectors.http_utils import HTTPClient, NonRetryableHTTPError, validate_url
+from src.core.config import collector_config
+from src.core.models import ThreatIndicator, CollectorResult
 
 logger = logging.getLogger(__name__)
 

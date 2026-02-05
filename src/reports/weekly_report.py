@@ -389,7 +389,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 self._set_cell_borders(cell, BrandColors.TABLE_BORDER_GRAY)
                 self._set_cell_margins_tight(cell, 2)
 
-            # Data rows: set cell text, apply risk color, row background (yellow for 3+ wks, white otherwise)
+            # Data rows: set cell text, apply individual cell coloring per reference design
             for cve in cve_analysis:
                 row = table.add_row()
                 cells = row.cells
@@ -397,12 +397,13 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 cells[0].text = cve.get("cve_id", "N/A")
                 cells[1].text = cve.get("affected_product", cve.get("product", "N/A"))
                 cells[2].text = (cve.get("exposure") or cve.get("description", "N/A"))[:50]
-                cells[3].text = cve.get("exploited_by", "None known")
-                cells[4].text = cve.get("risk", cve.get("severity", "N/A"))
+                exploited_by = cve.get("exploited_by", "None known")
+                cells[3].text = exploited_by
+                risk_text = cve.get("risk", cve.get("severity", "N/A"))
+                cells[4].text = risk_text
                 cells[5].text = str(cve.get("weeks_detected", cve.get("wks", 1)))
 
-                self._apply_risk_color(cells[4], cells[4].text)
-
+                # Parse weeks for 3+ weeks highlighting
                 weeks = cve.get("weeks_detected", cve.get("wks", 1))
                 if isinstance(weeks, str):
                     try:
@@ -411,15 +412,81 @@ class WeeklyReportGenerator(BaseReportGenerator):
                         weeks = 0
                 else:
                     weeks = int(weeks) if weeks is not None else 0
-                bg_color = "FFF3CD" if weeks >= 3 else "FFFFFF"
-                for cell in cells:
-                    self._set_cell_shading(cell, bg_color)
+                is_persistent = weeks >= 3
 
-                for cell in cells:
+                # Apply cell backgrounds per reference design:
+                # - CVE ID, Product, Exposure: white (or amber for 3+ weeks row)
+                # - Exploited By: colored based on content
+                # - Risk: colored based on severity
+                # - Wks: amber if 3+, white otherwise
+
+                # Base cells (CVE ID, Product, Exposure) - white or amber for persistent
+                base_bg = BrandColors.EXPLOITED_BG_AMBER if is_persistent else "FFFFFF"
+                for idx in (0, 1, 2):
+                    self._set_cell_shading(cells[idx], base_bg)
+                    self._set_cell_borders(cells[idx], BrandColors.TABLE_BORDER_GRAY)
+
+                # Exploited By cell (cells[3]) - colored based on content
+                exploited_upper = exploited_by.upper() if exploited_by else ""
+                if any(actor in exploited_upper for actor in ["APT", "ACTOR", "GROUP", "TEAM"]) or (exploited_by and exploited_by not in ("None known", "None observed", "N/A", "PoC available", "-")):
+                    # Threat actor - use red/brown background
+                    self._set_cell_shading(cells[3], BrandColors.EXPLOITED_BG_RED)
+                    for para in cells[3].paragraphs:
+                        for run in para.runs:
+                            run.font.color.rgb = BrandColors.EXPLOITED_TEXT_RED
+                elif "POC" in exploited_upper or "PROOF" in exploited_upper:
+                    # PoC available - amber background
+                    self._set_cell_shading(cells[3], BrandColors.EXPLOITED_BG_AMBER)
+                    for para in cells[3].paragraphs:
+                        for run in para.runs:
+                            run.font.color.rgb = BrandColors.EXPLOITED_TEXT_AMBER
+                else:
+                    # None observed - green background
+                    self._set_cell_shading(cells[3], BrandColors.EXPLOITED_BG_GREEN)
+                    for para in cells[3].paragraphs:
+                        for run in para.runs:
+                            run.font.color.rgb = BrandColors.EXPLOITED_TEXT_GREEN
+                self._set_cell_borders(cells[3], BrandColors.TABLE_BORDER_GRAY)
+
+                # Risk cell (cells[4]) - colored based on severity
+                risk_upper = risk_text.upper() if risk_text else ""
+                if risk_upper in ("CRITICAL", "HIGH", "P1", "P2"):
+                    self._set_cell_shading(cells[4], BrandColors.RISK_HIGH_BG)
+                    for para in cells[4].paragraphs:
+                        for run in para.runs:
+                            run.font.color.rgb = BrandColors.RISK_HIGH_TEXT
+                            run.font.bold = True
+                elif risk_upper in ("MEDIUM", "MODERATE", "P3"):
+                    self._set_cell_shading(cells[4], BrandColors.RISK_MED_BG)
+                    for para in cells[4].paragraphs:
+                        for run in para.runs:
+                            run.font.color.rgb = BrandColors.RISK_MED_TEXT
+                else:
+                    # Low or unknown - green background
+                    self._set_cell_shading(cells[4], BrandColors.RISK_LOW_BG)
+                    for para in cells[4].paragraphs:
+                        for run in para.runs:
+                            run.font.color.rgb = BrandColors.RISK_LOW_TEXT
+                self._set_cell_borders(cells[4], BrandColors.TABLE_BORDER_GRAY)
+
+                # Wks cell (cells[5]) - amber if 3+, white otherwise
+                if is_persistent:
+                    self._set_cell_shading(cells[5], BrandColors.WKS_HIGHLIGHT_BG)
+                    for para in cells[5].paragraphs:
+                        for run in para.runs:
+                            run.font.color.rgb = BrandColors.WKS_HIGHLIGHT_TEXT
+                            run.font.bold = True
+                else:
+                    self._set_cell_shading(cells[5], "FFFFFF")
+                self._set_cell_borders(cells[5], BrandColors.TABLE_BORDER_GRAY)
+
+                # Set font size for all cells, and default black text where not already set
+                for idx, cell in enumerate(cells):
                     for para in cell.paragraphs:
                         for run in para.runs:
                             run.font.size = FontSizes.SUBTITLE
-                            if run.font.color.rgb is None:
+                            # Only set black if color not already applied (for base cells)
+                            if idx in (0, 1, 2) and run.font.color.rgb is None:
                                 run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
             # Caption below table
