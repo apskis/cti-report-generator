@@ -79,6 +79,20 @@ class BrandColors:
     WKS_HIGHLIGHT_BG_RGB = (0x37, 0x2E, 0x00)
     WKS_HIGHLIGHT_TEXT = RGBColor(0xCC, 0xA0, 0x44)
 
+    # Light-mode table colors (matching CTI_Weekly_Report_Template_Example.docx)
+    # Table header: orange background
+    TABLE_HEADER_BG = "E65100"  # Orange for header row
+    # Exploited By column: white background, colored TEXT
+    EXPLOITED_ACTOR_TEXT = RGBColor(0x00, 0x96, 0x88)  # Teal/green for threat actors
+    EXPLOITED_NONE_TEXT = RGBColor(0xE6, 0x7E, 0x22)  # Orange for "None observed"
+    EXPLOITED_POC_TEXT = RGBColor(0xE6, 0x7E, 0x22)  # Orange for "PoC available"
+    # Risk column: colored BACKGROUND
+    RISK_HIGH_BG_LIGHT = "FF9800"  # Orange background for High/Critical
+    RISK_MED_BG_LIGHT = "FFC107"  # Yellow/amber background for Medium
+    RISK_LOW_BG_LIGHT = "8BC34A"  # Green background for Low
+    # Wks 3+ column: orange background
+    WKS_HIGHLIGHT_BG_LIGHT = "FF9800"  # Orange background for 3+ weeks
+
 
 class FontSizes:
     """Font size constants matching the template."""
