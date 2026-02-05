@@ -8,7 +8,7 @@ import logging
 from typing import Dict, Any, List
 
 from docx import Document
-from docx.shared import Pt, Inches
+from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn
@@ -197,12 +197,17 @@ class WeeklyReportGenerator(BaseReportGenerator):
         self.doc.add_paragraph()
 
     def _create_metric_cards(self, metrics: List[tuple]) -> None:
-        """Create a row of metric cards."""
+        """Create a row of metric cards with explicit white backgrounds."""
         table = self.doc.add_table(rows=1, cols=len(metrics))
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
         for i, (number, title, subtitle) in enumerate(metrics):
             cell = table.rows[0].cells[i]
+
+            # Set explicit WHITE background so it displays correctly in dark mode
+            self._set_cell_shading(cell, "FFFFFF")
+            # Add border to make card visible
+            self._set_cell_borders(cell, "CCCCCC", "4")
 
             # Clear and build content
             cell.paragraphs[0].clear()
@@ -215,11 +220,12 @@ class WeeklyReportGenerator(BaseReportGenerator):
             num_run.font.color.rgb = BrandColors.ORANGE_PRIMARY
             num_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-            # Title (bold)
+            # Title (bold, explicit black color)
             title_para = cell.add_paragraph()
             title_run = title_para.add_run(title)
             title_run.font.size = FontSizes.BODY_SMALL
             title_run.font.bold = True
+            title_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)  # Explicit black
             title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
             # Subtitle (small, gray, italic)
@@ -281,7 +287,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 # Apply risk coloring
                 self._apply_risk_color(cells[4], cells[4].text)
 
-                # Highlight rows with 3+ weeks
+                # Determine row background color
                 weeks = cve.get("weeks_detected", cve.get("wks", 1))
                 if isinstance(weeks, str):
                     try:
@@ -289,15 +295,18 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     except ValueError:
                         weeks = 1
 
-                if weeks >= 3:
-                    for cell in cells:
-                        self._set_cell_shading(cell, "FFF3CD")  # Light yellow
+                # Set background for all cells (yellow for 3+ weeks, white otherwise)
+                bg_color = "FFF3CD" if weeks >= 3 else "FFFFFF"
+                for cell in cells:
+                    self._set_cell_shading(cell, bg_color)
 
-                # Set font size for all cells
+                # Set font size and explicit black color for all cells
                 for cell in cells:
                     for para in cell.paragraphs:
                         for run in para.runs:
                             run.font.size = FontSizes.SUBTITLE
+                            if run.font.color.rgb is None:
+                                run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
         else:
             self.doc.add_paragraph("No vulnerability data available.")
 
@@ -363,11 +372,13 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     monitoring = "; ".join(monitoring[:3])
                 cells[2].text = monitoring
 
-                # Set font size
+                # Set explicit white background and font for all cells
                 for cell in cells:
+                    self._set_cell_shading(cell, "FFFFFF")
                     for para in cell.paragraphs:
                         for run in para.runs:
                             run.font.size = FontSizes.SUBTITLE
+                            run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
         else:
             self.doc.add_paragraph("No threat actor activity data available.")
 
