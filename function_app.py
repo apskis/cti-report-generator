@@ -16,6 +16,57 @@ from src.core.config import azure_config, analysis_config
 
 logger = logging.getLogger(__name__)
 
+
+def _merge_rapid7_exposure_into_analysis(analysis: dict, rapid7_data: list) -> None:
+    """Merge Rapid7 asset counts into cve_analysis so the Exposure column shows server/asset counts."""
+    cve_analysis = analysis.get("cve_analysis") or []
+    if not cve_analysis or not rapid7_data:
+        return
+    cve_to_count = {}
+    for summary in rapid7_data:
+        if not isinstance(summary, dict):
+            continue
+        for vuln in summary.get("top_vulnerabilities") or []:
+            count = vuln.get("asset_count")
+            if count is None:
+                continue
+            for cve_id in vuln.get("cve_ids") or []:
+                if cve_id and cve_id not in cve_to_count:
+                    cve_to_count[cve_id] = count
+    for cve in cve_analysis:
+        cve_id = cve.get("cve_id")
+        if cve_id and cve_id in cve_to_count:
+            cve["server_count"] = cve_to_count[cve_id]
+
+
+def _merge_crowdstrike_exposure_into_analysis(analysis: dict, crowdstrike_data: list) -> None:
+    """Merge CrowdStrike Spotlight vulnerability/device counts into cve_analysis for Exposure column."""
+    cve_analysis = analysis.get("cve_analysis") or []
+    if not cve_analysis or not crowdstrike_data:
+        return
+    cve_to_count = {}
+    for item in crowdstrike_data:
+        if not isinstance(item, dict) or item.get("type") != "vulnerability":
+            continue
+        count = item.get("device_count") or item.get("asset_count") or item.get("host_count")
+        cve_ids = item.get("cve_ids") or []
+        if count is None or not cve_ids:
+            continue
+        try:
+            n = int(count)
+        except (TypeError, ValueError):
+            continue
+        for cve_id in cve_ids:
+            if cve_id and cve_id not in cve_to_count:
+                cve_to_count[cve_id] = n
+    for cve in cve_analysis:
+        cve_id = cve.get("cve_id")
+        if cve_id and cve_id in cve_to_count:
+            # Only set if not already set by Rapid7 (Rapid7 takes precedence) or add as fallback
+            if cve.get("server_count") is None:
+                cve["server_count"] = cve_to_count[cve_id]
+
+
 app = func.FunctionApp()
 
 
@@ -87,6 +138,10 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
             threatq_data,
             rapid7_data
         )
+
+        # Merge Rapid7 and CrowdStrike (Spotlight) asset/device counts into CVE analysis for Exposure column
+        _merge_rapid7_exposure_into_analysis(analysis, rapid7_data)
+        _merge_crowdstrike_exposure_into_analysis(analysis, crowdstrike_data)
 
         # Step 4: Generate Word document and upload to blob storage
         logger.info('Generating Weekly Word document and uploading to Azure Blob Storage...')

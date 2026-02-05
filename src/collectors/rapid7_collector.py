@@ -231,6 +231,13 @@ class Rapid7Collector(BaseCollector):
             else:
                 description_text = str(description)[:300]
 
+            # Affected asset count (servers/endpoints) for Exposure column in reports
+            _raw = vuln.get("affectedAssetCount") or vuln.get("assetCount") or vuln.get("affected_assets")
+            try:
+                asset_count = int(_raw) if _raw is not None else None
+            except (TypeError, ValueError):
+                asset_count = None
+
             vulnerabilities.append({
                 "source": self.source_name,
                 "vulnerability_id": vuln.get("id", ""),
@@ -245,7 +252,8 @@ class Rapid7Collector(BaseCollector):
                 "published": vuln.get("published", ""),
                 "modified": vuln.get("modified", ""),
                 "risk_score": vuln.get("riskScore", 0),
-                "categories": vuln.get("categories", [])
+                "categories": vuln.get("categories", []),
+                "asset_count": asset_count,
             })
 
         # Sort by CVSS score descending

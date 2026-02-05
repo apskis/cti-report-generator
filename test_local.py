@@ -70,7 +70,7 @@ Immediate attention is recommended for CVE-2026-22907 (Grafana) which has public
             {
                 "cve_id": "CVE-2026-22907",
                 "affected_product": "Grafana",
-                "exposure": "LDAP injection via auth",
+                "server_count": 12,
                 "exploited_by": "APT41",
                 "risk": "CRITICAL",
                 "weeks_detected": 1,
@@ -79,7 +79,7 @@ Immediate attention is recommended for CVE-2026-22907 (Grafana) which has public
             {
                 "cve_id": "CVE-2026-22908",
                 "affected_product": "GLPI",
-                "exposure": "SQL injection in search",
+                "server_count": 3,
                 "exploited_by": "None known",
                 "risk": "HIGH",
                 "weeks_detected": 1,
@@ -88,7 +88,7 @@ Immediate attention is recommended for CVE-2026-22907 (Grafana) which has public
             {
                 "cve_id": "CVE-2026-0713",
                 "affected_product": "Windows Print Spooler",
-                "exposure": "Privilege escalation",
+                "server_count": 28,
                 "exploited_by": "Ransomware groups",
                 "risk": "CRITICAL",
                 "weeks_detected": 2,
@@ -97,7 +97,7 @@ Immediate attention is recommended for CVE-2026-22907 (Grafana) which has public
             {
                 "cve_id": "CVE-2021-47757",
                 "affected_product": "Apache Log4j",
-                "exposure": "Remote code execution",
+                "endpoint_count": 142,
                 "exploited_by": "Multiple actors",
                 "risk": "CRITICAL",
                 "weeks_detected": 6,
@@ -106,11 +106,38 @@ Immediate attention is recommended for CVE-2026-22907 (Grafana) which has public
             {
                 "cve_id": "CVE-2025-98213",
                 "affected_product": "VMware vCenter",
-                "exposure": "Authentication bypass",
+                "server_count": 6,
                 "exploited_by": "APT29",
                 "risk": "HIGH",
                 "weeks_detected": 4,
                 "exploitation_indicator": "Unauthorized API access patterns"
+            },
+            {
+                "cve_id": "CVE-2025-12345",
+                "affected_product": "Microsoft Exchange",
+                "server_count": 47,
+                "exploited_by": "PoC available",
+                "risk": "HIGH",
+                "weeks_detected": 3,
+                "exploitation_indicator": "ProxyShell patterns in logs"
+            },
+            {
+                "cve_id": "CVE-2024-5678",
+                "affected_product": "PostgreSQL",
+                "database_count": 4,
+                "exploited_by": "None observed",
+                "risk": "MEDIUM",
+                "weeks_detected": 2,
+                "exploitation_indicator": "Unusual connection attempts"
+            },
+            {
+                "cve_id": "CVE-2024-9999",
+                "affected_product": "Internal API",
+                "exposure": "Production",
+                "exploited_by": "None known",
+                "risk": "LOW",
+                "weeks_detected": 1,
+                "exploitation_indicator": "N/A"
             },
         ],
         "apt_activity": [

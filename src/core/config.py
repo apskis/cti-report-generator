@@ -31,6 +31,7 @@ class CollectorConfig:
     intel471_indicators_limit: int = 20
     crowdstrike_actors_limit: int = 50
     crowdstrike_indicators_limit: int = 50
+    crowdstrike_spotlight_limit: int = 200  # Max vulnerabilities from Spotlight for exposure counts
     threatq_indicators_limit: int = 100
     rapid7_max_results: int = 500
 

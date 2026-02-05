@@ -2,8 +2,10 @@
 CrowdStrike collector.
 
 Fetches APT intelligence from CrowdStrike Falcon Intelligence API.
+Optionally fetches Falcon Spotlight vulnerabilities for Exposure (affected device) counts.
 """
 import logging
+from collections import defaultdict
 from typing import List, Dict, Any
 
 from src.collectors.base import BaseCollector
@@ -83,6 +85,12 @@ class CrowdStrikeCollector(BaseCollector):
                 # Step 3: Fetch indicators
                 indicators = await self._fetch_indicators(client, base_url, access_token)
                 apt_data.extend(indicators)
+
+                # Step 4: Optionally fetch Spotlight vulnerabilities for Exposure column (CVE -> device count)
+                spotlight_vulns = await self._fetch_spotlight_vulnerabilities(
+                    client, base_url, access_token
+                )
+                apt_data.extend(spotlight_vulns)
 
             logger.info(f"Retrieved {len(apt_data)} total items from CrowdStrike")
             return CollectorResult(
@@ -270,6 +278,74 @@ class CrowdStrikeCollector(BaseCollector):
             logger.error(f"Error fetching CrowdStrike indicators: {e}")
 
         return indicators_data
+
+    async def _fetch_spotlight_vulnerabilities(
+        self,
+        client: HTTPClient,
+        base_url: str,
+        access_token: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch Falcon Spotlight vulnerabilities for Exposure column (CVE -> affected device count).
+
+        Spotlight returns one resource per vulnerability instance (CVE per host). We aggregate
+        by CVE and return records that _merge_crowdstrike_exposure_into_analysis can merge
+        into cve_analysis.
+        """
+        from datetime import timedelta
+
+        spotlight_url = f"{base_url}/spotlight/combined/vulnerabilities/v1"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        start_date, _ = self.get_date_range()
+        filter_date = (start_date - timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z")
+        # FQL: filter required (updated_timestamp)
+        fql_filter = f"updated_timestamp:>='{filter_date}'"
+        params = {
+            "filter": fql_filter,
+            "limit": collector_config.crowdstrike_spotlight_limit,
+            "facet": "cve_details",
+        }
+        out: List[Dict[str, Any]] = []
+
+        try:
+            logger.info("Fetching CrowdStrike Spotlight vulnerabilities for exposure counts")
+            response = await client.get_raw_response(
+                spotlight_url, headers=headers, params=params
+            )
+            if response.status != 200:
+                logger.warning(
+                    f"Spotlight API returned {response.status}, skipping exposure merge"
+                )
+                return out
+            data = await response.json()
+            resources = data.get("resources") or []
+            # Group by CVE: each resource is one CVE instance (often one per host)
+            cve_to_count: Dict[str, int] = defaultdict(int)
+            for res in resources:
+                cve_obj = res.get("cve")
+                if isinstance(cve_obj, dict):
+                    cve_id = cve_obj.get("id") or cve_obj.get("cve_id")
+                else:
+                    cve_id = res.get("cve_id")
+                if not cve_id:
+                    continue
+                cve_to_count[str(cve_id)] += 1
+            for cve_id, count in cve_to_count.items():
+                out.append({
+                    "source": self.source_name,
+                    "type": "vulnerability",
+                    "cve_ids": [cve_id],
+                    "device_count": count,
+                })
+            if out:
+                logger.info(f"Spotlight: {len(out)} CVEs with affected device counts")
+        except Exception as e:
+            logger.warning(f"Spotlight fetch failed (exposure will use Rapid7 only): {e}")
+
+        return out
 
     def _extract_industry_names(self, industries_raw: List[Any]) -> List[str]:
         """

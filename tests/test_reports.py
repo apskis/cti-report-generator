@@ -16,6 +16,17 @@ from src.reports.weekly_report import WeeklyReportGenerator
 from src.reports.quarterly_report import QuarterlyReportGenerator
 
 
+def _get_document_text(doc):
+    """Collect all text from document paragraphs and table cells."""
+    parts = [p.text for p in doc.paragraphs]
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    parts.append(p.text)
+    return "\n".join(parts)
+
+
 class TestBrandColors:
     """Tests for brand color constants."""
 
@@ -200,22 +211,22 @@ class TestWeeklyReportGenerator:
         assert len(doc.tables) > 0
 
     def test_document_contains_title(self, generator, sample_analysis_result):
-        """Document should contain the report title."""
+        """Document should contain the report title (may be in a paragraph or table cell)."""
         doc = generator.generate(sample_analysis_result)
-        text_content = "\n".join([p.text for p in doc.paragraphs])
+        text_content = _get_document_text(doc)
         assert "Cyber Threat Intelligence Weekly Report" in text_content
 
     def test_document_contains_executive_summary(self, generator, sample_analysis_result):
         """Document should contain executive summary section."""
         doc = generator.generate(sample_analysis_result)
-        text_content = "\n".join([p.text for p in doc.paragraphs])
+        text_content = _get_document_text(doc)
         assert "Executive Summary" in text_content
         assert "This week we identified 5 new vulnerabilities" in text_content
 
     def test_document_contains_recommendations(self, generator, sample_analysis_result):
         """Document should contain recommendations."""
         doc = generator.generate(sample_analysis_result)
-        text_content = "\n".join([p.text for p in doc.paragraphs])
+        text_content = _get_document_text(doc)
         assert "Recommended Actions" in text_content
         assert "Patch CVE-2026-1234" in text_content
 
