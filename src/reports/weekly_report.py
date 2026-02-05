@@ -8,9 +8,9 @@ import logging
 from typing import Dict, Any, List
 
 from docx import Document
-from docx.shared import Pt, Inches
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
-from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ROW_HEIGHT_RULE
+from docx.shared import Pt, Inches, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
@@ -71,10 +71,10 @@ class WeeklyReportGenerator(BaseReportGenerator):
             # Page setup: margins, Letter 8.5x11", header/footer distance, paragraph spacing
             self._configure_page_settings()
 
-            # Dark-mode-friendly: dark page and dark tables so report looks correct in dark mode (no white flash).
-            self._set_document_background(BrandColors.METRIC_BOX_DARK)
+            # Print-style: white page so document displays correctly in light and dark mode.
+            self._set_document_background(BrandColors.PAGE_WHITE)
             normal_style = self.doc.styles["Normal"]
-            normal_style.font.color.rgb = BrandColors.TEXT_LIGHT
+            normal_style.font.color.rgb = BrandColors.TEXT_DARK
             normal_style.font.name = "Arial"
 
             # Calculate date range (Monday to Sunday of current week)
@@ -172,7 +172,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Centered bullet (•) on its own line (dark gray so visible on white)
         bullet_para = self.doc.add_paragraph()
         bullet_run = bullet_para.add_run("•")
-        bullet_run.font.color.rgb = BrandColors.TEXT_LIGHT
+        bullet_run.font.color.rgb = BrandColors.BULLET_DARK
         bullet_run.font.size = FontSizes.BODY
         bullet_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         bullet_para.paragraph_format.space_before = Pt(0)
@@ -183,10 +183,10 @@ class WeeklyReportGenerator(BaseReportGenerator):
         para = self.doc.add_paragraph(summary)
         para.paragraph_format.space_before = Pt(0)
         para.paragraph_format.space_after = Pt(4)
-        para.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+        para.paragraph_format.line_spacing = 1.5
         for run in para.runs:
             run.font.size = FontSizes.BODY
-            run.font.color.rgb = BrandColors.TEXT_LIGHT
+            run.font.color.rgb = BrandColors.TEXT_DARK
             run.font.name = "Arial"
 
     def _add_week_at_glance(self, analysis_result: Dict[str, Any]) -> None:
@@ -249,32 +249,31 @@ class WeeklyReportGenerator(BaseReportGenerator):
              "Targeting biotech sector"),
         ]
         # Two separate tables: 3 boxes, then space, then 3 boxes (per design reference)
-        self._create_metric_row(metrics_row1)
+        self._create_metric_cards(metrics_row1)
         spacer = self.doc.add_paragraph()
         spacer.paragraph_format.space_before = Pt(0)
         spacer.paragraph_format.space_after = Pt(20)  # Vertical gap between the two rows of boxes
-        self._create_metric_row(metrics_row2)
+        self._create_metric_cards(metrics_row2)
 
         # Minimal gap before next section (no extra padding)
         spacer2 = self.doc.add_paragraph()
         spacer2.paragraph_format.space_before = Pt(0)
         spacer2.paragraph_format.space_after = Pt(6)
 
-    def _create_metric_row(self, metrics: List[tuple]) -> None:
-        """Create one row of 3 metric boxes as a single 1x3 table."""
-        table = self.doc.add_table(rows=1, cols=3)
-        self._clear_table_style(table)  # Prevent Word from overriding cell shading in dark mode
+    def _create_metric_cards(self, metrics: List[tuple]) -> None:
+        """Create a row of metric cards with explicit white backgrounds."""
+        table = self.doc.add_table(rows=1, cols=len(metrics))
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
         for col_idx, (number, title, subtitle) in enumerate(metrics):
             cell = table.rows[0].cells[col_idx]
 
-            # Dark gray background via RGB (same path as accent colors so fill is applied)
-            r, g, b = BrandColors.TABLE_CELL_DARK_RGB
-            self._set_cell_shading_rgb(cell, r, g, b)
-            self._set_cell_borders(cell, BrandColors.BORDER_BOX_LIGHT)
+            # Set explicit WHITE background so it displays correctly in dark mode
+            self._set_cell_shading(cell, "FFFFFF")
+            # Add border to make card visible
+            self._set_cell_borders(cell, "CCCCCC", "4")
 
-            # Clear default content and build three lines
+            # Clear and build content
             cell.paragraphs[0].clear()
 
             # 1. Colored number: Red (high-risk/Total Exposed), Orange (ongoing), Green (Resolved); 22pt
@@ -292,22 +291,21 @@ class WeeklyReportGenerator(BaseReportGenerator):
             num_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             num_para.paragraph_format.space_after = Pt(2)
 
-            # 2. Bold category title (light text on dark)
+            # Title (bold, explicit black color)
             title_para = cell.add_paragraph()
             title_run = title_para.add_run(title)
             title_run.font.size = FontSizes.BODY_SMALL
             title_run.font.bold = True
-            title_run.font.color.rgb = BrandColors.TEXT_LIGHT
-            title_run.font.name = "Arial"
+            title_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)  # Explicit black
             title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             title_para.paragraph_format.space_before = Pt(0)
             title_para.paragraph_format.space_after = Pt(2)
 
-            # 3. Smaller light gray subtext; space before box border
+            # Subtitle (smaller gray)
             sub_para = cell.add_paragraph()
             sub_run = sub_para.add_run(subtitle)
             sub_run.font.size = FontSizes.FOOTNOTE
-            sub_run.font.color.rgb = BrandColors.GRAY_LIGHT
+            sub_run.font.color.rgb = BrandColors.GRAY_MEDIUM
             sub_run.font.name = "Arial"
             sub_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             sub_para.paragraph_format.space_before = Pt(0)
@@ -373,13 +371,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         if cve_analysis:
             table = self.doc.add_table(rows=1, cols=6)
-            self._clear_table_style(table)  # Prevent Word from overriding cell shading in dark mode
             headers = ["CVE ID", "Affected Product", "Exposure", "Exploited By", "Risk", "Wks"]
             header_cells = table.rows[0].cells
-            table_8pt = Pt(8)
             table_caption_7pt = Pt(7)
 
-            # Header row: #FF5C2E background, white bold centered 8pt, thin light-gray borders
+            # Header row: orange background, white bold text
             for i, header in enumerate(headers):
                 cell = header_cells[i]
                 cell.text = header
@@ -387,150 +383,46 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 run = para.runs[0]
                 run.font.bold = True
-                run.font.size = table_8pt
+                run.font.size = Pt(8)
                 run.font.color.rgb = BrandColors.WHITE
-                run.font.name = "Arial"
-                hr, hg, hb = BrandColors.TABLE_HEADER_ORANGE_RGB
-                self._set_cell_shading_rgb(cell, hr, hg, hb)
+                self._set_cell_shading(cell, BrandColors.TABLE_HEADER_ORANGE)
                 self._set_cell_borders(cell, BrandColors.TABLE_BORDER_GRAY)
                 self._set_cell_margins_tight(cell, 2)
 
-            # Compact row heights (header and data)
-            header_row = table.rows[0]
-            header_row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
-            header_row.height = Pt(14)
-
-            # Data rows: 8pt, tight padding (2pt), thin borders, compact height
+            # Data rows: set cell text, apply risk color, row background (yellow for 3+ wks, white otherwise)
             for cve in cve_analysis:
                 row = table.add_row()
-                row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
-                row.height = Pt(14)
                 cells = row.cells
-                cve_id = cve.get("cve_id", "N/A")
-                affected = cve.get("affected_product", cve.get("product", "N/A"))
-                # Exposure = count of servers/databases/endpoints from Rapid7 (not vulnerability description)
-                exposure = self._format_exposure_cell(cve)
-                exploited_by = cve.get("exploited_by", "None known")
-                risk = cve.get("risk", cve.get("severity", "N/A"))
-                wks_val = cve.get("weeks_detected", cve.get("wks", 1))
-                if isinstance(wks_val, str) and wks_val.strip().lower() == "new":
-                    wks_str = "New"
-                else:
+
+                cells[0].text = cve.get("cve_id", "N/A")
+                cells[1].text = cve.get("affected_product", cve.get("product", "N/A"))
+                cells[2].text = (cve.get("exposure") or cve.get("description", "N/A"))[:50]
+                cells[3].text = cve.get("exploited_by", "None known")
+                cells[4].text = cve.get("risk", cve.get("severity", "N/A"))
+                cells[5].text = str(cve.get("weeks_detected", cve.get("wks", 1)))
+
+                self._apply_risk_color(cells[4], cells[4].text)
+
+                weeks = cve.get("weeks_detected", cve.get("wks", 1))
+                if isinstance(weeks, str):
                     try:
-                        wks_int = int(wks_val) if not isinstance(wks_val, int) else wks_val
-                        wks_str = str(wks_int)
+                        weeks = int(weeks) if weeks.strip().lower() != "new" else 0
                     except (ValueError, TypeError):
-                        wks_str = str(wks_val)
-
-                # Borders and tight padding (2pt) for all cells; CVE ID, Affected Product, Exposure, Wks<3 use dark fill
-                for c in cells:
-                    self._set_cell_borders(c, BrandColors.TABLE_BORDER_GRAY)
-                    self._set_cell_margins_tight(c, 2)
-
-                # CVE ID: dark fill via RGB (no white in dark mode), light text, bold, left
-                r, g, b = BrandColors.TABLE_CELL_DARK_RGB
-                self._set_cell_shading_rgb(cells[0], r, g, b)
-                cells[0].text = cve_id
-                p0 = cells[0].paragraphs[0]
-                p0.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                r0 = p0.runs[0]
-                r0.font.size = table_8pt
-                r0.font.bold = True
-                r0.font.color.rgb = BrandColors.TEXT_LIGHT
-                r0.font.name = "Arial"
-
-                # Affected Product: dark fill via RGB, light text, normal, left
-                self._set_cell_shading_rgb(cells[1], r, g, b)
-                cells[1].text = affected
-                p1 = cells[1].paragraphs[0]
-                p1.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                r1 = p1.runs[0]
-                r1.font.size = table_8pt
-                r1.font.color.rgb = BrandColors.TEXT_LIGHT
-                r1.font.name = "Arial"
-
-                # Exposure: dark fill via RGB, light text, normal, left (count of servers/databases)
-                self._set_cell_shading_rgb(cells[2], r, g, b)
-                cells[2].text = exposure
-                p2 = cells[2].paragraphs[0]
-                p2.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                r2 = p2.runs[0]
-                r2.font.size = table_8pt
-                r2.font.color.rgb = BrandColors.TEXT_LIGHT
-                r2.font.name = "Arial"
-
-                # Exploited By: conditional background + text color
-                cells[3].text = exploited_by
-                p3 = cells[3].paragraphs[0]
-                p3.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                r3 = p3.runs[0]
-                r3.font.size = table_8pt
-                r3.font.name = "Arial"
-                eb_lower = (exploited_by or "").strip().lower()
-                if "none" in eb_lower or eb_lower == "none observed":
-                    r, g, b = BrandColors.EXPLOITED_BG_GREEN_RGB
-                    self._set_cell_shading_rgb(cells[3], r, g, b)
-                    r3.font.color.rgb = BrandColors.EXPLOITED_TEXT_GREEN
-                elif "poc" in eb_lower or "proof of concept" in eb_lower:
-                    r, g, b = BrandColors.EXPLOITED_BG_AMBER_RGB
-                    self._set_cell_shading_rgb(cells[3], r, g, b)
-                    r3.font.color.rgb = BrandColors.EXPLOITED_TEXT_AMBER
+                        weeks = 0
                 else:
-                    r, g, b = BrandColors.EXPLOITED_BG_RED_RGB
-                    self._set_cell_shading_rgb(cells[3], r, g, b)
-                    r3.font.color.rgb = BrandColors.EXPLOITED_TEXT_RED
+                    weeks = int(weeks) if weeks is not None else 0
+                bg_color = "FFF3CD" if weeks >= 3 else "FFFFFF"
+                for cell in cells:
+                    self._set_cell_shading(cell, bg_color)
 
-                # Risk: High/Medium/Low with background + bold centered text
-                cells[4].text = str(risk)
-                p4 = cells[4].paragraphs[0]
-                p4.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                r4 = p4.runs[0]
-                r4.font.size = table_8pt
-                r4.font.bold = True
-                r4.font.name = "Arial"
-                risk_upper = (str(risk) or "").upper()
-                if risk_upper in ("HIGH", "CRITICAL", "P1", "P2"):
-                    r, g, b = BrandColors.RISK_HIGH_BG_RGB
-                    self._set_cell_shading_rgb(cells[4], r, g, b)
-                    r4.font.color.rgb = BrandColors.RISK_HIGH_TEXT
-                elif risk_upper in ("MEDIUM", "MED"):
-                    r, g, b = BrandColors.RISK_MED_BG_RGB
-                    self._set_cell_shading_rgb(cells[4], r, g, b)
-                    r4.font.color.rgb = BrandColors.RISK_MED_TEXT
-                else:
-                    r, g, b = BrandColors.RISK_LOW_BG_RGB
-                    self._set_cell_shading_rgb(cells[4], r, g, b)
-                    r4.font.color.rgb = BrandColors.RISK_LOW_TEXT
+                for cell in cells:
+                    for para in cell.paragraphs:
+                        for run in para.runs:
+                            run.font.size = FontSizes.SUBTITLE
+                            if run.font.color.rgb is None:
+                                run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
-                # Wks: New or <3 = dark fill, light text; 3+ = dark brown fill + bold yellow-orange text; centered
-                cells[5].text = wks_str
-                p5 = cells[5].paragraphs[0]
-                p5.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                r5 = p5.runs[0]
-                r5.font.size = table_8pt
-                r5.font.name = "Arial"
-                if wks_str.strip().lower() == "new":
-                    rd, gd, bd = BrandColors.TABLE_CELL_DARK_RGB
-                    self._set_cell_shading_rgb(cells[5], rd, gd, bd)
-                    r5.font.color.rgb = BrandColors.TEXT_LIGHT
-                else:
-                    try:
-                        n = int(wks_str)
-                        if n >= 3:
-                            r, g, b = BrandColors.WKS_HIGHLIGHT_BG_RGB
-                            self._set_cell_shading_rgb(cells[5], r, g, b)
-                            r5.font.color.rgb = BrandColors.WKS_HIGHLIGHT_TEXT
-                            r5.font.bold = True
-                        else:
-                            rd, gd, bd = BrandColors.TABLE_CELL_DARK_RGB
-                            self._set_cell_shading_rgb(cells[5], rd, gd, bd)
-                            r5.font.color.rgb = BrandColors.TEXT_LIGHT
-                    except ValueError:
-                        rd, gd, bd = BrandColors.TABLE_CELL_DARK_RGB
-                        self._set_cell_shading_rgb(cells[5], rd, gd, bd)
-                        r5.font.color.rgb = BrandColors.TEXT_LIGHT
-
-            # Caption below table: italic gray, 7pt, left-aligned
+            # Caption below table
             caption = self.doc.add_paragraph()
             caption_run = caption.add_run(
                 "Wks = consecutive weeks detected. Items at 3+ weeks highlighted. "
@@ -538,7 +430,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             )
             caption_run.font.size = table_caption_7pt
             caption_run.font.italic = True
-            caption_run.font.color.rgb = BrandColors.GRAY_LIGHT
+            caption_run.font.color.rgb = BrandColors.GRAY_MEDIUM
             caption_run.font.name = "Arial"
             caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
         else:
@@ -561,62 +453,54 @@ class WeeklyReportGenerator(BaseReportGenerator):
         )
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
-        intro_run.font.color.rgb = BrandColors.GRAY_LIGHT
+        intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
 
         self.doc.add_paragraph()
 
         apt_activity = analysis_result.get("apt_activity", [])
 
         if apt_activity:
-            # Create threat actor table
+            # Create threat actor table (Claude: light gray header, white cells, black text)
             table = self.doc.add_table(rows=1, cols=3)
-            self._clear_table_style(table)  # Prevent Word from overriding cell shading in dark mode
 
-            # Header row
+            # Header row: light gray background, black text
             headers = ["Origin / Motivation", "Activity Observed", "What to Monitor"]
             header_cells = table.rows[0].cells
-
-            hr, hg, hb = BrandColors.TABLE_HEADER_ORANGE_RGB
             for i, header in enumerate(headers):
                 header_cells[i].text = header
                 para = header_cells[i].paragraphs[0]
                 para.runs[0].font.bold = True
                 para.runs[0].font.size = FontSizes.SUBTITLE
-                para.runs[0].font.color.rgb = BrandColors.WHITE
-                self._set_cell_shading_rgb(header_cells[i], hr, hg, hb)
+                para.runs[0].font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+                self._set_cell_shading(header_cells[i], "E0E0E0")
 
-            # Add APT rows (dark cells, light text)
-            rd, gd, bd = BrandColors.TABLE_CELL_DARK_RGB
+            # Data rows: white background, black text
             for apt in apt_activity:
                 row = table.add_row()
                 cells = row.cells
 
-                # Origin / Motivation
                 actor = apt.get("actor", apt.get("name", "Unknown"))
                 country = apt.get("country", apt.get("origin", "Unknown"))
                 motivation = apt.get("motivation", "Unknown")
                 cells[0].text = f"{actor}\n({country})\n{motivation}"
 
-                # Activity Observed
                 activity = apt.get("activity", apt.get("description", ""))
                 ttps = apt.get("ttps", [])
                 if ttps and isinstance(ttps, list):
                     activity += f"\nTTPs: {', '.join(ttps[:3])}"
                 cells[1].text = activity
 
-                # What to Monitor
                 monitoring = apt.get("what_to_monitor", apt.get("indicators", ""))
                 if isinstance(monitoring, list):
                     monitoring = "; ".join(monitoring[:3])
                 cells[2].text = monitoring
 
-                # Dark fill and light text for each cell
                 for cell in cells:
-                    self._set_cell_shading_rgb(cell, rd, gd, bd)
+                    self._set_cell_shading(cell, "FFFFFF")
                     for para in cell.paragraphs:
                         for run in para.runs:
                             run.font.size = FontSizes.SUBTITLE
-                            run.font.color.rgb = BrandColors.TEXT_LIGHT
+                            run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
         else:
             self.doc.add_paragraph("No threat actor activity data available.")
 
