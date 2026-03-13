@@ -342,9 +342,14 @@ class TestThreatQCollector:
         collector = ThreatQCollector(credentials)
         assert collector.enabled is False
 
-    def test_enabled_with_url(self, mock_credentials):
-        """Test collector is enabled with URL."""
-        collector = ThreatQCollector(mock_credentials)
+    def test_enabled_with_oauth_credentials(self):
+        """Test collector is enabled with URL and OAuth client credentials."""
+        credentials = {
+            "threatq_url": "https://threatq.example.com",
+            "threatq_client_id": "test-client-id",
+            "threatq_client_secret": "test-client-secret",
+        }
+        collector = ThreatQCollector(credentials)
         assert collector.enabled is True
 
 

@@ -78,7 +78,7 @@ class TestGetAllApiKeys:
         mock_get_secret.side_effect = side_effect
 
         # Enable ThreatQ for this test
-        with patch("src.core.keyvault.get_enabled_collectors", return_value=["nvd", "threatq"]):
+        with patch("src.core.config.get_enabled_collectors", return_value=["nvd", "threatq"]):
             keys = get_all_api_keys(VAULT_URL)
 
         assert keys.get("threatq_key") == ""
