@@ -14,8 +14,8 @@ from azure.identity import DefaultAzureCredential  # type: ignore
 from azure.keyvault.secrets import SecretClient  # type: ignore
 from azure.core.exceptions import ResourceNotFoundError  # type: ignore
 
-from config import azure_config
-from models import APICredentials
+from src.core.config import azure_config
+from src.core.models import APICredentials
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +79,11 @@ def get_secret(vault_url: str, secret_name: str) -> str:
     except ResourceNotFoundError:
         logger.error(f"Secret '{secret_name}' not found in vault '{vault_url}'")
         raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.error(f"Network error retrieving secret '{secret_name}' from vault '{vault_url}': {e}")
+        raise
     except Exception as e:
-        logger.error(f"Failed to retrieve secret '{secret_name}' from vault '{vault_url}': {e}")
+        logger.error(f"Unexpected error retrieving secret '{secret_name}' from vault '{vault_url}': {e}")
         raise
 
 
@@ -97,7 +100,7 @@ def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
     Returns:
         Dictionary containing all API keys
     """
-    from config import get_enabled_collectors
+    from src.core.config import get_enabled_collectors
     
     vault_url = vault_url or azure_config.get_key_vault_url()
     logger.info(f"Retrieving all API keys from vault: {vault_url}")
@@ -174,10 +177,13 @@ def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
                 return key_name, ""
             # For other secrets, raise exception
             logger.error(f"Failed to retrieve required API key '{key_name}' (secret: '{secret_name}'): {e}")
-            raise Exception(f"Failed to retrieve required API key '{key_name}': {e}")
+            raise RuntimeError(f"Failed to retrieve required API key '{key_name}': {e}") from e
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(f"Network error retrieving API key '{key_name}' (secret: '{secret_name}'): {e}")
+            raise RuntimeError(f"Network error retrieving API key '{key_name}': {e}") from e
         except Exception as e:
-            logger.error(f"Failed to retrieve API key '{key_name}' (secret: '{secret_name}'): {e}")
-            raise Exception(f"Failed to retrieve required API key '{key_name}': {e}")
+            logger.error(f"Unexpected error retrieving API key '{key_name}' (secret: '{secret_name}'): {e}")
+            raise RuntimeError(f"Failed to retrieve required API key '{key_name}': {e}") from e
 
     with ThreadPoolExecutor(max_workers=6) as executor:
         results = list(executor.map(fetch_secret, secrets_to_fetch.items()))

@@ -19,6 +19,29 @@ from src.core.models import ThreatAnalysisResult
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_for_prompt(data: Any, max_chars: int = 50000) -> str:
+    """
+    Sanitize external data before embedding in an LLM prompt.
+
+    Strips characters and patterns that could be used for prompt injection,
+    and enforces a maximum length to prevent context overflow.
+
+    Args:
+        data: Data to serialize (will be JSON-encoded).
+        max_chars: Maximum character length of the resulting string.
+
+    Returns:
+        Sanitized JSON string safe for prompt inclusion.
+    """
+    text = json.dumps(data, indent=2, default=str)
+    # Strip common prompt-injection markers
+    for marker in ("SYSTEM:", "ASSISTANT:", "USER:", "```", "<|", "|>"):
+        text = text.replace(marker, "")
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n... [truncated]"
+    return text
+
+
 # System prompt for the analyst - can be loaded from file for easier tuning
 DEFAULT_SYSTEM_PROMPT = """You are a Senior Cyber Threat Intelligence Analyst for a genomics company.
 Your role is to analyze threat data from multiple sources, correlate findings across CVEs and threat actors,
@@ -244,7 +267,7 @@ DATA SUMMARY:
 - Rapid7 Vulnerabilities: {len(rapid7_data)} records
 
 RAW DATA:
-{json.dumps(data_summary, indent=2)}
+{_sanitize_for_prompt(data_summary)}
 
 Please provide your analysis in the following JSON format:
 {{
@@ -501,7 +524,7 @@ APT groups targeting the healthcare, biotech, or manufacturing sectors, and indi
         nk_actors = [a for a in crowdstrike_data if self._is_nk_related(a)]
 
         # Get target industries from config
-        from config import industry_filter_config
+        from src.core.config import industry_filter_config
         target_industries = ", ".join(industry_filter_config.target_industries)
         
         return f"""Analyze this threat intelligence data and provide a QUARTERLY STRATEGIC BRIEF for executive leadership.
@@ -521,13 +544,13 @@ DATA SUMMARY:
 
 RAW DATA:
 Intel471 Data (sample - filter by industry relevance):
-{json.dumps(intel471_data[:50], indent=2)}
+{_sanitize_for_prompt(intel471_data[:50])}
 
 CrowdStrike APT Data:
-{json.dumps(crowdstrike_data[:30], indent=2)}
+{_sanitize_for_prompt(crowdstrike_data[:30])}
 
 Industry Breaches:
-{json.dumps(breach_data[:20], indent=2) if breach_data else "No breach data provided"}
+{_sanitize_for_prompt(breach_data[:20]) if breach_data else "No breach data provided"}
 
 Please provide your STRATEGIC analysis in the following JSON format:
 {{

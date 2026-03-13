@@ -17,11 +17,8 @@ from src.core.config import azure_config, analysis_config
 logger = logging.getLogger(__name__)
 
 
-def _merge_rapid7_exposure_into_analysis(analysis: dict, rapid7_data: list) -> None:
-    """Merge Rapid7 asset counts into cve_analysis so the Exposure column shows server/asset counts."""
-    cve_analysis = analysis.get("cve_analysis") or []
-    if not cve_analysis or not rapid7_data:
-        return
+def _extract_rapid7_cve_counts(rapid7_data: list) -> dict:
+    """Extract CVE-to-asset-count mapping from Rapid7 vulnerability summaries."""
     cve_to_count = {}
     for summary in rapid7_data:
         if not isinstance(summary, dict):
@@ -33,17 +30,11 @@ def _merge_rapid7_exposure_into_analysis(analysis: dict, rapid7_data: list) -> N
             for cve_id in vuln.get("cve_ids") or []:
                 if cve_id and cve_id not in cve_to_count:
                     cve_to_count[cve_id] = count
-    for cve in cve_analysis:
-        cve_id = cve.get("cve_id")
-        if cve_id and cve_id in cve_to_count:
-            cve["server_count"] = cve_to_count[cve_id]
+    return cve_to_count
 
 
-def _merge_crowdstrike_exposure_into_analysis(analysis: dict, crowdstrike_data: list) -> None:
-    """Merge CrowdStrike Spotlight vulnerability/device counts into cve_analysis for Exposure column."""
-    cve_analysis = analysis.get("cve_analysis") or []
-    if not cve_analysis or not crowdstrike_data:
-        return
+def _extract_crowdstrike_cve_counts(crowdstrike_data: list) -> dict:
+    """Extract CVE-to-device-count mapping from CrowdStrike Spotlight data."""
     cve_to_count = {}
     for item in crowdstrike_data:
         if not isinstance(item, dict) or item.get("type") != "vulnerability":
@@ -59,12 +50,34 @@ def _merge_crowdstrike_exposure_into_analysis(analysis: dict, crowdstrike_data: 
         for cve_id in cve_ids:
             if cve_id and cve_id not in cve_to_count:
                 cve_to_count[cve_id] = n
+    return cve_to_count
+
+
+def _merge_exposure_into_analysis(
+    analysis: dict,
+    rapid7_data: list,
+    crowdstrike_data: list
+) -> None:
+    """Merge Rapid7 and CrowdStrike asset/device counts into cve_analysis for the Exposure column.
+
+    Rapid7 counts take precedence; CrowdStrike counts are used as a fallback.
+    """
+    cve_analysis = analysis.get("cve_analysis") or []
+    if not cve_analysis:
+        return
+
+    # Rapid7 takes precedence, CrowdStrike fills gaps
+    rapid7_counts = _extract_rapid7_cve_counts(rapid7_data) if rapid7_data else {}
+    cs_counts = _extract_crowdstrike_cve_counts(crowdstrike_data) if crowdstrike_data else {}
+
     for cve in cve_analysis:
         cve_id = cve.get("cve_id")
-        if cve_id and cve_id in cve_to_count:
-            # Only set if not already set by Rapid7 (Rapid7 takes precedence) or add as fallback
-            if cve.get("server_count") is None:
-                cve["server_count"] = cve_to_count[cve_id]
+        if not cve_id:
+            continue
+        if cve_id in rapid7_counts:
+            cve["server_count"] = rapid7_counts[cve_id]
+        elif cve_id in cs_counts:
+            cve["server_count"] = cs_counts[cve_id]
 
 
 app = func.FunctionApp()
@@ -140,8 +153,7 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         )
 
         # Merge Rapid7 and CrowdStrike (Spotlight) asset/device counts into CVE analysis for Exposure column
-        _merge_rapid7_exposure_into_analysis(analysis, rapid7_data)
-        _merge_crowdstrike_exposure_into_analysis(analysis, crowdstrike_data)
+        _merge_exposure_into_analysis(analysis, rapid7_data, crowdstrike_data)
 
         # Step 4: Generate Word document and upload to blob storage
         logger.info('Generating Weekly Word document and uploading to Azure Blob Storage...')
@@ -303,14 +315,12 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
                 'filename': report_result['filename'],
                 'risk_assessment': analysis.get('risk_assessment', {}),
                 'collection_summary': {
-                    'Intel471': {
-                        'success': collector_results.get('Intel471', {}).success if hasattr(collector_results.get('Intel471', {}), 'success') else False,
-                        'record_count': len(intel471_data)
-                    },
-                    'CrowdStrike': {
-                        'success': collector_results.get('CrowdStrike', {}).success if hasattr(collector_results.get('CrowdStrike', {}), 'success') else False,
-                        'record_count': len(crowdstrike_data)
+                    source: {
+                        'success': result.success,
+                        'record_count': result.record_count,
+                        'error': result.error
                     }
+                    for source, result in collector_results.items()
                 }
             }, indent=2),
             mimetype='application/json',

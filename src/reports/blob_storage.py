@@ -9,6 +9,7 @@ from typing import Dict, Any
 
 from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
 from azure.core.credentials import AzureNamedKeyCredential
+from azure.core.exceptions import ResourceExistsError, AzureError
 
 from src.core.config import report_config
 from src.reports.base import BaseReportGenerator
@@ -53,9 +54,8 @@ def upload_to_blob(
         try:
             container_client.create_container()
             logger.info(f"Created container: {container_name}")
-        except Exception:
-            # Container likely already exists
-            pass
+        except ResourceExistsError:
+            pass  # Container already exists
 
         # Upload blob
         blob_client = blob_service_client.get_blob_client(container=container_name, blob=filename)
@@ -72,8 +72,11 @@ def upload_to_blob(
 
         return sas_url
 
-    except Exception as e:
-        logger.error(f"Error uploading to blob storage: {str(e)}", exc_info=True)
+    except AzureError as e:
+        logger.error(f"Azure storage error uploading report: {e}", exc_info=True)
+        raise
+    except (ValueError, OSError) as e:
+        logger.error(f"Error preparing report for upload: {e}", exc_info=True)
         raise
 
 
@@ -133,7 +136,7 @@ def create_and_upload_report(
     Returns:
         Dictionary with keys: filename, url, success, error (if failed)
     """
-    from reports.registry import get_report_generator
+    from src.reports.registry import get_report_generator
 
     try:
         logger.info(f"Creating and uploading {report_type} report")
@@ -163,8 +166,8 @@ def create_and_upload_report(
             "success": True
         }
 
-    except Exception as e:
-        logger.error(f"Error creating and uploading report: {str(e)}", exc_info=True)
+    except (AzureError, ValueError, OSError) as e:
+        logger.error(f"Error creating and uploading report: {e}", exc_info=True)
         return {
             "filename": None,
             "url": None,

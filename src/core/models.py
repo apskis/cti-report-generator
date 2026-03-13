@@ -182,7 +182,7 @@ class VulnerabilitySummary:
 
 @dataclass
 class ThreatAnalysisResult:
-    """Structured result from threat analysis."""
+    """Structured result from threat analysis (weekly)."""
     executive_summary: str
     top_threats: List[Dict[str, Any]]
     cve_analysis: List[Dict[str, Any]]
@@ -199,6 +199,32 @@ class ThreatAnalysisResult:
             "apt_activity": self.apt_activity,
             "recommendations": self.recommendations,
             "statistics": self.statistics
+        }
+
+
+@dataclass
+class StrategicAnalysisResult:
+    """Structured result from quarterly strategic analysis."""
+    executive_summary: str
+    risk_assessment: Dict[str, str]
+    breach_landscape: Dict[str, Any]
+    incidents_by_type: List[Dict[str, Any]]
+    common_factors: str
+    geopolitical_threats: Dict[str, Dict[str, str]]
+    looking_ahead: Dict[str, str]
+    recommendations: List[Any]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "executive_summary": self.executive_summary,
+            "risk_assessment": self.risk_assessment,
+            "breach_landscape": self.breach_landscape,
+            "incidents_by_type": self.incidents_by_type,
+            "common_factors": self.common_factors,
+            "geopolitical_threats": self.geopolitical_threats,
+            "looking_ahead": self.looking_ahead,
+            "recommendations": self.recommendations,
         }
 
 

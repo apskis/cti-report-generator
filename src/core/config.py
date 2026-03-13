@@ -113,8 +113,17 @@ class AzureConfig:
 
         This is the ONLY secret-related config stored in environment.
         All actual secrets are retrieved from Key Vault.
+
+        Raises:
+            EnvironmentError: If KEY_VAULT_URL is not set.
         """
-        return os.environ.get("KEY_VAULT_URL", "https://kv-cti-reporting.vault.azure.net/")
+        url = os.environ.get("KEY_VAULT_URL")
+        if not url:
+            raise EnvironmentError(
+                "KEY_VAULT_URL environment variable is not set. "
+                "Set it to your Azure Key Vault URL, e.g. 'https://kv-cti-reporting.vault.azure.net/'"
+            )
+        return url
 
 
 # Global configuration instances
@@ -125,14 +134,19 @@ report_config = ReportConfig()
 azure_config = AzureConfig()
 
 
+DEFAULT_ENABLED_COLLECTORS = ["nvd", "intel471", "crowdstrike", "rapid7"]
+
+
 def get_enabled_collectors() -> List[str]:
     """
     Get list of enabled collectors.
-    Can be configured via ENABLED_COLLECTORS environment variable.
-    Default: all collectors enabled.
+
+    Override via the ENABLED_COLLECTORS environment variable (comma-separated).
+    To enable ThreatQ, set ENABLED_COLLECTORS=nvd,intel471,crowdstrike,rapid7,threatq.
+
+    Default: nvd, intel471, crowdstrike, rapid7
     """
     enabled = os.environ.get("ENABLED_COLLECTORS", "")
     if enabled:
         return [c.strip().lower() for c in enabled.split(",")]
-    # ThreatQ disabled - secrets not configured yet
-    return ["nvd", "intel471", "crowdstrike", "rapid7"]
+    return list(DEFAULT_ENABLED_COLLECTORS)

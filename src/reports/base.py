@@ -200,8 +200,8 @@ class BaseReportGenerator(ABC):
                 tbl_style = tbl_pr.find(qn("w:tblStyle"))
                 if tbl_style is not None:
                     tbl_pr.remove(tbl_style)
-        except Exception:
-            pass
+        except (AttributeError, TypeError) as e:
+            logger.debug(f"Could not clear table style: {e}")
 
     def _set_cell_shading_rgb(self, cell, r: int, g: int, b: int) -> None:
         """Apply background shading to a table cell using RGB values."""
@@ -585,8 +585,8 @@ class BaseReportGenerator(ABC):
             if settings_el.find(qn("w:displayBackgroundShape")) is None:
                 disp = OxmlElement("w:displayBackgroundShape")
                 settings_el.insert(0, disp)
-        except Exception:
-            pass
+        except AttributeError as e:
+            logger.debug(f"Could not set background shape display: {e}")
 
     def _apply_font_to_run(self, run, font_name: str = "Arial") -> None:
         """

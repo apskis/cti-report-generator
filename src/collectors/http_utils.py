@@ -6,7 +6,6 @@ Provides exponential backoff retry mechanism for transient failures.
 import asyncio
 import logging
 from typing import Dict, Any, Callable
-from functools import wraps
 
 import aiohttp  # type: ignore
 
@@ -165,6 +164,15 @@ class HTTPClient:
         else:
             raise NonRetryableHTTPError(response.status, error_text)
 
+    def _ensure_session(self) -> aiohttp.ClientSession:
+        """Return the active session or raise if not inside a context manager."""
+        if self._session is None:
+            raise RuntimeError(
+                "HTTPClient must be used as an async context manager: "
+                "'async with HTTPClient() as client: ...'"
+            )
+        return self._session
+
     async def get(
         self,
         url: str,
@@ -186,8 +194,10 @@ class HTTPClient:
         Returns:
             Parsed JSON response
         """
+        session = self._ensure_session()
+
         async def _do_request():
-            async with self._session.get(
+            async with session.get(
                 url, headers=headers, params=params, auth=auth
             ) as response:
                 return await self._handle_response(response, expected_status)
@@ -217,8 +227,10 @@ class HTTPClient:
         Returns:
             Parsed JSON response
         """
+        session = self._ensure_session()
+
         async def _do_request():
-            async with self._session.post(
+            async with session.post(
                 url, headers=headers, data=data, json=json_data, params=params
             ) as response:
                 return await self._handle_response(response, expected_status)
@@ -245,7 +257,7 @@ class HTTPClient:
         Returns:
             Raw aiohttp response
         """
-        return await self._session.get(url, headers=headers, params=params, auth=auth)
+        return await self._ensure_session().get(url, headers=headers, params=params, auth=auth)
 
     async def post_raw_response(
         self,
@@ -268,7 +280,7 @@ class HTTPClient:
         Returns:
             Raw aiohttp response
         """
-        return await self._session.post(
+        return await self._ensure_session().post(
             url, headers=headers, data=data, json=json_data, params=params
         )
 
