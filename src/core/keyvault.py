@@ -112,7 +112,7 @@ def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
     # All credentials stored in Key Vault for security
     collector_secrets = {
         'nvd': ['nvd_key'],
-        'threatq': ['threatq_key', 'threatq_url'],  # Optional - collector handles missing gracefully
+        'threatq': ['threatq_client_id', 'threatq_client_secret', 'threatq_url'],
         'intel471': ['intel471_email', 'intel471_key'],
         'crowdstrike': ['crowdstrike_id', 'crowdstrike_secret', 'crowdstrike_base_url'],
         'rapid7': ['rapid7_key', 'rapid7_region'],
@@ -130,7 +130,8 @@ def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
     secrets_map = {
         # Threat Intelligence API credentials
         'nvd_key': 'nvd-api-key',
-        'threatq_key': 'threatq-api-key',
+        'threatq_client_id': 'threatq-client-id',
+        'threatq_client_secret': 'threatq-client-secret',
         'threatq_url': 'threatq-url',
         'intel471_email': 'intel471-email',
         'intel471_key': 'intel471-api-key',
@@ -159,7 +160,7 @@ def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
                     secrets_to_fetch[key_name] = secrets_map[key_name]
     
     # Special handling: ThreatQ secrets are optional (collector handles missing gracefully)
-    optional_secrets = {'threatq_key', 'threatq_url'}
+    optional_secrets = {'threatq_client_id', 'threatq_client_secret', 'threatq_url'}
 
     api_keys = {}
 

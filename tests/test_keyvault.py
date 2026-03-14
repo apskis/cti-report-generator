@@ -81,7 +81,8 @@ class TestGetAllApiKeys:
         with patch("src.core.config.get_enabled_collectors", return_value=["nvd", "threatq"]):
             keys = get_all_api_keys(VAULT_URL)
 
-        assert keys.get("threatq_key") == ""
+        assert keys.get("threatq_client_id") == ""
+        assert keys.get("threatq_client_secret") == ""
 
     @patch("src.core.keyvault.get_secret")
     @patch("src.core.config.AzureConfig.get_key_vault_url", return_value=VAULT_URL)

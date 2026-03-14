@@ -281,7 +281,8 @@ class APICredentials:
     """Container for all API credentials stored in Key Vault."""
     # Threat Intelligence APIs
     nvd_key: str = ""
-    threatq_key: str = ""
+    threatq_client_id: str = ""
+    threatq_client_secret: str = ""
     threatq_url: str = ""
     intel471_email: str = ""
     intel471_key: str = ""
@@ -301,7 +302,8 @@ class APICredentials:
         """Convert to dictionary (for backwards compatibility)."""
         return {
             "nvd_key": self.nvd_key,
-            "threatq_key": self.threatq_key,
+            "threatq_client_id": self.threatq_client_id,
+            "threatq_client_secret": self.threatq_client_secret,
             "threatq_url": self.threatq_url,
             "intel471_email": self.intel471_email,
             "intel471_key": self.intel471_key,

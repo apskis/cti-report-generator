@@ -27,7 +27,7 @@ class TestGetEnabledCollectors:
             os.environ.pop("ENABLED_COLLECTORS", None)
             result = get_enabled_collectors()
             assert result == DEFAULT_ENABLED_COLLECTORS
-            assert "threatq" not in result
+            assert "threatq" in result
 
     def test_custom_collectors_from_env(self):
         with patch.dict(os.environ, {"ENABLED_COLLECTORS": "nvd, threatq"}):

@@ -134,7 +134,7 @@ report_config = ReportConfig()
 azure_config = AzureConfig()
 
 
-DEFAULT_ENABLED_COLLECTORS = ["nvd", "intel471", "crowdstrike", "rapid7"]
+DEFAULT_ENABLED_COLLECTORS = ["nvd", "intel471", "crowdstrike", "rapid7", "threatq"]
 
 
 def get_enabled_collectors() -> List[str]:
