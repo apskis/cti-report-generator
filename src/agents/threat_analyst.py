@@ -55,6 +55,23 @@ Avoid tactical details like specific CVEs or IOCs unless they have strategic sig
 Do not use Hyphens."""
 
 
+def _sanitize_for_prompt(data: Any, max_chars: int | None = None) -> str:
+    """
+    Serialize data for safe inclusion in an LLM prompt.
+    Strips injection markers, code blocks, and special delimiters; optionally truncates.
+    """
+    try:
+        out = json.dumps(data, default=str)
+    except (TypeError, ValueError):
+        out = str(data)
+    # Remove prompt-injection and formatting markers
+    for marker in ("SYSTEM:", "```", "<|", "|>"):
+        out = out.replace(marker, "")
+    if max_chars is not None and len(out) > max_chars:
+        out = out[:max_chars].rstrip() + " [truncated]"
+    return out
+
+
 def load_system_prompt(prompt_file: str = "prompts/analyst_system.txt") -> str:
     """
     Load system prompt from file if available, otherwise use default.
@@ -500,8 +517,8 @@ APT groups targeting the healthcare, biotech, or manufacturing sectors, and indi
         russia_actors = [a for a in crowdstrike_data if self._is_russia_related(a)]
         nk_actors = [a for a in crowdstrike_data if self._is_nk_related(a)]
 
-        # Get target industries from global config
-        from src.core.config import industry_filter_config
+        # Get target industries from config
+        from config import industry_filter_config
         target_industries = ", ".join(industry_filter_config.target_industries)
         
         return f"""Analyze this threat intelligence data and provide a QUARTERLY STRATEGIC BRIEF for executive leadership.
