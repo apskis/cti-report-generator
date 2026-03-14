@@ -163,8 +163,8 @@ class ThreatQCollector(BaseCollector):
         """
         Obtain OAuth2 access token from ThreatQ using client credentials flow.
 
-        ThreatQ OAuth2 token endpoint accepts credentials via query params:
-            POST /api/token?grant_type=client_credentials&client_id=X&client_secret=Y
+        ThreatQ OAuth2 token endpoint expects credentials in POST body as JSON:
+            POST /api/token with body {"grant_type": "client_credentials", "client_id": "...", "client_secret": "..."}
 
         Args:
             client: HTTP client
@@ -176,7 +176,7 @@ class ThreatQCollector(BaseCollector):
             Access token string or None on failure
         """
         token_url = f"{base_url}/api/token"
-        params = {
+        body = {
             "grant_type": "client_credentials",
             "client_id": client_id,
             "client_secret": client_secret
@@ -185,7 +185,7 @@ class ThreatQCollector(BaseCollector):
         logger.info(f"Requesting OAuth token from ThreatQ: {token_url}")
 
         try:
-            response = await client.post_raw_response(token_url, params=params)
+            response = await client.post_raw_response(token_url, json_data=body)
 
             if response.status in (200, 201):
                 token_response = await response.json()
