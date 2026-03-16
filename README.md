@@ -82,11 +82,11 @@ pip install -r requirements-dev.txt  # For development/testing
 cp local.settings.json.template local.settings.json
 ```
 
-Edit `local.settings.json` and set your Key Vault URL:
+Edit `local.settings.json` and set your Key Vault URL (production example):
 ```json
 {
     "Values": {
-        "KEY_VAULT_URL": "https://your-keyvault-name.vault.azure.net/"
+        "KEY_VAULT_URL": "https://kv-cti-rep-prod.vault.azure.net/"
     }
 }
 ```
@@ -127,10 +127,12 @@ All secrets are stored in Azure Key Vault. Add the following secrets:
 ### Adding secrets via Azure CLI
 
 ```bash
-KEYVAULT_NAME="your-keyvault-name"
+KEYVAULT_NAME="kv-cti-rep-prod"
 
 az keyvault secret set --vault-name $KEYVAULT_NAME --name "nvd-api-key" --value "your-value"
 az keyvault secret set --vault-name $KEYVAULT_NAME --name "intel471-email" --value "your-value"
+az keyvault secret set --vault-name $KEYVAULT_NAME --name "storage-account-name" --value "ctireportingstorage"
+az keyvault secret set --vault-name $KEYVAULT_NAME --name "openai-endpoint" --value "https://ids-secops-openai-prd-eastus2.openai.azure.com/"
 # ... repeat for all secrets
 ```
 
@@ -228,17 +230,30 @@ Then call:
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `KEY_VAULT_URL` | Azure Key Vault URL | `https://kv-cti-reporting.vault.azure.net/` |
+| Variable | Description | Production |
+|----------|-------------|------------|
+| `KEY_VAULT_URL` | Azure Key Vault URL | `https://kv-cti-rep-prod.vault.azure.net/` |
 | `ENABLED_COLLECTORS` | Comma-separated list of enabled collectors | All enabled |
+| `SQL_SERVER` | SQL server hostname (optional) | `sql-cti-automation-ilmn.database.windows.net` |
+
+### Production settings (Key Vault / config)
+
+| Setting | Production value |
+|--------|-------------------|
+| Key Vault | `https://kv-cti-rep-prod.vault.azure.net/` |
+| Storage account | `ctireportingstorage` |
+| OpenAI endpoint | `https://ids-secops-openai-prd-eastus2.openai.azure.com/` |
+| Deployment name | `gpt-5.2-cti` (in `config.py` AnalysisConfig) |
+| SQL server | `sql-cti-automation-ilmn.database.windows.net` |
+
+Storage account name, OpenAI endpoint, and API keys are stored in Key Vault; the deployment name is in `src/core/config.py`.
 
 ### Application Settings (config.py)
 
 - **Lookback periods**: How many days back to collect data
 - **Result limits**: Maximum records per source
 - **Retry settings**: HTTP retry configuration
-- **Analysis settings**: AI model deployment name, token limits
+- **Analysis settings**: AI model deployment name (`gpt-5.2-cti`), token limits
 
 ## Deployment to Azure
 
