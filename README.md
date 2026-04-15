@@ -243,7 +243,7 @@ Then call:
 | Key Vault | `https://kv-cti-rep-prod.vault.azure.net/` |
 | Storage account | `ctireportingstorage` |
 | OpenAI endpoint | `https://ids-secops-openai-prd-eastus2.openai.azure.com/` |
-| Deployment name | `gpt-5.2-cti` (in `config.py` AnalysisConfig) |
+| Deployment name | `gpt-4.1-cti` (in `config.py` AnalysisConfig) |
 | SQL server | `sql-cti-automation-ilmn.database.windows.net` |
 
 Storage account name, OpenAI endpoint, and API keys are stored in Key Vault; the deployment name is in `src/core/config.py`.
@@ -253,7 +253,18 @@ Storage account name, OpenAI endpoint, and API keys are stored in Key Vault; the
 - **Lookback periods**: How many days back to collect data
 - **Result limits**: Maximum records per source
 - **Retry settings**: HTTP retry configuration
-- **Analysis settings**: AI model deployment name (`gpt-5.2-cti`), token limits
+- **Analysis settings**: AI model deployment name (`gpt-4.1-cti`), token limits
+- **Enrichment settings**:
+  - `enable_web_search`: Toggle web search for filling CVE product gaps (default: `True`)
+  - `web_search_timeout_seconds`: Timeout per search (default: 5)
+  - `max_web_searches_per_run`: Limit searches per enrichment run (default: 10)
+  - `kev_cache_duration_hours`: CISA KEV catalog cache duration (default: 24)
+
+**To disable web search**, edit `src/core/config.py` and change:
+```python
+class EnrichmentConfig:
+    enable_web_search: bool = False  # Changed from True
+```
 
 ## Deployment to Azure
 

@@ -58,9 +58,12 @@ class ThreatQCollector(BaseCollector):
         client_secret = self.credentials.get("threatq_client_secret", "")
         return bool(threatq_url and client_id and client_secret)
 
-    async def collect(self) -> CollectorResult:
+    async def collect(self, report_type: str = "weekly") -> CollectorResult:
         """
         Fetch indicators and adversaries from ThreatQ.
+
+        Args:
+            report_type: Type of report being generated (weekly/quarterly)
 
         Returns:
             CollectorResult with indicators and adversaries for correlation

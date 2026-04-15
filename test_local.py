@@ -355,6 +355,20 @@ async def collect_and_analyze(report_type: str) -> dict:
     # Log what we collected
     for source, data in data_by_source.items():
         logger.info(f"  {source}: {len(data)} records")
+    
+    # Enrich data with additional context
+    logger.info("Enriching data with CISA KEV and product information...")
+    from src.enrichment import CVEEnricher, ThreatActorMonitoringEnricher
+    
+    cve_enricher = CVEEnricher()
+    actor_enricher = ThreatActorMonitoringEnricher()
+    
+    # Enrich CVEs
+    if "NVD" in data_by_source:
+        data_by_source["NVD"] = await cve_enricher.enrich_cves(data_by_source["NVD"])
+        logger.info(f"  Enriched {len(data_by_source['NVD'])} CVEs")
+    
+    # Enrich threat actors (from analysis results - we'll do this later in the flow)
 
     # Initialize agent
     agent = ThreatAnalystAgent(

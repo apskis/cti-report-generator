@@ -280,7 +280,9 @@ Please provide your analysis in the following JSON format:
       "severity": "Critical/High/Medium",
       "exploited": true/false,
       "description": "Brief description",
-      "impact": "Potential impact on biotech/manufacturing operations"
+      "impact": "Potential impact on biotech/manufacturing operations",
+      "affected_product": "Vendor Product Name (e.g., 'Microsoft Exchange Server', 'Fortinet FortiOS')",
+      "exploited_by": "Who is exploiting it (e.g., 'Ransomware groups', 'APT28', 'None known')"
     }}
   ],
   "apt_activity": [
@@ -289,7 +291,8 @@ Please provide your analysis in the following JSON format:
       "country": "Country of origin",
       "motivation": "Primary motivation",
       "ttps": ["TTP1", "TTP2"],
-      "relevance": "Why this matters to genomics/biotech/manufacturing"
+      "relevance": "Why this matters to genomics/biotech/manufacturing",
+      "what_to_monitor": "Specific indicators and detection recommendations (e.g., 'Monitor for PowerShell activity; Watch for connections to Asia-Pacific regions; Scan for credential harvesting')"
     }}
   ],
   "recommendations": [

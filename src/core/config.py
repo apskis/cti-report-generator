@@ -68,11 +68,28 @@ class IndustryFilterConfig:
 
 
 @dataclass(frozen=True)
+class EnrichmentConfig:
+    """Configuration for data enrichment."""
+    
+    # Enable/disable web search for filling data gaps
+    # When enabled, will search the web for missing CVE product information
+    # When disabled, uses only CISA KEV catalog and pattern matching
+    enable_web_search: bool = True
+    
+    # Web search settings
+    web_search_timeout_seconds: int = 5
+    max_web_searches_per_run: int = 10  # Limit to avoid excessive API calls
+    
+    # CISA KEV cache duration (hours)
+    kev_cache_duration_hours: int = 24
+
+
+@dataclass(frozen=True)
 class AnalysisConfig:
     """Configuration for threat analysis."""
 
     # AI model deployment name
-    deployment_name: str = "gpt-5.2-cti"
+    deployment_name: str = "gpt-4.1-cti"
 
     # Data truncation limits for AI analysis
     max_cves_for_analysis: int = 50
@@ -144,6 +161,7 @@ class AzureConfig:
 # Global configuration instances
 collector_config = CollectorConfig()
 industry_filter_config = IndustryFilterConfig()
+enrichment_config = EnrichmentConfig()
 analysis_config = AnalysisConfig()
 report_config = ReportConfig()
 azure_config = AzureConfig()
