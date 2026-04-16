@@ -282,7 +282,8 @@ Please provide your analysis in the following JSON format:
       "description": "Brief description",
       "impact": "Potential impact on biotech/manufacturing operations",
       "affected_product": "Vendor Product Name (e.g., 'Microsoft Exchange Server', 'Fortinet FortiOS')",
-      "exploited_by": "Who is exploiting it (e.g., 'Ransomware groups', 'APT28', 'None known')"
+      "exploited_by": "Who is exploiting it (e.g., 'Ransomware groups', 'APT28', 'None known')",
+      "weeks_detected": 1
     }}
   ],
   "apt_activity": [
@@ -307,7 +308,7 @@ Please provide your analysis in the following JSON format:
     "critical_count": 0,
     "high_count": 0,
     "exploited_count": 0,
-    "apt_groups": {len(crowdstrike_data)},
+    "apt_groups": {len([item for item in crowdstrike_data if item.get('type') == 'actor'])},
     "p1_count": 0,
     "p2_count": 0,
     "p3_count": 0
@@ -318,6 +319,11 @@ Priority Guidelines:
 - P1: Critical vulnerabilities being actively exploited or affecting core systems
 - P2: High-severity vulnerabilities or significant APT activity targeting our sector
 - P3: Important but lower-urgency threats requiring monitoring
+
+Weeks Detected Guidelines:
+- Set weeks_detected to 1 for all CVEs by default (new this week)
+- If a CVE appears to be older or recurring based on publish date or context, use a higher value
+- The report will highlight CVEs with weeks_detected >= 3 as "Persistent (3+ Wks)"
 
 Respond ONLY with valid JSON. Do not include any markdown formatting or code blocks.
 
@@ -429,7 +435,7 @@ APT groups targeting the healthcare, biotech, or manufacturing sectors, and indi
                 "critical_count": sum(1 for cve in cve_data if cve.get("severity") == "CRITICAL"),
                 "high_count": sum(1 for cve in cve_data if cve.get("severity") == "HIGH"),
                 "exploited_count": sum(1 for cve in cve_data if cve.get("exploited", False)),
-                "apt_groups": len(crowdstrike_data),
+                "apt_groups": len([item for item in crowdstrike_data if item.get("type") == "actor"]),
                 "p1_count": 0,
                 "p2_count": 1,
                 "p3_count": 0

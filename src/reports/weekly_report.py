@@ -485,7 +485,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
             # Caption below table
             caption = self.doc.add_paragraph()
             caption_run = caption.add_run(
-                "Wks = consecutive weeks detected. Items at 3+ weeks highlighted. "
+                "Wks = consecutive weeks detected. Items at 3+ weeks (yellow highlight) are persistent and require attention. "
+                "Items at 4+ weeks (red highlight) are long overdue. "
                 "Source: Rapid7 InsightVM scans."
             )
             caption_run.font.size = table_caption_7pt
