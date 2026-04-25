@@ -9,6 +9,9 @@ Application settings (limits, timeouts, feature flags) are defined here.
 import os
 from dataclasses import dataclass, field
 from typing import List
+from pathlib import Path
+
+import yaml
 
 
 @dataclass(frozen=True)
@@ -167,19 +170,36 @@ report_config = ReportConfig()
 azure_config = AzureConfig()
 
 
-DEFAULT_ENABLED_COLLECTORS = ["nvd", "intel471", "crowdstrike", "rapid7", "rapid7-scans", "threatq", "osint"]
+_COLLECTORS_YAML = Path(__file__).resolve().parent.parent.parent / "config" / "collectors.yaml"
+
+
+def _load_collectors_from_yaml() -> List[str]:
+    """Read config/collectors.yaml and return names of enabled collectors."""
+    if not _COLLECTORS_YAML.exists():
+        raise FileNotFoundError(
+            f"Collectors config not found: {_COLLECTORS_YAML}\n"
+            "Please create config/collectors.yaml to define your enabled collectors."
+        )
+    with open(_COLLECTORS_YAML, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+    collectors = cfg.get("collectors", [])
+    if not collectors:
+        raise ValueError(
+            f"No collectors defined in {_COLLECTORS_YAML}\n"
+            "Add at least one collector with 'enabled: true'."
+        )
+    return [c["name"] for c in collectors if c.get("enabled", True)]
 
 
 def get_enabled_collectors() -> List[str]:
     """
     Get list of enabled collectors.
 
-    Override via the ENABLED_COLLECTORS environment variable (comma-separated).
-    To enable ThreatQ, set ENABLED_COLLECTORS=nvd,intel471,crowdstrike,rapid7,threatq.
-
-    Default: nvd, intel471, crowdstrike, rapid7
+    Priority order:
+      1. ENABLED_COLLECTORS environment variable (comma-separated)
+      2. config/collectors.yaml (enabled: true/false per collector)
     """
-    enabled = os.environ.get("ENABLED_COLLECTORS", "")
-    if enabled:
-        return [c.strip().lower() for c in enabled.split(",")]
-    return list(DEFAULT_ENABLED_COLLECTORS)
+    env = os.environ.get("ENABLED_COLLECTORS", "")
+    if env:
+        return [c.strip().lower() for c in env.split(",")]
+    return _load_collectors_from_yaml()

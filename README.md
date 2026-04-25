@@ -37,6 +37,7 @@ An Azure Functions-based Cyber Threat Intelligence (CTI) reporting system that a
 ```
 cti-report-generator/
 ├── config/
+│   ├── collectors.yaml              # Enable/disable API collectors (single source of truth)
 │   └── osint_sources.yaml          # OSINT feed configuration (user-editable)
 ├── src/
 │   ├── collectors/                  # Modular API collectors
@@ -250,7 +251,7 @@ Then call:
 | Variable | Description | Production |
 |----------|-------------|------------|
 | `KEY_VAULT_URL` | Azure Key Vault URL | `https://kv-cti-rep-prod.vault.azure.net/` |
-| `ENABLED_COLLECTORS` | Comma-separated list of enabled collectors | All enabled |
+| `ENABLED_COLLECTORS` | Override collectors.yaml (comma-separated) | Uses `config/collectors.yaml` |
 | `SQL_SERVER` | SQL server hostname (optional) | `sql-cti-automation-ilmn.database.windows.net` |
 
 ### Production settings (Key Vault / config)
@@ -282,6 +283,27 @@ Storage account name, OpenAI endpoint, and API keys are stored in Key Vault; the
 class EnrichmentConfig:
     enable_web_search: bool = False  # Changed from True
 ```
+
+### Collectors Configuration: `config/collectors.yaml`
+
+This is the **single source of truth** for which API collectors are active. Enable or disable any collector without touching code:
+
+```yaml
+collectors:
+  - name: nvd
+    description: "NIST National Vulnerability Database"
+    enabled: true
+
+  - name: rapid7-scans
+    description: "Rapid7 InsightVM Scans - CVE-to-asset exposure mapping"
+    enabled: true
+
+  - name: threatq
+    description: "ThreatQ - IOC management"
+    enabled: false    # <-- disabled
+```
+
+Set `enabled: false` to skip a collector. The environment variable `ENABLED_COLLECTORS` overrides this file if set.
 
 ### Rapid7 Dual-Collector Architecture
 

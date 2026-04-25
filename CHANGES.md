@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Collectors YAML Configuration**: New `config/collectors.yaml` for managing enabled collectors
+  - Single source of truth for which API collectors are active
+  - Enable/disable any collector by setting `enabled: true/false`
+  - No hardcoded fallback; missing config file raises a clear error
+  - Environment variable `ENABLED_COLLECTORS` still works as override
 - **OSINT Collector**: New collector (`osint`) for curated open-source intelligence
   - User-controlled RSS/Atom feed sources defined in `config/osint_sources.yaml`
   - Add, remove, or disable sources without code changes
@@ -35,6 +40,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Removed restriction preventing `--local` and `--azure` together
 
 ### Changed
+- **Collector Configuration**: Moved enabled collectors from hardcoded list in `config.py` to `config/collectors.yaml`
+  - Removed `DEFAULT_ENABLED_COLLECTORS` constant entirely
+  - `get_enabled_collectors()` now reads YAML; raises `FileNotFoundError` if missing
 - **Report Date Ranges**: Now show actual data lookback period instead of calendar week/quarter
   - Weekly: "7-Day Lookback | April 18 to April 25, 2026" (not "Week 17 | April 21 to 27")
   - Quarterly: "90-Day Lookback | January 25 to April 25, 2026" (not "Q2 April to June")

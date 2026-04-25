@@ -1,0 +1,50 @@
+# Collectors Configuration
+# Enable or disable threat intelligence collectors here.
+# Each collector connects to a different API source for CTI data.
+#
+# To disable a collector, set enabled: false
+# To re-enable, set enabled: true
+#
+# Collectors will only run if:
+#   1. They are enabled here (enabled: true)
+#   2. The required API credentials exist in Key Vault
+#
+# Note: You can still override this file entirely by setting the
+# ENABLED_COLLECTORS environment variable (comma-separated list).
+# Example: ENABLED_COLLECTORS=nvd,crowdstrike,rapid7,rapid7-scans
+
+collectors:
+
+  # ── Vulnerability Data ──────────────────────────────────────────────
+
+  - name: nvd
+    description: "NIST National Vulnerability Database - CVE definitions and severity scores"
+    enabled: true
+
+  - name: rapid7
+    description: "Rapid7 InsightVM - Vulnerability enrichment (exploit info, malware kits)"
+    enabled: true
+
+  - name: rapid7-scans
+    description: "Rapid7 InsightVM Scans - CVE-to-asset exposure mapping from your environment"
+    enabled: true
+
+  # ── Threat Intelligence ─────────────────────────────────────────────
+
+  - name: intel471
+    description: "Intel471 Titan - Underground threat intelligence and breach reports"
+    enabled: true
+
+  - name: crowdstrike
+    description: "CrowdStrike Falcon Intelligence - Threat actors, detections, and indicators"
+    enabled: true
+
+  - name: threatq
+    description: "ThreatQ - IOC management and threat intelligence sharing"
+    enabled: true
+
+  # ── Open Source Intelligence ────────────────────────────────────────
+
+  - name: osint
+    description: "Curated public news and research feeds (configure in osint_sources.yaml)"
+    enabled: true

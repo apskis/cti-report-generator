@@ -5,7 +5,7 @@ import os
 import pytest
 from unittest.mock import patch
 
-from src.core.config import AzureConfig, get_enabled_collectors, DEFAULT_ENABLED_COLLECTORS
+from src.core.config import AzureConfig, get_enabled_collectors
 
 
 class TestAzureConfig:
@@ -22,12 +22,13 @@ class TestAzureConfig:
 
 
 class TestGetEnabledCollectors:
-    def test_default_collectors(self):
+    def test_default_collectors_from_yaml(self):
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("ENABLED_COLLECTORS", None)
             result = get_enabled_collectors()
-            assert result == DEFAULT_ENABLED_COLLECTORS
-            assert "threatq" in result
+            assert isinstance(result, list)
+            assert len(result) > 0
+            assert "nvd" in result
 
     def test_custom_collectors_from_env(self):
         with patch.dict(os.environ, {"ENABLED_COLLECTORS": "nvd, threatq"}):

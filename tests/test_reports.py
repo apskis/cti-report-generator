@@ -190,15 +190,12 @@ class TestWeeklyReportGenerator:
             generator.to_bytes()
 
     def test_week_calculation(self, generator, sample_analysis_result):
-        """Week dates should be calculated correctly."""
+        """Lookback period dates should be calculated correctly."""
         generator.generate(sample_analysis_result)
-        # week_start should be a Monday
-        assert generator.week_start.weekday() == 0
-        # week_end should be a Sunday
-        assert generator.week_end.weekday() == 6
-        # Should be 6 days apart
-        delta = generator.week_end - generator.week_start
-        assert delta.days == 6
+        assert hasattr(generator, 'period_start')
+        assert hasattr(generator, 'period_end')
+        delta = generator.period_end - generator.period_start
+        assert delta.days == generator.lookback_days
 
     def test_document_has_paragraphs(self, generator, sample_analysis_result):
         """Generated document should have paragraphs."""
@@ -375,25 +372,13 @@ class TestQuarterlyReportGenerator:
         assert doc_bytes[:2] == b"PK"
 
     def test_quarter_calculation(self, generator, sample_strategic_analysis):
-        """Quarter should be calculated correctly."""
+        """Quarter and lookback period should be calculated correctly."""
         generator.generate(sample_strategic_analysis)
-        # Quarter should be 1-4
         assert 1 <= generator.quarter <= 4
-        # Quarter start should be first of month
-        assert generator.quarter_start.day == 1
-        # Quarter months should be correct
-        if generator.quarter == 1:
-            assert generator.quarter_start.month == 1
-            assert generator.quarter_end.month == 3
-        elif generator.quarter == 2:
-            assert generator.quarter_start.month == 4
-            assert generator.quarter_end.month == 6
-        elif generator.quarter == 3:
-            assert generator.quarter_start.month == 7
-            assert generator.quarter_end.month == 9
-        else:  # Q4
-            assert generator.quarter_start.month == 10
-            assert generator.quarter_end.month == 12
+        assert hasattr(generator, 'period_start')
+        assert hasattr(generator, 'period_end')
+        delta = generator.period_end - generator.period_start
+        assert delta.days == generator.lookback_days
 
     def test_document_has_paragraphs(self, generator, sample_strategic_analysis):
         """Generated document should have paragraphs."""
