@@ -14,7 +14,7 @@ from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion  # type: i
 from semantic_kernel.connectors.ai.open_ai import AzureChatPromptExecutionSettings  # type: ignore
 from semantic_kernel.contents import ChatHistory  # type: ignore
 
-from src.core.config import analysis_config
+from src.core.config import analysis_config, industry_filter_config
 from src.core.models import ThreatAnalysisResult
 
 logger = logging.getLogger(__name__)
@@ -744,13 +744,15 @@ Do not use Hyphens."""
         """
         rapid7_scans_data = rapid7_scans_data or []
 
-        # Build exposure map from Rapid7 scans
+        # Build exposure map and scan-level enrichment from Rapid7 scans
         rapid7_cve_map = {}
+        rapid7_scan_lookup = {}
         if rapid7_scans_data and len(rapid7_scans_data) > 0:
             scan_summary = rapid7_scans_data[0] if isinstance(rapid7_scans_data[0], dict) else {}
             for cve_id, info in scan_summary.get("cve_exposure_map", {}).items():
                 if isinstance(info, dict):
                     rapid7_cve_map[cve_id] = info.get("exposure", f"{info.get('asset_count', 0)} systems")
+                    rapid7_scan_lookup[cve_id] = info
 
         # Build NVD lookup
         nvd_lookup = {}
@@ -780,6 +782,7 @@ Do not use Hyphens."""
 
             nvd = nvd_lookup.get(cve_id, {})
             r7_vuln = rapid7_vuln_lookup.get(cve_id, {})
+            r7_scan = rapid7_scan_lookup.get(cve_id, {})
 
             # Fill exposure if AI left it blank or N/A
             exposure = cve_entry.get("exposure", "N/A")
@@ -791,9 +794,10 @@ Do not use Hyphens."""
 
             # Fill affected_product if AI left it blank
             product = cve_entry.get("affected_product", "N/A")
-            if product in ("N/A", "", None, "Unknown", "unknown"):
+            if product in ("N/A", "", None, "Unknown", "unknown") or "vendor product" in product.lower():
                 backup_product = (
                     nvd.get("affected_product")
+                    or self._clean_rapid7_title(r7_scan.get("title", ""))
                     or r7_vuln.get("title", "")
                     or self._extract_product_from_description(
                         nvd.get("description", "") or r7_vuln.get("description", "")
@@ -805,11 +809,32 @@ Do not use Hyphens."""
 
             # Fill exploited_by if AI left it blank
             exploited_by = cve_entry.get("exploited_by", "")
-            if exploited_by in ("", None, "Unknown", "unknown"):
-                backup_exploited_by = nvd.get("exploited_by", "")
-                if backup_exploited_by and backup_exploited_by != "N/A":
-                    cve_entry["exploited_by"] = backup_exploited_by
+            if exploited_by in ("", None, "Unknown", "unknown", "None known", "N/A"):
+                exploit_info = r7_scan.get("exploit_info", {})
+                if exploit_info:
+                    kits = exploit_info.get("malware_kits", 0)
+                    exploits = exploit_info.get("exploits", 0)
+                    if kits:
+                        cve_entry["exploited_by"] = f"Malware kits ({kits} known)"
+                        gaps_filled += 1
+                    elif exploits:
+                        cve_entry["exploited_by"] = f"Public exploits ({exploits} known)"
+                        gaps_filled += 1
+                elif r7_vuln.get("exploitable"):
+                    kits = r7_vuln.get("malware_kits_count", 0)
+                    exploits = r7_vuln.get("exploits_count", 0)
+                    if kits:
+                        cve_entry["exploited_by"] = f"Malware kits ({kits} known)"
+                    elif exploits:
+                        cve_entry["exploited_by"] = f"Public exploits ({exploits} known)"
+                    else:
+                        cve_entry["exploited_by"] = "Exploit available"
                     gaps_filled += 1
+                else:
+                    backup_exploited_by = nvd.get("exploited_by", "")
+                    if backup_exploited_by and backup_exploited_by not in ("N/A", ""):
+                        cve_entry["exploited_by"] = backup_exploited_by
+                        gaps_filled += 1
 
         # Filter: only keep CVEs that exist in Rapid7 scans
         if rapid7_cve_map:
@@ -841,14 +866,16 @@ Do not use Hyphens."""
         """
         rapid7_scans_data = rapid7_scans_data or []
         
-        # Build exposure map from Rapid7 scans
+        # Build exposure map and scan enrichment from Rapid7 scans
         rapid7_cve_map = {}
+        rapid7_scan_lookup = {}
         if rapid7_scans_data and len(rapid7_scans_data) > 0:
             scan_summary = rapid7_scans_data[0] if isinstance(rapid7_scans_data[0], dict) else {}
             cve_exposure_map = scan_summary.get("cve_exposure_map", {})
             for cve_id, exposure_info in cve_exposure_map.items():
                 if isinstance(exposure_info, dict):
                     rapid7_cve_map[cve_id] = exposure_info.get("exposure", f"{exposure_info.get('asset_count', 0)} systems")
+                    rapid7_scan_lookup[cve_id] = exposure_info
         
         logger.info(f"Default analysis: {len(rapid7_cve_map)} CVEs from Rapid7 scans")
         
@@ -875,10 +902,12 @@ Do not use Hyphens."""
             for cve_id, exposure_string in rapid7_cve_map.items():
                 nvd_info = nvd_lookup.get(cve_id, {})
                 rapid7_vuln = rapid7_vuln_lookup.get(cve_id, {})
+                r7_scan = rapid7_scan_lookup.get(cve_id, {})
                 
-                # Get affected product from NVD enrichment or Rapid7 title
+                # Get affected product from NVD CPE, scan title, or Rapid7 vuln title
                 affected_product = (
                     nvd_info.get("affected_product")
+                    or self._clean_rapid7_title(r7_scan.get("title", ""))
                     or rapid7_vuln.get("title", "")
                     or self._extract_product_from_description(
                         nvd_info.get("description", "") or rapid7_vuln.get("description", "")
@@ -890,8 +919,26 @@ Do not use Hyphens."""
                 
                 severity = nvd_info.get("severity", rapid7_vuln.get("severity", "HIGH"))
                 exploited = nvd_info.get("exploited", rapid7_vuln.get("exploitable", False))
-                exploited_by = nvd_info.get("exploited_by", "None known")
                 description = nvd_info.get("description", rapid7_vuln.get("description", ""))[:200]
+
+                exploited_by = "None known"
+                exploit_info = r7_scan.get("exploit_info", {})
+                if exploit_info:
+                    kits = exploit_info.get("malware_kits", 0)
+                    exploits = exploit_info.get("exploits", 0)
+                    if kits:
+                        exploited_by = f"Malware kits ({kits} known)"
+                    elif exploits:
+                        exploited_by = f"Public exploits ({exploits} known)"
+                elif rapid7_vuln.get("exploitable"):
+                    kits = rapid7_vuln.get("malware_kits_count", 0)
+                    exploits = rapid7_vuln.get("exploits_count", 0)
+                    if kits:
+                        exploited_by = f"Malware kits ({kits} known)"
+                    elif exploits:
+                        exploited_by = f"Public exploits ({exploits} known)"
+                    else:
+                        exploited_by = "Exploit available"
                 
                 # Determine priority based on severity and exploitation
                 if exploited and severity in ("CRITICAL", "Critical"):
@@ -1010,6 +1057,27 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                 if len(product) > 3 and len(product) < 50:
                     return product
         return ""
+
+    @staticmethod
+    def _clean_rapid7_title(title: str) -> str:
+        """
+        Clean a Rapid7 vulnerability title into a short product name.
+
+        Rapid7 titles look like:
+          "WordPress Plugin: access-demo-importer: CVE-2021-39317: Unrestricted Upload..."
+          "7-Zip: CVE-2016-2334: Buffer Overflow"
+          "Adobe Acrobat: CVE-2016-0931: Use After Free"
+
+        Returns just the product portion, e.g. "WordPress Plugin: access-demo-importer".
+        """
+        if not title:
+            return ""
+        import re
+        # Strip the CVE-XXXX-XXXX: portion and everything after it
+        cleaned = re.split(r'\s*:\s*CVE-\d{4}-\d+', title)[0].strip()
+        if cleaned and len(cleaned) > 2:
+            return cleaned
+        return title.split(":")[0].strip() if ":" in title else title
 
     async def analyze_strategic(
         self,
@@ -1164,7 +1232,6 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
         nk_actors = [a for a in crowdstrike_data if self._is_nk_related(a)]
 
         # Get target industries from config
-        from config import industry_filter_config
         target_industries = ", ".join(industry_filter_config.target_industries)
         
         return f"""Analyze this threat intelligence data and provide a QUARTERLY STRATEGIC BRIEF for executive leadership.

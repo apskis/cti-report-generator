@@ -347,6 +347,8 @@ class Rapid7ScanCollector(BaseCollector):
         # First pass: count occurrences of each CVE (each vuln record = 1 occurrence)
         cve_counts = defaultdict(int)
         cve_vuln_ids = defaultdict(list)  # Track vuln IDs for each CVE
+        cve_titles = {}  # Track vulnerability title per CVE
+        cve_exploit_info = {}  # Track exploit/malware data per CVE
         
         logger.info(f"Building CVE exposure map from {len(vulns)} vulnerability findings...")
         
@@ -361,12 +363,26 @@ class Rapid7ScanCollector(BaseCollector):
             
             # The 'id' field is the vulnerability definition ID (not asset-specific)
             vuln_id = vuln.get("id", "")
+            vuln_title = vuln.get("title", "")
+            exploits_count = vuln.get("exploits", 0)
+            if isinstance(exploits_count, list):
+                exploits_count = len(exploits_count)
+            malware_kits = vuln.get("malware_kits", 0)
+            if isinstance(malware_kits, list):
+                malware_kits = len(malware_kits)
             
             for cve_id in cve_ids:
                 if not cve_id:
                     continue
                 cve_counts[cve_id] += 1
                 cve_vuln_ids[cve_id].append(vuln_id)
+                if vuln_title and cve_id not in cve_titles:
+                    cve_titles[cve_id] = vuln_title
+                if (exploits_count or malware_kits) and cve_id not in cve_exploit_info:
+                    cve_exploit_info[cve_id] = {
+                        "exploits": exploits_count if isinstance(exploits_count, int) else 0,
+                        "malware_kits": malware_kits if isinstance(malware_kits, int) else 0,
+                    }
         
         # Build the exposure map
         # Note: Since /vulnerabilities returns definitions without asset context,
@@ -377,9 +393,11 @@ class Rapid7ScanCollector(BaseCollector):
         for cve_id, count in cve_counts.items():
             cve_asset_map[cve_id] = {
                 "asset_count": count,
-                "asset_ids": set(),  # Not available from this endpoint
-                "asset_names": set(),  # Not available from this endpoint
-                "asset_types": {"system"},  # Default type
+                "asset_ids": set(),
+                "asset_names": set(),
+                "asset_types": {"system"},
+                "title": cve_titles.get(cve_id, ""),
+                "exploit_info": cve_exploit_info.get(cve_id, {}),
             }
         
         # Return the raw map (will be formatted by caller after enrichment)
@@ -718,7 +736,9 @@ class Rapid7ScanCollector(BaseCollector):
                 "exposure": exposure_string,
                 "asset_count": asset_count,
                 "asset_type": asset_type_plural,
-                "sample_assets": asset_names[:5]  # First 5 asset names
+                "sample_assets": asset_names[:5],
+                "title": info.get("title", ""),
+                "exploit_info": info.get("exploit_info", {}),
             }
         
         logger.info(f"Built CVE exposure map: {len(cve_exposure_summary)} CVEs found across {total_items} items")

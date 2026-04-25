@@ -121,6 +121,9 @@ class NVDCollector(BaseCollector):
             # Extract description
             description = self._extract_description(cve)
 
+            # Extract affected product from CPE data
+            affected_product = self._extract_product_from_cpe(cve) or ""
+
             # Get published date
             published = cve.get("published", "")
 
@@ -130,8 +133,9 @@ class NVDCollector(BaseCollector):
                 cvss_score=cvss_score,
                 severity=severity,
                 published_date=published,
-                exploited=False,  # Could cross-reference with CISA KEV
-                source=self.source_name
+                exploited=False,
+                source=self.source_name,
+                affected_product=affected_product,
             ))
 
         return cves
@@ -194,4 +198,25 @@ class NVDCollector(BaseCollector):
         for desc in descriptions:
             if desc.get("lang") == "en":
                 return desc.get("value", "")
+        return ""
+
+    @staticmethod
+    def _extract_product_from_cpe(cve: Dict[str, Any]) -> str:
+        """
+        Extract vendor and product name from CPE configuration data.
+
+        CPE URIs follow: cpe:2.3:part:vendor:product:version:...
+        Returns "Vendor Product" (title-cased) or empty string.
+        """
+        configurations = cve.get("configurations", [])
+        for config in configurations:
+            for node in config.get("nodes", []):
+                for match in node.get("cpeMatch", []):
+                    criteria = match.get("criteria", "")
+                    parts = criteria.split(":")
+                    if len(parts) >= 5:
+                        vendor = parts[3].replace("_", " ").title()
+                        product = parts[4].replace("_", " ").title()
+                        if vendor and product and vendor != "*" and product != "*":
+                            return f"{vendor} {product}"
         return ""

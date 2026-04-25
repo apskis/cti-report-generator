@@ -26,6 +26,7 @@ class CVERecord:
     published_date: str
     exploited: bool = False
     source: str = "NVD"
+    affected_product: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -36,7 +37,8 @@ class CVERecord:
             "severity": self.severity,
             "published_date": self.published_date,
             "exploited": self.exploited,
-            "source": self.source
+            "source": self.source,
+            "affected_product": self.affected_product,
         }
 
 
