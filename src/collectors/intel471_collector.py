@@ -11,8 +11,8 @@ import aiohttp  # type: ignore
 
 from src.collectors.base import BaseCollector
 from src.collectors.http_utils import HTTPClient, NonRetryableHTTPError
-from src.core.config import collector_config, industry_filter_config
-from src.core.models import ThreatReport, CollectorResult
+from src.core.config import collector_config
+from src.core.models import CollectorResult
 
 logger = logging.getLogger(__name__)
 

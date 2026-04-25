@@ -52,22 +52,6 @@ def get_collector(name: str, credentials: Dict[str, str], report_type: str = "we
     return None
 
 
-def get_all_collectors(credentials: Dict[str, str], report_type: str = "weekly") -> List[BaseCollector]:
-    """
-    Get instances of all registered collectors.
-
-    Args:
-        credentials: API credentials dictionary
-
-    Returns:
-        List of collector instances
-    """
-    return [
-        collector_class(credentials, report_type=report_type)
-        for collector_class in COLLECTOR_REGISTRY.values()
-    ]
-
-
 def get_enabled_collector_instances(credentials: Dict[str, str], report_type: str = "weekly") -> List[BaseCollector]:
     """
     Get instances of only enabled collectors.

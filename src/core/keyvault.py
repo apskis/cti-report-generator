@@ -5,7 +5,6 @@ Provides secure access to API keys and secrets stored in Azure Key Vault.
 Uses Azure Managed Identity in production, supports local development
 via Azure CLI authentication.
 """
-import asyncio
 import logging
 from typing import Dict
 from concurrent.futures import ThreadPoolExecutor
@@ -15,7 +14,6 @@ from azure.keyvault.secrets import SecretClient  # type: ignore
 from azure.core.exceptions import ResourceNotFoundError  # type: ignore
 
 from src.core.config import azure_config
-from src.core.models import APICredentials
 
 logger = logging.getLogger(__name__)
 
@@ -194,50 +192,6 @@ def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
 
     logger.info("Successfully retrieved all API keys")
     return api_keys
-
-
-async def get_all_api_keys_async(vault_url: str | None = None) -> Dict[str, str]:
-    """
-    Async wrapper for get_all_api_keys.
-
-    Runs the synchronous Key Vault calls in a thread pool.
-
-    Args:
-        vault_url: URL of the Azure Key Vault (defaults to config)
-
-    Returns:
-        Dictionary containing all API keys
-    """
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, get_all_api_keys, vault_url)
-
-
-def get_api_credentials(vault_url: str | None = None) -> APICredentials:
-    """
-    Retrieve all API credentials as a typed dataclass.
-
-    Args:
-        vault_url: URL of the Azure Key Vault (defaults to config)
-
-    Returns:
-        APICredentials dataclass with all credentials
-    """
-    api_keys = get_all_api_keys(vault_url)
-    return APICredentials(**api_keys)
-
-
-async def get_api_credentials_async(vault_url: str | None = None) -> APICredentials:
-    """
-    Async version of get_api_credentials.
-
-    Args:
-        vault_url: URL of the Azure Key Vault (defaults to config)
-
-    Returns:
-        APICredentials dataclass with all credentials
-    """
-    api_keys = await get_all_api_keys_async(vault_url)
-    return APICredentials(**api_keys)
 
 
 def clear_cache():

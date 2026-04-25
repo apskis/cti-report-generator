@@ -71,17 +71,9 @@ class BaseCollector(ABC):
         start_date = end_date - timedelta(days=days)
         return start_date, end_date
 
-    def format_date_iso(self, dt: datetime) -> str:
-        """Format datetime as ISO 8601 string."""
-        return dt.strftime("%Y-%m-%dT%H:%M:%S.000")
-
     def format_date_timestamp_ms(self, dt: datetime) -> int:
         """Format datetime as Unix timestamp in milliseconds."""
         return int(dt.timestamp() * 1000)
-
-    def format_date_timestamp_sec(self, dt: datetime) -> int:
-        """Format datetime as Unix timestamp in seconds."""
-        return int(dt.timestamp())
 
     @abstractmethod
     async def collect(self, report_type: str = "weekly") -> CollectorResult:

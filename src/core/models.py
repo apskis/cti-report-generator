@@ -10,34 +10,6 @@ used throughout the application. Using structured types provides:
 """
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
-from datetime import datetime
-from enum import Enum
-
-
-class Severity(Enum):
-    """Standardized severity levels across all sources."""
-    CRITICAL = "CRITICAL"
-    HIGH = "HIGH"
-    MEDIUM = "MEDIUM"
-    LOW = "LOW"
-    UNKNOWN = "UNKNOWN"
-
-
-class Priority(Enum):
-    """Threat priority levels."""
-    P1 = "P1"  # Critical - immediate action required
-    P2 = "P2"  # High - action required soon
-    P3 = "P3"  # Medium - monitor and plan
-
-
-class ConfidenceLevel(Enum):
-    """Confidence levels for threat intelligence."""
-    CONFIRMED = "Confirmed"
-    HIGH = "High"
-    MEDIUM = "Medium"
-    LOW = "Low"
-    VERY_LOW = "Very Low"
-    UNKNOWN = "Unknown"
 
 
 # =============================================================================
@@ -203,32 +175,6 @@ class ThreatAnalysisResult:
 
 
 @dataclass
-class StrategicAnalysisResult:
-    """Structured result from quarterly strategic analysis."""
-    executive_summary: str
-    risk_assessment: Dict[str, str]
-    breach_landscape: Dict[str, Any]
-    incidents_by_type: List[Dict[str, Any]]
-    common_factors: str
-    geopolitical_threats: Dict[str, Dict[str, str]]
-    looking_ahead: Dict[str, str]
-    recommendations: List[Any]
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
-        return {
-            "executive_summary": self.executive_summary,
-            "risk_assessment": self.risk_assessment,
-            "breach_landscape": self.breach_landscape,
-            "incidents_by_type": self.incidents_by_type,
-            "common_factors": self.common_factors,
-            "geopolitical_threats": self.geopolitical_threats,
-            "looking_ahead": self.looking_ahead,
-            "recommendations": self.recommendations,
-        }
-
-
-@dataclass
 class ReportResult:
     """Result from report generation and upload."""
     success: bool
@@ -271,49 +217,3 @@ class CollectorResult:
             "record_count": self.record_count
         }
 
-
-# =============================================================================
-# Credentials Types
-# =============================================================================
-
-@dataclass
-class APICredentials:
-    """Container for all API credentials stored in Key Vault."""
-    # Threat Intelligence APIs
-    nvd_key: str = ""
-    threatq_client_id: str = ""
-    threatq_client_secret: str = ""
-    threatq_url: str = ""
-    intel471_email: str = ""
-    intel471_key: str = ""
-    crowdstrike_id: str = ""
-    crowdstrike_secret: str = ""
-    crowdstrike_base_url: str = ""
-    rapid7_key: str = ""
-    rapid7_region: str = ""
-    # Azure OpenAI
-    openai_key: str = ""
-    openai_endpoint: str = ""
-    # Azure Storage
-    storage_account_name: str = ""
-    storage_account_key: str = ""
-
-    def to_dict(self) -> Dict[str, str]:
-        """Convert to dictionary (for backwards compatibility)."""
-        return {
-            "nvd_key": self.nvd_key,
-            "threatq_client_id": self.threatq_client_id,
-            "threatq_client_secret": self.threatq_client_secret,
-            "threatq_url": self.threatq_url,
-            "intel471_email": self.intel471_email,
-            "intel471_key": self.intel471_key,
-            "crowdstrike_id": self.crowdstrike_id,
-            "crowdstrike_secret": self.crowdstrike_secret,
-            "crowdstrike_base_url": self.crowdstrike_base_url,
-            "rapid7_key": self.rapid7_key,
-            "rapid7_region": self.rapid7_region,
-            "openai_key": self.openai_key,
-            "openai_endpoint": self.openai_endpoint,
-            "storage_account_name": self.storage_account_name,
-            "storage_account_key": self.storage_account_key
-        }

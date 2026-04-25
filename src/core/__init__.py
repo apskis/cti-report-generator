@@ -5,11 +5,13 @@ Core module containing shared configuration, models, and utilities.
 from src.core.config import (
     CollectorConfig,
     IndustryFilterConfig,
+    EnrichmentConfig,
     AnalysisConfig,
     ReportConfig,
     AzureConfig,
     collector_config,
     industry_filter_config,
+    enrichment_config,
     analysis_config,
     report_config,
     azure_config,
@@ -23,29 +25,26 @@ from src.core.models import (
     VulnerabilitySummary,
     ThreatAnalysisResult,
     CollectorResult,
-    ReportResult,
 )
 
-# Keyvault imports are optional (require azure-keyvault-secrets)
 try:
-    from src.core.keyvault import get_secret, get_secrets_batch, get_all_api_keys
-    _KEYVAULT_AVAILABLE = True
+    from src.core.keyvault import get_secret, get_all_api_keys
 except ImportError:
-    _KEYVAULT_AVAILABLE = False
     get_secret = None
-    get_secrets_batch = None
     get_all_api_keys = None
 
 __all__ = [
     # Config classes
     "CollectorConfig",
     "IndustryFilterConfig",
+    "EnrichmentConfig",
     "AnalysisConfig",
     "ReportConfig",
     "AzureConfig",
     # Config instances
     "collector_config",
     "industry_filter_config",
+    "enrichment_config",
     "analysis_config",
     "report_config",
     "azure_config",
@@ -58,9 +57,7 @@ __all__ = [
     "VulnerabilitySummary",
     "ThreatAnalysisResult",
     "CollectorResult",
-    "ReportResult",
-    # Key Vault (optional)
+    # Key Vault
     "get_secret",
-    "get_secrets_batch",
     "get_all_api_keys",
 ]

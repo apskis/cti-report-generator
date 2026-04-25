@@ -9,7 +9,7 @@ from typing import List, Dict, Any
 from src.collectors.base import BaseCollector
 from src.collectors.http_utils import HTTPClient, NonRetryableHTTPError
 from src.core.config import collector_config
-from src.core.models import VulnerabilitySummary, CollectorResult
+from src.core.models import CollectorResult
 
 logger = logging.getLogger(__name__)
 

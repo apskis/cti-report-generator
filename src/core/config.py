@@ -7,7 +7,7 @@ Infrastructure config (URLs, resource names) should be in environment variables.
 Application settings (limits, timeouts, feature flags) are defined here.
 """
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List
 from pathlib import Path
 
@@ -127,12 +127,6 @@ class AzureConfig:
     Production defaults are documented for reference.
     """
 
-    # Production resource names (used when not overridden by env / Key Vault)
-    PROD_KEY_VAULT_URL = "https://kv-cti-rep-prod.vault.azure.net/"
-    PROD_STORAGE_ACCOUNT = "ctireportingstorage"
-    PROD_OPENAI_ENDPOINT = "https://ids-secops-openai-prd-eastus2.openai.azure.com/"
-    PROD_SQL_SERVER = "sql-cti-automation-ilmn.database.windows.net"
-
     @staticmethod
     def get_key_vault_url() -> str:
         """
@@ -151,14 +145,6 @@ class AzureConfig:
                 "Set it to your Azure Key Vault URL, e.g. 'https://kv-cti-rep-prod.vault.azure.net/'"
             )
         return url
-
-    @staticmethod
-    def get_sql_server() -> str:
-        """
-        Get SQL server hostname from environment (optional).
-        Production: sql-cti-automation-ilmn.database.windows.net
-        """
-        return os.environ.get("SQL_SERVER", AzureConfig.PROD_SQL_SERVER)
 
 
 # Global configuration instances

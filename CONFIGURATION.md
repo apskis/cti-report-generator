@@ -86,7 +86,17 @@ class CollectorConfig:
 
 ### Disable Specific Data Collectors
 
-#### Option 1: Environment Variable (Temporary)
+#### Option 1: YAML Config (Recommended)
+
+File: `config/collectors.yaml`
+
+```yaml
+  - name: threatq
+    description: "ThreatQ - IOC management"
+    enabled: false    # disabled
+```
+
+#### Option 2: Environment Variable (Temporary Override)
 
 ```powershell
 # PowerShell
@@ -94,14 +104,6 @@ $env:ENABLED_COLLECTORS = "nvd,intel471,crowdstrike"  # Excludes rapid7 and thre
 
 # Bash
 export ENABLED_COLLECTORS="nvd,intel471,crowdstrike"
-```
-
-#### Option 2: Change Default (Permanent)
-
-File: `src/core/config.py` → `DEFAULT_ENABLED_COLLECTORS`
-
-```python
-DEFAULT_ENABLED_COLLECTORS = ["nvd", "intel471", "crowdstrike"]  # Removed rapid7, threatq
 ```
 
 ## How to Apply Configuration Changes
@@ -151,11 +153,11 @@ This confirms your web search settings are active.
 1. **Environment Variables** (highest priority)
    - `ENABLED_COLLECTORS`, `KEY_VAULT_URL`, etc.
 
-2. **config.py Settings** (medium priority)
-   - All dataclass configurations
+2. **YAML Config Files** (medium priority)
+   - `config/collectors.yaml`, `config/osint_sources.yaml`
 
-3. **Defaults in Code** (lowest priority)
-   - Fallback values if not specified
+3. **config.py Dataclass Defaults** (lowest priority)
+   - Fallback values for collector settings, analysis settings, etc.
 
 ## See Also
 

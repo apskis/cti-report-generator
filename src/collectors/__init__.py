@@ -1,18 +1,7 @@
 """
 Collectors package for CTI Report Generator.
 
-This package provides modular threat intelligence collectors,
-each handling a single data source.
-
-Usage:
-    from collectors import collect_all, get_collector
-
-    # Collect from all enabled sources
-    results = await collect_all(credentials)
-
-    # Get a specific collector
-    nvd = get_collector("nvd", credentials)
-    result = await nvd.collect()
+Provides modular threat intelligence collectors, each handling a single data source.
 
 Available collectors:
     - nvd: NIST National Vulnerability Database
@@ -21,11 +10,11 @@ Available collectors:
     - threatq: ThreatQ threat intelligence platform
     - rapid7: Rapid7 InsightVM (vulnerability definitions & enrichment)
     - rapid7-scans: Rapid7 InsightVM (asset vulnerability exposure data)
+    - osint: Curated public RSS/Atom feeds
 
 Configuration:
-    Set ENABLED_COLLECTORS environment variable to control which
-    collectors are active (comma-separated list).
-    Example: ENABLED_COLLECTORS=nvd,crowdstrike,rapid7
+    Enable/disable collectors in config/collectors.yaml.
+    Environment variable ENABLED_COLLECTORS overrides the YAML if set.
 """
 
 from src.collectors.base import BaseCollector
@@ -35,11 +24,10 @@ from src.collectors.crowdstrike_collector import CrowdStrikeCollector
 from src.collectors.threatq_collector import ThreatQCollector
 from src.collectors.rapid7_collector import Rapid7Collector
 from src.collectors.rapid7_scan_collector import Rapid7ScanCollector
+from src.collectors.osint_collector import OSINTCollector
 from src.collectors.registry import (
     collect_all,
     get_collector,
-    get_all_collectors,
-    get_enabled_collector_instances,
     get_data_by_source,
     list_available_collectors,
     COLLECTOR_REGISTRY,
@@ -55,11 +43,10 @@ __all__ = [
     "ThreatQCollector",
     "Rapid7Collector",
     "Rapid7ScanCollector",
+    "OSINTCollector",
     # Registry functions
     "collect_all",
     "get_collector",
-    "get_all_collectors",
-    "get_enabled_collector_instances",
     "get_data_by_source",
     "list_available_collectors",
     "COLLECTOR_REGISTRY",
