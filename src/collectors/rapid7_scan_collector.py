@@ -10,6 +10,7 @@ This collector complements rapid7_collector.py:
 - rapid7_scan_collector.py: Asset exposure data (which servers/endpoints are affected)
 """
 import logging
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 from collections import defaultdict
 
@@ -349,6 +350,9 @@ class Rapid7ScanCollector(BaseCollector):
         cve_vuln_ids = defaultdict(list)  # Track vuln IDs for each CVE
         cve_titles = {}  # Track vulnerability title per CVE
         cve_exploit_info = {}  # Track exploit/malware data per CVE
+        cve_added_dates = {}  # Track earliest 'added' date per CVE
+        
+        now = datetime.now(timezone.utc)
         
         logger.info(f"Building CVE exposure map from {len(vulns)} vulnerability findings...")
         
@@ -371,6 +375,15 @@ class Rapid7ScanCollector(BaseCollector):
             if isinstance(malware_kits, list):
                 malware_kits = len(malware_kits)
             
+            # Parse the 'added' date for weeks-detected calculation
+            added_str = vuln.get("added", "")
+            added_date = None
+            if added_str:
+                try:
+                    added_date = datetime.fromisoformat(added_str.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    pass
+            
             for cve_id in cve_ids:
                 if not cve_id:
                     continue
@@ -383,6 +396,8 @@ class Rapid7ScanCollector(BaseCollector):
                         "exploits": exploits_count if isinstance(exploits_count, int) else 0,
                         "malware_kits": malware_kits if isinstance(malware_kits, int) else 0,
                     }
+                if added_date and (cve_id not in cve_added_dates or added_date < cve_added_dates[cve_id]):
+                    cve_added_dates[cve_id] = added_date
         
         # Build the exposure map
         # Note: Since /vulnerabilities returns definitions without asset context,
@@ -391,6 +406,11 @@ class Rapid7ScanCollector(BaseCollector):
         # The count represents unique vulnerability instances found.
         cve_asset_map = {}
         for cve_id, count in cve_counts.items():
+            weeks = 1
+            if cve_id in cve_added_dates:
+                delta = now - cve_added_dates[cve_id]
+                weeks = max(1, delta.days // 7)
+            
             cve_asset_map[cve_id] = {
                 "asset_count": count,
                 "asset_ids": set(),
@@ -398,6 +418,7 @@ class Rapid7ScanCollector(BaseCollector):
                 "asset_types": {"system"},
                 "title": cve_titles.get(cve_id, ""),
                 "exploit_info": cve_exploit_info.get(cve_id, {}),
+                "weeks_detected": weeks,
             }
         
         # Return the raw map (will be formatted by caller after enrichment)
@@ -739,6 +760,7 @@ class Rapid7ScanCollector(BaseCollector):
                 "sample_assets": asset_names[:5],
                 "title": info.get("title", ""),
                 "exploit_info": info.get("exploit_info", {}),
+                "weeks_detected": info.get("weeks_detected", 1),
             }
         
         logger.info(f"Built CVE exposure map: {len(cve_exposure_summary)} CVEs found across {total_items} items")

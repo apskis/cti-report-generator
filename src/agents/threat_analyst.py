@@ -836,6 +836,14 @@ Do not use Hyphens."""
                         cve_entry["exploited_by"] = backup_exploited_by
                         gaps_filled += 1
 
+            # Fill weeks_detected from Rapid7 scan 'added' date
+            weeks = cve_entry.get("weeks_detected", 1)
+            if weeks in (1, "1", "New", "new", None):
+                scan_weeks = r7_scan.get("weeks_detected")
+                if scan_weeks and scan_weeks > 1:
+                    cve_entry["weeks_detected"] = scan_weeks
+                    gaps_filled += 1
+
         # Filter: only keep CVEs that exist in Rapid7 scans
         if rapid7_cve_map:
             original_count = len(cve_analysis)
@@ -960,7 +968,7 @@ Do not use Hyphens."""
                     "affected_product": affected_product,
                     "exploited_by": exploited_by,
                     "exposure": exposure_string,
-                    "weeks_detected": 1
+                    "weeks_detected": r7_scan.get("weeks_detected", 1),
                 })
             
             # Sort by priority (P1 first), then by exposure count descending
