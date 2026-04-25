@@ -19,7 +19,8 @@ Available collectors:
     - intel471: Intel471 Titan API
     - crowdstrike: CrowdStrike Falcon Intelligence
     - threatq: ThreatQ threat intelligence platform
-    - rapid7: Rapid7 InsightVM
+    - rapid7: Rapid7 InsightVM (vulnerability definitions & enrichment)
+    - rapid7-scans: Rapid7 InsightVM (asset vulnerability exposure data)
 
 Configuration:
     Set ENABLED_COLLECTORS environment variable to control which
@@ -33,6 +34,7 @@ from src.collectors.intel471_collector import Intel471Collector
 from src.collectors.crowdstrike_collector import CrowdStrikeCollector
 from src.collectors.threatq_collector import ThreatQCollector
 from src.collectors.rapid7_collector import Rapid7Collector
+from src.collectors.rapid7_scan_collector import Rapid7ScanCollector
 from src.collectors.registry import (
     collect_all,
     get_collector,
@@ -52,6 +54,7 @@ __all__ = [
     "CrowdStrikeCollector",
     "ThreatQCollector",
     "Rapid7Collector",
+    "Rapid7ScanCollector",
     # Registry functions
     "collect_all",
     "get_collector",

@@ -6,15 +6,20 @@ An Azure Functions-based Cyber Threat Intelligence (CTI) reporting system that a
 
 - **Multi-source threat intelligence collection** from:
   - NVD (NIST National Vulnerability Database)
-  - Intel471 Titan API
-  - CrowdStrike Falcon Intelligence
-  - ThreatQ
-  - Rapid7 InsightVM
+  - Intel471 Titan API (underground threat intelligence)
+  - CrowdStrike Falcon Intelligence (threat actors, detections)
+  - ThreatQ (IOC management)
+  - Rapid7 InsightVM (vulnerability enrichment)
+  - Rapid7 InsightVM Scans (environmental CVE exposure with asset counts)
+  - OSINT (curated public news and research feeds you control)
 
 - **AI-powered analysis** using Azure OpenAI and Semantic Kernel
+- **Automatic AI gap-filling** from Rapid7/NVD backup when AI output is incomplete
+- **VPN connectivity check** before analysis with interactive continue/stop prompt
 - **Automated Word document generation** with executive summaries and recommendations
 - **Azure Blob Storage** integration for report hosting with SAS URLs
 - **Modular collector architecture** - easily enable/disable sources
+- **Reports always saved locally**, even when uploading to Azure
 
 ## Prerequisites
 
@@ -31,25 +36,37 @@ An Azure Functions-based Cyber Threat Intelligence (CTI) reporting system that a
 
 ```
 cti-report-generator/
-├── collectors/                  # Modular API collectors
-│   ├── __init__.py
-│   ├── base.py                 # Base collector class
-│   ├── http_utils.py           # HTTP client with retry logic
-│   ├── nvd_collector.py
-│   ├── intel471_collector.py
-│   ├── crowdstrike_collector.py
-│   ├── threatq_collector.py
-│   ├── rapid7_collector.py
-│   └── registry.py             # Collector registry
-├── tests/                       # Unit tests
-├── config.py                    # Application configuration
-├── models.py                    # Data type definitions
-├── function_app.py              # Azure Function entry point
-├── keyvault_helper.py           # Key Vault access
-├── threat_analyst_agent.py      # AI analysis engine
-├── report_generator.py          # Word document generation
+├── config/
+│   └── osint_sources.yaml          # OSINT feed configuration (user-editable)
+├── src/
+│   ├── collectors/                  # Modular API collectors
+│   │   ├── base.py                 # Base collector class
+│   │   ├── http_utils.py           # HTTP client with retry logic
+│   │   ├── nvd_collector.py
+│   │   ├── intel471_collector.py
+│   │   ├── crowdstrike_collector.py
+│   │   ├── threatq_collector.py
+│   │   ├── rapid7_collector.py
+│   │   ├── rapid7_scan_collector.py
+│   │   ├── osint_collector.py      # Curated OSINT RSS feeds
+│   │   └── registry.py             # Collector registry
+│   ├── agents/
+│   │   └── threat_analyst.py       # AI analysis engine
+│   ├── reports/
+│   │   ├── base.py                 # Report base class
+│   │   ├── weekly_report.py        # Weekly report generator
+│   │   ├── quarterly_report.py     # Quarterly strategic report
+│   │   └── blob_storage.py         # Azure Blob upload
+│   ├── core/
+│   │   ├── config.py               # Application configuration
+│   │   ├── models.py               # Data type definitions
+│   │   └── keyvault.py             # Key Vault access
+│   └── enrichment/
+│       └── cve_enricher.py         # CISA KEV + product enrichment
+├── tests/                           # Unit tests
+├── function_app.py                  # Azure Function entry point
+├── test_local.py                    # Local testing CLI
 ├── requirements.txt
-├── requirements-dev.txt
 └── local.settings.json.template
 ```
 
@@ -265,6 +282,87 @@ Storage account name, OpenAI endpoint, and API keys are stored in Key Vault; the
 class EnrichmentConfig:
     enable_web_search: bool = False  # Changed from True
 ```
+
+### Rapid7 Dual-Collector Architecture
+
+The system uses **two Rapid7 collectors** to provide complete vulnerability intelligence:
+
+#### `rapid7` - Vulnerability Enrichment
+- **Purpose:** Provides vulnerability metadata and threat intelligence
+- **API:** `/vm/v4/integration/vulnerabilities`
+- **Data:** CVE details, CVSS scores, exploit availability, malware kits, descriptions
+
+#### `rapid7-scans` - Environmental Exposure
+- **Purpose:** Maps CVEs to actual affected assets in your environment
+- **API:** `/vm/v4/integration/assets` + `/vm/v4/integration/asset_vulnerabilities`
+- **Data:** Asset counts per CVE (e.g., "12 servers", "3 databases"), asset type classification
+
+**How it works:**
+1. `rapid7-scans` queries your scanned assets
+2. For each asset, fetches its vulnerabilities
+3. Builds a CVE → asset count mapping
+4. Threat analyst merges this with vulnerability enrichment data
+5. Reports show accurate exposure: "CVE-2024-1234 affects **12 servers**"
+6. Only CVEs detected in your environment are included in the report
+
+Both collectors use the same API key and are enabled by default.
+
+### OSINT Collector
+
+The OSINT collector pulls articles from public RSS/Atom feeds you control.
+
+#### Configuration: `config/osint_sources.yaml`
+
+```yaml
+sources:
+  - name: "Krebs on Security"
+    url: "https://krebsonsecurity.com/feed/"
+    type: rss
+    category: "Threat Research"
+    enabled: true
+
+lookback_days: 7
+max_articles_per_source: 5
+max_total_articles: 30
+```
+
+#### Managing Sources
+
+**Add a source:**
+```yaml
+  - name: "My New Source"
+    url: "https://example.com/feed/"
+    type: rss
+    category: "Custom Category"
+    enabled: true
+```
+
+**Disable a source** without removing it:
+```yaml
+    enabled: false
+```
+
+**Default sources included:**
+- CISA Alerts, US-CERT Current Activity
+- Krebs on Security, The Hacker News, BleepingComputer, Dark Reading
+- Microsoft Threat Intelligence, Google TAG, Mandiant
+- Rapid7 Blog
+
+No API key required. The collector automatically extracts CVE mentions from articles and feeds them into the AI analysis.
+
+### VPN / Connectivity Check
+
+When running locally, the script checks if Azure OpenAI is reachable before collecting data. If blocked by VNet:
+
+```
+⚠  Azure OpenAI is NOT reachable
+Are you connected to the VPN?
+
+[1] Stop - I'll connect to VPN first
+[2] Continue without AI (use Rapid7/NVD data directly)
+```
+
+Option 2 generates the report using Rapid7 scan data cross-referenced with NVD, without AI analysis.
 
 ## Deployment to Azure
 

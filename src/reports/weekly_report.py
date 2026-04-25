@@ -88,6 +88,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._add_sector_threat_activity(analysis_result)
             self._add_exploitation_indicators(analysis_result)
             self._add_recommended_actions(analysis_result)
+            self._add_sources()
             self._add_footer()
 
             logger.info("Weekly CTI Report generated successfully")
@@ -98,19 +99,23 @@ class WeeklyReportGenerator(BaseReportGenerator):
             raise
 
     def _calculate_date_range(self) -> None:
-        """Calculate the week's date range (Monday to Sunday)."""
+        """Calculate the reporting period based on actual data lookback window."""
+        from src.core.config import collector_config
         today = self.created_at
-        # Find Monday of current week
-        self.week_start = today - timedelta(days=today.weekday())
-        # Find Sunday of current week
-        self.week_end = self.week_start + timedelta(days=6)
+        lookback_days = collector_config.nvd_lookback_days
+        self.period_end = today
+        self.period_start = today - timedelta(days=lookback_days)
+        self.lookback_days = lookback_days
 
     def _add_header(self) -> None:
         """Add banner, report code in header bar; then title block on single line."""
         week_num = self._get_week_number()
         year = self._get_year()
         report_id = f"CTI-WK-{year}-{week_num:02d}"
-        date_range = f"Week {week_num} | {self.week_start.strftime('%B %d')} to {self.week_end.strftime('%d, %Y')}"
+        date_range = (
+            f"{self.lookback_days}-Day Lookback | "
+            f"{self.period_start.strftime('%B %d')} to {self.period_end.strftime('%B %d, %Y')}"
+        )
 
         # Banner in header
         self._add_banner_header()
@@ -216,7 +221,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         subtitle.paragraph_format.space_after = Pt(4)
         sub_run = subtitle.add_run(
             f"Vulnerability and threat actor metrics from automated collection "
-            f"({self.week_start.strftime('%B %d')} to {self.week_end.strftime('%d, %Y')})."
+            f"({self.period_start.strftime('%B %d')} to {self.period_end.strftime('%B %d, %Y')})."
         )
         sub_run.font.size = Pt(9)
         sub_run.font.italic = True
@@ -313,6 +318,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
     def _format_exposure_cell(self, cve: Dict[str, Any]) -> str:
         """Format Exposure column as count of servers/databases/endpoints from Rapid7 only. Never use vulnerability description."""
+        # Debug: log what we received for this CVE
+        cve_id = cve.get("cve_id", "Unknown")
+        
         # Only use fields that represent asset/server/database counts (never description)
         raw = (
             cve.get("exposure")
@@ -320,11 +328,15 @@ class WeeklyReportGenerator(BaseReportGenerator):
             or cve.get("asset_count")
             or cve.get("affected_assets")
         )
+        
+        logger.debug(f"CVE {cve_id} exposure fields - exposure: {cve.get('exposure')}, "
+                    f"asset_count: {cve.get('asset_count')}, raw: {raw}")
+        
         if isinstance(raw, str) and raw.strip():
             s = raw.strip()
             # Use only if it looks like a count: "N servers", "N databases", "N endpoints", or "Production"
             lower = s.lower()
-            if any(lower.endswith(x) for x in ("servers", "server", "databases", "database", "endpoints", "endpoint")):
+            if any(lower.endswith(x) for x in ("servers", "server", "databases", "database", "endpoints", "endpoint", "systems", "system", "workstations", "workstation", "cloud servers", "cloud instances")):
                 return s[:50]
             if s in ("Production", "N/A", "—", "-"):
                 return s
@@ -371,7 +383,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         if cve_analysis:
             table = self.doc.add_table(rows=1, cols=6)
-            headers = ["CVE ID", "Affected Product", "Exposure", "Exploited By", "Risk", "Wks"]
+            headers = ["CVE ID", "Affected Product", "Exposure", "Exploited By", "Priority", "Wks"]
             header_cells = table.rows[0].cells
             table_caption_7pt = Pt(7)
 
@@ -399,8 +411,20 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 cells[2].text = self._format_exposure_cell(cve)
                 exploited_by = cve.get("exploited_by", "None known")
                 cells[3].text = exploited_by
-                risk_text = cve.get("risk", cve.get("severity", "N/A"))
-                cells[4].text = risk_text
+                
+                # Priority: Use priority if available, otherwise fall back to severity, default to P2
+                priority_text = cve.get("priority", "")
+                if not priority_text:
+                    severity = cve.get("severity", "").upper()
+                    if severity == "CRITICAL":
+                        priority_text = "P1"
+                    elif severity == "HIGH":
+                        priority_text = "P2"
+                    elif severity == "MEDIUM":
+                        priority_text = "P3"
+                    else:
+                        priority_text = "P2"
+                cells[4].text = priority_text
 
                 # Parse weeks for display and 3+ weeks highlighting
                 weeks = cve.get("weeks_detected", cve.get("wks", 1))
@@ -449,14 +473,14 @@ class WeeklyReportGenerator(BaseReportGenerator):
                         run.font.size = FontSizes.SUBTITLE
                         run.font.color.rgb = BrandColors.TEXT_DARK
 
-                # Risk: pastel background based on severity
-                risk_upper = risk_text.upper() if risk_text else ""
-                if risk_upper in ("CRITICAL", "HIGH", "P1", "P2"):
+                # Priority: pastel background based on priority level
+                priority_upper = priority_text.upper() if priority_text else ""
+                if priority_upper in ("P1", "CRITICAL", "HIGH"):
                     self._set_cell_shading(cells[4], BrandColors.RISK_HIGH_BG_LIGHT)
-                elif risk_upper in ("MEDIUM", "MODERATE", "P3"):
+                elif priority_upper in ("P2", "MEDIUM", "MODERATE"):
                     self._set_cell_shading(cells[4], BrandColors.RISK_MED_BG_LIGHT)
                 else:
-                    # Low or unknown - light green
+                    # P3 or unknown - light green
                     self._set_cell_shading(cells[4], BrandColors.RISK_LOW_BG_LIGHT)
                 self._set_cell_borders(cells[4], "CCCCCC")
                 for para in cells[4].paragraphs:
@@ -482,11 +506,14 @@ class WeeklyReportGenerator(BaseReportGenerator):
                         run.font.size = FontSizes.SUBTITLE
                         run.font.color.rgb = BrandColors.TEXT_DARK
 
-            # Caption below table
+            # Caption below table with priority urgency guide
             caption = self.doc.add_paragraph()
             caption_run = caption.add_run(
-                "Wks = consecutive weeks detected. Items at 3+ weeks (yellow highlight) are persistent and require attention. "
-                "Items at 4+ weeks (red highlight) are long overdue. "
+                "Priority: P1 = Address immediately (24-48 hours) • "
+                "P2 = Patch within 7-14 days • "
+                "P3 = Schedule within 30 days   |   "
+                "Wks = consecutive weeks detected. Items at 3+ weeks (yellow) are persistent and require escalation. "
+                "Items at 4+ weeks (red) are long overdue. "
                 "Source: Rapid7 InsightVM scans."
             )
             caption_run.font.size = table_caption_7pt
@@ -636,6 +663,37 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         self.doc.add_paragraph()
 
+    def _add_sources(self) -> None:
+        """Add a Sources section listing public intelligence sources used."""
+        logger.info("Adding Sources section")
+
+        h = self.doc.add_heading("Sources", level=1)
+        self._style_heading_1(h)
+
+        sources = [
+            ("NIST National Vulnerability Database (NVD)", "https://nvd.nist.gov/"),
+            ("CISA Known Exploited Vulnerabilities (KEV) Catalog", "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"),
+            ("Rapid7 InsightVM", "Asset vulnerability scans and exposure data"),
+            ("CrowdStrike Falcon Intelligence", "Threat actor profiles and APT tracking"),
+            ("Intel471 Titan", "Underground threat intelligence and breach reporting"),
+            ("ThreatQ", "Indicator of compromise (IOC) aggregation"),
+            ("MITRE ATT&CK", "https://attack.mitre.org/"),
+        ]
+
+        for name, detail in sources:
+            para = self.doc.add_paragraph(style="List Bullet")
+            name_run = para.add_run(f"{name}")
+            name_run.font.size = FontSizes.BODY_SMALL
+            name_run.font.bold = True
+            if detail.startswith("http"):
+                detail_run = para.add_run(f"  {detail}")
+            else:
+                detail_run = para.add_run(f" — {detail}")
+            detail_run.font.size = FontSizes.BODY_SMALL
+            detail_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+
+        self.doc.add_paragraph()
+
     def _add_footer(self) -> None:
         """Add footer with contact info and data sources."""
         logger.info("Adding footer")
@@ -651,13 +709,4 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         self.doc.add_paragraph()
 
-        # Data sources
-        sources = self.doc.add_paragraph()
-        sources_run = sources.add_run(
-            "Data Sources: Compiled via automated collection from NVD, CrowdStrike Falcon Intelligence, "
-            "Intel471, Rapid7 InsightVM, and ThreatQ. Analysis performed by AI-assisted threat analysis."
-        )
-        sources_run.font.size = FontSizes.FOOTNOTE
-        sources_run.font.bold = True
-        sources_run.font.color.rgb = BrandColors.GRAY_LIGHT
-        sources.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # Data sources - removed, now covered by Sources section

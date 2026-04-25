@@ -72,6 +72,10 @@ class ThreatQCollector(BaseCollector):
         client_id = self.credentials.get("threatq_client_id", "")
         client_secret = self.credentials.get("threatq_client_secret", "")
 
+        # Debug: Log what we received (without exposing secrets)
+        logger.info(f"ThreatQ credentials check - URL exists: {bool(threatq_url)}, "
+                   f"client_id exists: {bool(client_id)}, client_secret exists: {bool(client_secret)}")
+
         if not threatq_url:
             logger.info("ThreatQ URL not provided, skipping ThreatQ data collection")
             return CollectorResult(
@@ -82,7 +86,8 @@ class ThreatQCollector(BaseCollector):
             )
 
         if not client_id or not client_secret:
-            logger.warning("ThreatQ OAuth credentials not provided, skipping")
+            logger.warning(f"ThreatQ OAuth credentials not provided - "
+                         f"client_id: {bool(client_id)}, client_secret: {bool(client_secret)}")
             return CollectorResult(
                 source=self.source_name,
                 success=True,
@@ -186,6 +191,7 @@ class ThreatQCollector(BaseCollector):
         }
 
         logger.info(f"Requesting OAuth token from ThreatQ: {token_url}")
+        logger.debug(f"ThreatQ OAuth body keys: {list(body.keys())}, grant_type: {body.get('grant_type')}")
 
         try:
             response = await client.post_raw_response(token_url, json_data=body)

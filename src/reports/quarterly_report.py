@@ -99,6 +99,7 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             self._add_geopolitical_landscape(analysis_result)
             self._add_looking_ahead(analysis_result)
             self._add_leadership_recommendations(analysis_result)
+            self._add_sources()
             self._add_footer()
 
             logger.info("Quarterly Strategic CTI Report generated successfully")
@@ -109,28 +110,24 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             raise
 
     def _calculate_quarter_info(self) -> None:
-        """Calculate the quarter's date range and number."""
+        """Calculate the reporting period based on actual quarterly lookback window."""
+        from src.core.config import collector_config
         today = self.created_at
-        # Determine quarter
         month = today.month
-        year = today.year
+
+        lookback_days = collector_config.intel471_quarterly_lookback_days
+        self.period_end = today
+        self.period_start = today - timedelta(days=lookback_days)
+        self.lookback_days = lookback_days
 
         if month <= 3:
             self.quarter = 1
-            self.quarter_start = datetime(year, 1, 1)
-            self.quarter_end = datetime(year, 3, 31)
         elif month <= 6:
             self.quarter = 2
-            self.quarter_start = datetime(year, 4, 1)
-            self.quarter_end = datetime(year, 6, 30)
         elif month <= 9:
             self.quarter = 3
-            self.quarter_start = datetime(year, 7, 1)
-            self.quarter_end = datetime(year, 9, 30)
         else:
             self.quarter = 4
-            self.quarter_start = datetime(year, 10, 1)
-            self.quarter_end = datetime(year, 12, 31)
 
     def _get_previous_quarter(self) -> str:
         """Get the previous quarter string (e.g., 'Q4 2025')."""
@@ -165,10 +162,11 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         # Reduce spacing after title
         title_para.paragraph_format.space_after = Pt(0)
 
-        # Subtitle - Quarter date range (using Subtitle style, gray, centered)
-        start_month = self.quarter_start.strftime("%B")
-        end_month = self.quarter_end.strftime("%B")
-        date_range = f"Q{self.quarter} {year} ({start_month} to {end_month})"
+        # Subtitle - Reporting period based on actual lookback
+        date_range = (
+            f"{self.lookback_days}-Day Lookback | "
+            f"{self.period_start.strftime('%B %d')} to {self.period_end.strftime('%B %d, %Y')}"
+        )
 
         subtitle_para = self.doc.add_paragraph(date_range, style="Subtitle")
         for run in subtitle_para.runs:
@@ -1060,6 +1058,44 @@ and vulnerabilities observed are consistent with those historically used against
 
         self.doc.add_paragraph()
 
+    def _add_sources(self) -> None:
+        """Add a Sources section listing public intelligence sources used."""
+        logger.info("Adding Sources section")
+
+        h = self.doc.add_heading("Sources", level=1)
+        for run in h.runs:
+            run.font.name = "Arial"
+            run.font.size = Pt(14)
+            run.font.color.rgb = BrandColors.ORANGE_PRIMARY
+
+        sources = [
+            ("CrowdStrike Falcon Intelligence", "Threat actor profiles, APT campaigns, and adversary tracking"),
+            ("Intel471 Titan", "Underground threat intelligence, breach reporting, and actor monitoring"),
+            ("NIST National Vulnerability Database (NVD)", "https://nvd.nist.gov/"),
+            ("CISA Known Exploited Vulnerabilities (KEV) Catalog", "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"),
+            ("HHS Breach Portal", "https://ocrportal.hhs.gov/ocr/breach/breach_report.jsf"),
+            ("FBI Internet Crime Complaint Center (IC3)", "https://www.ic3.gov/"),
+            ("SEC EDGAR Filings", "https://www.sec.gov/cgi-bin/browse-edgar"),
+            ("MITRE ATT&CK", "https://attack.mitre.org/"),
+            ("Open Source Intelligence (OSINT)", "Industry publications, state AG notifications, and vendor advisories"),
+        ]
+
+        for name, detail in sources:
+            para = self.doc.add_paragraph(style="List Bullet")
+            name_run = para.add_run(f"{name}")
+            name_run.font.name = "Arial"
+            name_run.font.size = FontSizes.BODY_SMALL
+            name_run.font.bold = True
+            if detail.startswith("http"):
+                detail_run = para.add_run(f"  {detail}")
+            else:
+                detail_run = para.add_run(f" — {detail}")
+            detail_run.font.name = "Arial"
+            detail_run.font.size = FontSizes.BODY_SMALL
+            detail_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+
+        self.doc.add_paragraph()
+
     def _add_footer(self) -> None:
         """Add footer with contact info, sources, TLP classification, and page number."""
         logger.info("Adding footer")
@@ -1076,24 +1112,7 @@ and vulnerabilities observed are consistent with those historically used against
 
         self.doc.add_paragraph()
 
-        # Data sources
-        sources = self.doc.add_paragraph()
-        sources_run = sources.add_run(
-            "Sources: CrowdStrike Falcon Intelligence, Intel471 Titan, HHS Breach Portal, "
-            "FBI IC3, SEC filings, state attorney general notifications, FDA guidance publications, "
-            "and open source intelligence. Breach counts based on public disclosures and may not "
-            "reflect total incidents."
-        )
-        sources_run.font.name = "Arial"
-        sources_run.font.size = FontSizes.FOOTNOTE
-        sources_run.font.bold = True
-        sources_run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)  # White text
-        sources.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # Underline "open source intelligence" if present
-        for run in sources.runs:
-            if "open source intelligence" in run.text.lower():
-                run.font.underline = True
+        # Data sources - removed, now covered by Sources section
 
         # Add TLP classification and page number to document footer
         section = self.doc.sections[0]

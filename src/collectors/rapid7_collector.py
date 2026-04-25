@@ -118,6 +118,14 @@ class Rapid7Collector(BaseCollector):
     ) -> Dict[str, Any]:
         """
         Fetch vulnerabilities from Rapid7.
+        
+        NOTE: The Integration API v4 (/vm/v4/integration/vulnerabilities) returns
+        vulnerability DEFINITIONS from Rapid7's database, but does NOT include
+        asset counts from YOUR environment. To get actual exposure data (how many
+        servers/endpoints are affected), you need to use the Rapid7 API v3
+        (Security Console API) endpoints for vulnerability findings or scan data.
+        
+        See: https://help.rapid7.com/insightvm/en-us/api/index.html
 
         Args:
             client: HTTP client
@@ -233,6 +241,15 @@ class Rapid7Collector(BaseCollector):
 
             # Affected asset count (servers/endpoints) for Exposure column in reports
             _raw = vuln.get("affectedAssetCount") or vuln.get("assetCount") or vuln.get("affected_assets")
+            
+            # Debug: log all possible asset count fields
+            if not _raw:
+                logger.debug(f"Asset count fields for {vuln.get('id')}: "
+                           f"affectedAssetCount={vuln.get('affectedAssetCount')}, "
+                           f"assetCount={vuln.get('assetCount')}, "
+                           f"affected_assets={vuln.get('affected_assets')}, "
+                           f"all keys: {list(vuln.keys())}")
+            
             try:
                 asset_count = int(_raw) if _raw is not None else None
             except (TypeError, ValueError):

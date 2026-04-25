@@ -121,12 +121,15 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         crowdstrike_data = data_by_source.get("CrowdStrike", [])
         threatq_data = data_by_source.get("ThreatQ", [])
         rapid7_data = data_by_source.get("Rapid7", [])
+        rapid7_scans_data = data_by_source.get("Rapid7-Scans", [])
+        osint_data = data_by_source.get("OSINT", [])
 
         # Log collection statistics
         logger.info(
             f'Data collected - CVEs: {len(cve_data)}, Intel471: {len(intel471_data)}, '
             f'CrowdStrike: {len(crowdstrike_data)}, ThreatQ: {len(threatq_data)}, '
-            f'Rapid7: {len(rapid7_data)}'
+            f'Rapid7: {len(rapid7_data)}, Rapid7-Scans: {len(rapid7_scans_data)}, '
+            f'OSINT: {len(osint_data)}'
         )
 
         # Log any collection failures
@@ -149,7 +152,9 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
             intel471_data,
             crowdstrike_data,
             threatq_data,
-            rapid7_data
+            rapid7_data,
+            rapid7_scans_data,
+            osint_data
         )
 
         # Merge Rapid7 and CrowdStrike (Spotlight) asset/device counts into CVE analysis for Exposure column

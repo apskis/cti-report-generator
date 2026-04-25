@@ -1,0 +1,112 @@
+# OSINT Sources Configuration
+# Add your vetted public intelligence sources here.
+# The collector will pull recent articles from these RSS/Atom feeds.
+#
+# Supported types:
+#   rss  - Standard RSS or Atom feed URL (preferred, most reliable)
+#
+# Each source needs:
+#   name     - Display name for the source
+#   url      - RSS/Atom feed URL
+#   type     - "rss" (only supported type for now)
+#   category - Category tag for organizing in reports
+#   enabled  - true/false to quickly toggle sources on/off
+#
+# To find RSS feeds for a site:
+#   - Check for /feed, /rss, /atom at the end of the URL
+#   - Look for the RSS icon on the page
+#   - Add /feed/ to most WordPress-based blogs
+
+sources:
+
+  # --- Government & Regulatory ---
+  - name: "CISA Alerts"
+    url: "https://www.cisa.gov/cybersecurity-advisories/all.xml"
+    type: rss
+    category: "Government Advisory"
+    enabled: true
+
+  - name: "US-CERT Current Activity"
+    url: "https://www.cisa.gov/uscert/ncas/current-activity.xml"
+    type: rss
+    category: "Government Advisory"
+    enabled: true
+
+  # --- Threat Intelligence Blogs ---
+  - name: "Krebs on Security"
+    url: "https://krebsonsecurity.com/feed/"
+    type: rss
+    category: "Threat Research"
+    enabled: true
+
+  - name: "The Hacker News"
+    url: "https://feeds.feedburner.com/TheHackersNews"
+    type: rss
+    category: "Threat News"
+    enabled: true
+
+  - name: "BleepingComputer"
+    url: "https://www.bleepingcomputer.com/feed/"
+    type: rss
+    category: "Threat News"
+    enabled: true
+
+  - name: "Dark Reading"
+    url: "https://www.darkreading.com/rss.xml"
+    type: rss
+    category: "Industry News"
+    enabled: true
+
+  # --- Vendor Threat Research ---
+  - name: "Microsoft Threat Intelligence"
+    url: "https://www.microsoft.com/en-us/security/blog/feed/"
+    type: rss
+    category: "Vendor Research"
+    enabled: true
+
+  - name: "Google Threat Analysis Group"
+    url: "https://blog.google/threat-analysis-group/rss/"
+    type: rss
+    category: "Vendor Research"
+    enabled: true
+
+  - name: "Mandiant Blog"
+    url: "https://www.mandiant.com/resources/blog/rss.xml"
+    type: rss
+    category: "Vendor Research"
+    enabled: true
+
+  - name: "Recorded Future"
+    url: "https://www.recordedfuture.com/feed"
+    type: rss
+    category: "Vendor Research"
+    enabled: false
+
+  # --- Healthcare/Biotech Specific ---
+  - name: "HHS Cybersecurity"
+    url: "https://www.hhs.gov/hipaa/for-professionals/security/guidance/cybersecurity/index.html"
+    type: rss
+    category: "Healthcare"
+    enabled: false
+
+  # --- Vulnerability Research ---
+  - name: "Rapid7 Blog"
+    url: "https://blog.rapid7.com/rss/"
+    type: rss
+    category: "Vulnerability Research"
+    enabled: true
+
+  - name: "Qualys Threat Research"
+    url: "https://blog.qualys.com/feed"
+    type: rss
+    category: "Vulnerability Research"
+    enabled: false
+
+# Lookback in days - only include articles published within this window
+lookback_days: 7
+
+# Maximum articles per source (to avoid flooding the report)
+max_articles_per_source: 5
+
+# Maximum total articles across all sources
+max_total_articles: 30

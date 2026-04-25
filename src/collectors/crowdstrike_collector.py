@@ -86,7 +86,12 @@ class CrowdStrikeCollector(BaseCollector):
                 indicators = await self._fetch_indicators(client, base_url, access_token)
                 apt_data.extend(indicators)
 
-                # Step 4: Optionally fetch Spotlight vulnerabilities for Exposure column (CVE -> device count)
+                # Step 4: Fetch detections (requires Detections: Read permission)
+                detections = await self._fetch_detections(client, base_url, access_token)
+                apt_data.extend(detections)
+
+                # Step 5: Optionally fetch Spotlight vulnerabilities for Exposure column (CVE -> device count)
+                # Note: Requires Spotlight license - will gracefully skip if not available
                 spotlight_vulns = await self._fetch_spotlight_vulnerabilities(
                     client, base_url, access_token
                 )
@@ -279,6 +284,92 @@ class CrowdStrikeCollector(BaseCollector):
 
         return indicators_data
 
+    async def _fetch_detections(
+        self,
+        client: HTTPClient,
+        base_url: str,
+        access_token: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch recent detections from CrowdStrike (requires Detections: Read permission).
+        
+        This provides information about threats detected in YOUR environment,
+        which is valuable for understanding what threats are actively targeting you.
+        
+        Args:
+            client: HTTP client
+            base_url: CrowdStrike API base URL
+            access_token: OAuth access token
+            
+        Returns:
+            List of detection dictionaries
+        """
+        detections_url = f"{base_url}/detects/queries/detects/v1"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Get detections from the last N days
+        start_date, _ = self.get_date_range()
+        filter_date = start_date.strftime("%Y-%m-%dT00:00:00Z")
+        
+        # FQL filter: get recent detections, exclude false positives
+        fql_filter = f"created_timestamp:>='{filter_date}'+status:!'false_positive'"
+        
+        params = {
+            "filter": fql_filter,
+            "limit": 100,
+            "sort": "created_timestamp.desc"
+        }
+        
+        detections_data = []
+        
+        try:
+            logger.info(f"Fetching detections from: {detections_url}")
+            
+            # First, get detection IDs
+            response = await client.get_raw_response(detections_url, headers=headers, params=params)
+            
+            if response.status == 200:
+                data = await response.json()
+                detection_ids = data.get("resources", [])
+                
+                if detection_ids:
+                    # Fetch detailed detection info
+                    details_url = f"{base_url}/detects/entities/summaries/GET/v1"
+                    details_response = await client.post_raw_response(
+                        details_url,
+                        headers=headers,
+                        json_data={"ids": detection_ids[:50]}  # Limit to 50 most recent
+                    )
+                    
+                    if details_response.status == 200:
+                        details_data = await details_response.json()
+                        
+                        for detection in details_data.get("resources", []):
+                            # Only include medium severity or higher
+                            severity = detection.get("max_severity", 0)
+                            if severity >= 50:  # Medium = 50, High = 70, Critical = 90
+                                detections_data.append(self._parse_detection(detection))
+                        
+                        logger.info(f"Retrieved {len(detections_data)} detections from CrowdStrike")
+                    else:
+                        details_text = await details_response.text()
+                        logger.warning(f"Detections details API returned {details_response.status}: {details_text[:200]}")
+                else:
+                    logger.info("No recent detections found in CrowdStrike")
+            elif response.status == 403:
+                logger.info("CrowdStrike Detections API not available (check API permissions: 'Detections - Read')")
+            else:
+                response_text = await response.text()
+                logger.error(f"CrowdStrike detections API returned status {response.status}: {response_text[:500]}")
+                
+        except Exception as e:
+            logger.warning(f"Error fetching CrowdStrike detections (non-critical): {e}")
+        
+        return detections_data
+
     async def _fetch_spotlight_vulnerabilities(
         self,
         client: HTTPClient,
@@ -316,9 +407,16 @@ class CrowdStrikeCollector(BaseCollector):
                 spotlight_url, headers=headers, params=params
             )
             if response.status != 200:
-                logger.warning(
-                    f"Spotlight API returned {response.status}, skipping exposure merge"
-                )
+                # Spotlight requires a separate license - gracefully skip if not available
+                if response.status == 403:
+                    logger.info(
+                        "Spotlight API not available (requires Falcon Spotlight license). "
+                        "Using Rapid7 for vulnerability exposure data."
+                    )
+                else:
+                    logger.warning(
+                        f"Spotlight API returned {response.status}, skipping exposure merge"
+                    )
                 return out
             data = await response.json()
             resources = data.get("resources") or []
@@ -435,4 +533,55 @@ class CrowdStrikeCollector(BaseCollector):
             "indicator": indicator.get("indicator", ""),
             "last_activity": indicator.get("last_updated", ""),
             "source": self.source_name
+        }
+
+    def _parse_detection(self, detection: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Parse CrowdStrike detection into standardized format.
+        
+        Args:
+            detection: Raw detection from API
+            
+        Returns:
+            Standardized detection dictionary
+        """
+        # Map severity numbers to labels
+        severity_map = {
+            90: "Critical",
+            70: "High", 
+            50: "Medium",
+            30: "Low"
+        }
+        max_severity = detection.get("max_severity", 0)
+        severity_label = "Unknown"
+        for threshold, label in sorted(severity_map.items(), reverse=True):
+            if max_severity >= threshold:
+                severity_label = label
+                break
+        
+        # Get behavior descriptions
+        behaviors = detection.get("behaviors", [])
+        tactics = []
+        techniques = []
+        for behavior in behaviors[:3]:  # Top 3 behaviors
+            if behavior.get("tactic"):
+                tactics.append(behavior["tactic"])
+            if behavior.get("technique"):
+                techniques.append(behavior["technique"])
+        
+        return {
+            "type": "detection",
+            "source": self.source_name,
+            "detection_id": detection.get("detection_id", ""),
+            "severity": severity_label,
+            "max_severity_score": max_severity,
+            "status": detection.get("status", ""),
+            "tactic": tactics[0] if tactics else "Unknown",
+            "technique": techniques[0] if techniques else "Unknown",
+            "tactics": list(set(tactics)),
+            "techniques": list(set(techniques)),
+            "created_timestamp": detection.get("created_timestamp", ""),
+            "hostname": detection.get("device", {}).get("hostname", "Unknown"),
+            "device_id": detection.get("device", {}).get("device_id", ""),
+            "description": detection.get("behaviors_processed", [{}])[0].get("description", "")[:300] if detection.get("behaviors_processed") else ""
         }

@@ -33,12 +33,72 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Configure logging
+# Add colorama for colored console output
+try:
+    from colorama import init, Fore, Style
+    init(autoreset=True)
+    COLORS_ENABLED = True
+except ImportError:
+    # Fallback if colorama not installed
+    class Fore:
+        GREEN = CYAN = YELLOW = RED = MAGENTA = BLUE = WHITE = ""
+    class Style:
+        BRIGHT = RESET_ALL = ""
+    COLORS_ENABLED = False
+
+# Configure logging with cleaner format
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.WARNING,  # Set to WARNING to reduce noise
+    format='%(message)s'  # Simpler format
 )
 logger = logging.getLogger(__name__)
+
+# Suppress all verbose logging
+logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(logging.ERROR)
+logging.getLogger('azure.identity').setLevel(logging.ERROR)
+logging.getLogger('httpx').setLevel(logging.ERROR)
+logging.getLogger('semantic_kernel').setLevel(logging.ERROR)
+logging.getLogger('azure').setLevel(logging.ERROR)
+
+# Only show critical errors from collectors
+logging.getLogger('src.collectors').setLevel(logging.DEBUG)  # Enable DEBUG to see asset count fields
+logging.getLogger('src.enrichment').setLevel(logging.WARNING)
+logging.getLogger('src.agents').setLevel(logging.INFO)  # Enable INFO to see exposure mapping
+logging.getLogger('src.reports').setLevel(logging.WARNING)
+
+
+def print_status(message: str, status: str = "info"):
+    """Print a status message with color."""
+    icons = {
+        "info": "ℹ",
+        "success": "✓",
+        "error": "✗",
+        "warning": "⚠",
+        "progress": "→",
+    }
+    colors = {
+        "info": Fore.CYAN,
+        "success": Fore.GREEN,
+        "error": Fore.RED,
+        "warning": Fore.YELLOW,
+        "progress": Fore.BLUE,
+    }
+    icon = icons.get(status, "•")
+    color = colors.get(status, "")
+    print(f"{color}{icon} {message}{Style.RESET_ALL}")
+
+
+def print_header(title: str):
+    """Print a section header."""
+    print(f"\n{Fore.MAGENTA}{Style.BRIGHT}{'=' * 60}")
+    print(f"{title}")
+    print(f"{'=' * 60}{Style.RESET_ALL}")
+
+
+def print_section(title: str):
+    """Print a subsection."""
+    print(f"\n{Fore.CYAN}{Style.BRIGHT}{title}{Style.RESET_ALL}")
+
 
 
 def get_mock_weekly_analysis() -> dict:
@@ -276,8 +336,6 @@ async def generate_report_local(
     """
     from src.reports import get_report_generator
 
-    logger.info(f"Generating {report_type} report...")
-
     # Get the appropriate report generator
     generator = get_report_generator(report_type)
     if generator is None:
@@ -285,31 +343,37 @@ async def generate_report_local(
 
     # Determine data source
     if use_mock:
-        logger.info("Using MOCK data for report generation (UI/formatting test)")
+        print_section("📋 Using Mock Data")
         if report_type == "weekly":
             analysis = get_mock_weekly_analysis()
         else:
             analysis = get_mock_quarterly_analysis()
     elif use_real or use_azure:
-        # Collect real data from APIs
-        logger.info("Collecting REAL data from threat intelligence APIs...")
         analysis = await collect_and_analyze(report_type)
     else:
-        # Default to mock if nothing specified
-        logger.info("Using MOCK data (default - use --real for API data)")
+        print_section("📋 Using Mock Data (default)")
         if report_type == "weekly":
             analysis = get_mock_weekly_analysis()
         else:
             analysis = get_mock_quarterly_analysis()
 
     # Generate the document
-    logger.info("Generating document...")
+    print_section("📄 Generating Report")
+    print_status("Creating document...", "progress")
     doc = generator.generate(analysis)
+    print_status("Document created", "success")
 
-    # Save or upload
+    # Always save a local copy
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    filename = generator.get_filename()
+    filepath = output_path / filename
+    doc.save(str(filepath))
+    print_status(f"Saved locally: {filepath}", "success")
+
+    # Upload to Azure if requested
     if use_azure:
-        # Upload to Azure
-        logger.info("Uploading to Azure Blob Storage...")
+        print_section("☁️  Uploading to Azure")
         from src.core.keyvault import get_all_api_keys
         from src.reports.blob_storage import upload_to_blob
         from src.core.config import azure_config
@@ -320,19 +384,64 @@ async def generate_report_local(
             credentials['storage_account_name'],
             credentials['storage_account_key']
         )
-        logger.info(f"Report uploaded: {url}")
+        print_status(f"Uploaded: {url}", "success")
         return url
-    else:
-        # Save locally
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
 
-        filename = generator.get_filename()
-        filepath = output_path / filename
+    return str(filepath)
 
-        doc.save(str(filepath))
-        logger.info(f"Report saved to: {filepath}")
-        return str(filepath)
+
+async def check_openai_connectivity(
+    endpoint: str,
+    api_key: str = "",
+    deployment: str = "",
+    timeout: float = 8.0
+) -> bool:
+    """
+    Quick connectivity check to Azure OpenAI completions endpoint.
+    Sends a minimal authenticated request to detect VNet restrictions.
+    Returns True if reachable, False if behind VPN / unreachable.
+    """
+    import urllib.request
+    import urllib.error
+    
+    if not api_key:
+        return True
+    
+    from src.core.config import analysis_config
+    deploy = deployment or analysis_config.deployment_name
+    
+    url = (
+        endpoint.rstrip("/")
+        + f"/openai/deployments/{deploy}/chat/completions?api-version=2024-02-01"
+    )
+    body = json.dumps({
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 1
+    }).encode("utf-8")
+    
+    try:
+        req = urllib.request.Request(url, data=body, method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("api-key", api_key)
+        resp = urllib.request.urlopen(req, timeout=timeout)
+        return True
+    except urllib.error.HTTPError as e:
+        resp_body = ""
+        try:
+            resp_body = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            pass
+        if e.code == 403 and ("Virtual Network" in resp_body or "VNet" in resp_body or "vnet" in resp_body.lower()):
+            return False
+        if e.code in (429, 500, 502, 503):
+            return True
+        if e.code == 404:
+            return True
+        if e.code == 401:
+            return True
+        return True
+    except (urllib.error.URLError, OSError, TimeoutError):
+        return False
 
 
 async def collect_and_analyze(report_type: str) -> dict:
@@ -344,33 +453,102 @@ async def collect_and_analyze(report_type: str) -> dict:
 
     # Get credentials
     vault_url = azure_config.get_key_vault_url()
-    logger.info(f"Retrieving credentials from Key Vault: {vault_url}")
+    print_status(f"Connecting to Azure Key Vault...", "progress")
     credentials = get_all_api_keys(vault_url)
+    print_status("Credentials retrieved", "success")
+
+    # Check Azure OpenAI connectivity before spending time on data collection
+    ai_available = await check_openai_connectivity(
+        credentials['openai_endpoint'],
+        api_key=credentials.get('openai_key', '')
+    )
+
+    if not ai_available:
+        print()
+        print(f"{Fore.YELLOW}{Style.BRIGHT}{'=' * 60}")
+        print(f"  ⚠  Azure OpenAI is NOT reachable")
+        print(f"  Are you connected to the VPN?")
+        print(f"{'=' * 60}{Style.RESET_ALL}")
+        print()
+        print(f"  {Fore.WHITE}[1] Stop - I'll connect to VPN first")
+        print(f"  [2] Continue without AI (use Rapid7/NVD data directly){Style.RESET_ALL}")
+        print()
+        
+        choice = input(f"  {Fore.CYAN}Enter choice (1 or 2): {Style.RESET_ALL}").strip()
+        
+        if choice != "2":
+            print()
+            print_status("Stopped. Connect to VPN and run again.", "warning")
+            sys.exit(0)
+        
+        print()
+        print_status("Continuing without AI analysis (Rapid7/NVD backup mode)...", "warning")
+    else:
+        print_status("Azure OpenAI is reachable", "success")
 
     # Collect data
-    logger.info(f"Collecting threat intelligence data for {report_type} report...")
+    print_section("📊 Collecting Threat Intelligence")
     collector_results = await collect_all(credentials, report_type=report_type)
     data_by_source = get_data_by_source(collector_results)
 
-    # Log what we collected
+    # Show collection results
     for source, data in data_by_source.items():
-        logger.info(f"  {source}: {len(data)} records")
+        count = len(data)
+        if count > 0:
+            print_status(f"{source}: {count} records", "success")
+        else:
+            print_status(f"{source}: No data", "warning")
     
-    # Enrich data with additional context
-    logger.info("Enriching data with CISA KEV and product information...")
+    # Enrich data
+    print_section("🔍 Enriching CVE Data")
     from src.enrichment import CVEEnricher, ThreatActorMonitoringEnricher
     
     cve_enricher = CVEEnricher()
     actor_enricher = ThreatActorMonitoringEnricher()
     
-    # Enrich CVEs
     if "NVD" in data_by_source:
+        print_status("Checking CISA KEV catalog...", "progress")
         data_by_source["NVD"] = await cve_enricher.enrich_cves(data_by_source["NVD"])
-        logger.info(f"  Enriched {len(data_by_source['NVD'])} CVEs")
-    
-    # Enrich threat actors (from analysis results - we'll do this later in the flow)
+        print_status(f"Enriched {len(data_by_source['NVD'])} CVEs", "success")
 
     # Initialize agent
+    print_section("🤖 AI-Powered Analysis")
+    
+    if not ai_available:
+        print_status("Skipping AI (not reachable) - using backup data", "warning")
+        agent = ThreatAnalystAgent(
+            credentials['openai_endpoint'],
+            credentials['openai_key'],
+            deployment_name=analysis_config.deployment_name
+        )
+        if report_type == "weekly":
+            result = agent._get_default_analysis(
+                data_by_source.get("NVD", []),
+                data_by_source.get("Intel471", []),
+                data_by_source.get("CrowdStrike", []),
+                data_by_source.get("ThreatQ", []),
+                data_by_source.get("Rapid7", []),
+                data_by_source.get("Rapid7-Scans", [])
+            )
+        else:
+            intel471_all = data_by_source.get("Intel471", [])
+            breach_data = [
+                item for item in intel471_all
+                if item.get("threat_type", "").upper() == "BREACH ALERT"
+            ]
+            intel471_filtered = [
+                item for item in intel471_all
+                if item.get("threat_type", "").upper() != "BREACH ALERT"
+            ]
+            result = agent._get_default_strategic_analysis(
+                intel471_filtered,
+                data_by_source.get("CrowdStrike", []),
+                breach_data if breach_data else None
+            )
+        print_status("Backup analysis complete", "success")
+        return result
+
+    print_status("Initializing threat analyst agent...", "progress")
     agent = ThreatAnalystAgent(
         credentials['openai_endpoint'],
         credentials['openai_key'],
@@ -378,37 +556,39 @@ async def collect_and_analyze(report_type: str) -> dict:
     )
 
     if report_type == "weekly":
-        # Tactical analysis
-        logger.info("Running tactical AI analysis for weekly report...")
-        return await agent.analyze_threats(
+        print_status("Running tactical analysis...", "progress")
+        result = await agent.analyze_threats(
             data_by_source.get("NVD", []),
             data_by_source.get("Intel471", []),
             data_by_source.get("CrowdStrike", []),
             data_by_source.get("ThreatQ", []),
-            data_by_source.get("Rapid7", [])
+            data_by_source.get("Rapid7", []),
+            data_by_source.get("Rapid7-Scans", []),
+            data_by_source.get("OSINT", [])
         )
+        print_status("Analysis complete", "success")
+        return result
     else:
-        # Strategic analysis
-        logger.info("Running strategic AI analysis for quarterly report...")
+        print_status("Running strategic analysis...", "progress")
         
-        # Extract breach reports from Intel471 data
         intel471_data = data_by_source.get("Intel471", [])
         breach_data = [
             item for item in intel471_data 
             if item.get("threat_type", "").upper() == "BREACH ALERT"
         ]
         
-        # Remove breach reports from intel471_data (they'll be in breach_data)
         intel471_data = [
             item for item in intel471_data 
             if item.get("threat_type", "").upper() != "BREACH ALERT"
         ]
         
-        return await agent.analyze_strategic(
+        result = await agent.analyze_strategic(
             intel471_data=intel471_data,
             crowdstrike_data=data_by_source.get("CrowdStrike", []),
             breach_data=breach_data if breach_data else None
         )
+        print_status("Analysis complete", "success")
+        return result
 
 
 def main():
@@ -480,9 +660,6 @@ Examples:
     if not args.local and not args.azure:
         parser.error("Must specify either --local or --azure")
 
-    if args.local and args.azure:
-        parser.error("Cannot use both --local and --azure")
-
     if args.mock and args.real:
         parser.error("Cannot use both --mock and --real")
 
@@ -498,13 +675,9 @@ Examples:
 
     # Run the generation
     try:
-        print(f"\n{'='*60}")
-        print(f"CTI Report Generator")
-        print(f"{'='*60}")
-        print(f"Report Type: {args.report_type.upper()}")
-        print(f"Data Source: {data_source}")
-        print(f"Output: {'Azure Blob Storage' if args.azure else f'Local ({args.output})'}")
-        print(f"{'='*60}\n")
+        print_header(f"CTI Report Generator - {args.report_type.upper()}")
+        print(f"{Fore.WHITE}Data Source: {data_source}")
+        print(f"Output: {'Azure Blob Storage' if args.azure else f'Local ({args.output})'}{Style.RESET_ALL}\n")
 
         result = asyncio.run(generate_report_local(
             report_type=args.report_type,
@@ -514,19 +687,17 @@ Examples:
             use_azure=args.azure
         ))
 
-        print(f"\n{'='*60}")
-        print(f"SUCCESS!")
-        print(f"{'='*60}")
-        print(f"Report Type: {args.report_type.upper()}")
+        print_header("✓ SUCCESS")
+        print(f"{Fore.GREEN}Report Type: {args.report_type.upper()}")
         print(f"Data Source: {data_source}")
         if args.azure:
             print(f"URL: {result}")
         else:
-            print(f"File: {result}")
-        print(f"{'='*60}\n")
+            print(f"File: {result}{Style.RESET_ALL}\n")
 
     except Exception as e:
-        logger.error(f"Failed to generate report: {e}", exc_info=True)
+        print_header("✗ ERROR")
+        print(f"{Fore.RED}Failed to generate report: {e}{Style.RESET_ALL}\n")
         sys.exit(1)
 
 
