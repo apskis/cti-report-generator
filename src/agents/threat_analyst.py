@@ -189,7 +189,8 @@ class ThreatAnalystAgent:
 
             # Configure execution settings
             settings = AzureChatPromptExecutionSettings(
-                max_completion_tokens=analysis_config.max_completion_tokens,
+                response_format={"type": "json_object"},
+                temperature=0.3,
             )
 
             # Get response from GPT
@@ -1050,7 +1051,8 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
 
             # Configure execution settings
             settings = AzureChatPromptExecutionSettings(
-                max_completion_tokens=analysis_config.max_completion_tokens,
+                response_format={"type": "json_object"},
+                temperature=0.3,
             )
 
             # Get response from GPT

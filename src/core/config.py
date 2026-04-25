@@ -101,8 +101,6 @@ class AnalysisConfig:
     max_threatq_for_analysis: int = 30
     max_rapid7_for_analysis: int = 20
 
-    # Token limits
-    max_completion_tokens: int = 4000
 
 
 @dataclass(frozen=True)
