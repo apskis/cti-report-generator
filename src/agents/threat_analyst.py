@@ -16,6 +16,10 @@ from semantic_kernel.contents import ChatHistory  # type: ignore
 
 from src.core.config import analysis_config, industry_filter_config
 from src.core.models import ThreatAnalysisResult
+from src.agents.exploit_enrichment import (
+    fetch_kev_cves, fetch_epss_scores,
+    build_exploited_by, build_affected_product_from_kev,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +174,13 @@ class ThreatAnalystAgent:
                 f"OSINT: {len(osint_data or [])}"
             )
 
+            # Fetch public exploit intelligence (CISA KEV + EPSS)
+            all_cve_ids = self._collect_all_cve_ids(
+                cve_data, rapid7_scans_data or []
+            )
+            kev_lookup = await fetch_kev_cves()
+            epss_lookup = await fetch_epss_scores(list(all_cve_ids))
+
             # Prepare data for analysis (with smart truncation)
             data_summary = self._prepare_data_for_analysis(
                 cve_data, intel471_data, crowdstrike_data, threatq_data, rapid7_data
@@ -210,21 +221,36 @@ class ThreatAnalystAgent:
             if analysis_result:
                 logger.info("Successfully parsed analysis results")
                 analysis_result = self._fill_gaps_from_backup(
-                    analysis_result, cve_data, rapid7_data, rapid7_scans_data
+                    analysis_result, cve_data, rapid7_data, rapid7_scans_data,
+                    kev_lookup, epss_lookup,
                 )
                 return analysis_result
             else:
                 return self._get_default_analysis(
                     cve_data, intel471_data, crowdstrike_data,
-                    threatq_data, rapid7_data, rapid7_scans_data
+                    threatq_data, rapid7_data, rapid7_scans_data,
+                    kev_lookup, epss_lookup,
                 )
 
         except Exception as e:
             logger.error(f"Error during threat analysis: {e}", exc_info=True)
             return self._get_default_analysis(
                 cve_data, intel471_data, crowdstrike_data,
-                threatq_data, rapid7_data, rapid7_scans_data
+                threatq_data, rapid7_data, rapid7_scans_data,
             )
+
+    @staticmethod
+    def _collect_all_cve_ids(cve_data: List[Dict], rapid7_scans_data: List) -> set:
+        """Gather all unique CVE IDs across data sources for enrichment lookups."""
+        ids = set()
+        for cve in cve_data:
+            cve_id = cve.get("cve_id", "")
+            if cve_id:
+                ids.add(cve_id)
+        if rapid7_scans_data and len(rapid7_scans_data) > 0:
+            scan = rapid7_scans_data[0] if isinstance(rapid7_scans_data[0], dict) else {}
+            ids.update(scan.get("cve_exposure_map", {}).keys())
+        return ids
 
     def _prepare_data_for_analysis(
         self,
@@ -736,15 +762,17 @@ Do not use Hyphens."""
         analysis_result: Dict[str, Any],
         cve_data: List[Dict],
         rapid7_data: List[Dict],
-        rapid7_scans_data: List[Dict] = None
+        rapid7_scans_data: List[Dict] = None,
+        kev_lookup: Dict[str, dict] = None,
+        epss_lookup: Dict[str, dict] = None,
     ) -> Dict[str, Any]:
         """
-        Patch AI analysis results with Rapid7/NVD backup data where the AI
-        left gaps (N/A exposure, missing product names, etc.).
+        Patch AI analysis results with Rapid7/NVD/KEV/EPSS backup data where
+        the AI left gaps (N/A exposure, missing product names, etc.).
         """
         rapid7_scans_data = rapid7_scans_data or []
-
-        # Build exposure map and scan-level enrichment from Rapid7 scans
+        kev_lookup = kev_lookup or {}
+        epss_lookup = epss_lookup or {}
         rapid7_cve_map = {}
         rapid7_scan_lookup = {}
         if rapid7_scans_data and len(rapid7_scans_data) > 0:
@@ -796,7 +824,8 @@ Do not use Hyphens."""
             product = cve_entry.get("affected_product", "N/A")
             if product in ("N/A", "", None, "Unknown", "unknown") or "vendor product" in product.lower():
                 backup_product = (
-                    nvd.get("affected_product")
+                    build_affected_product_from_kev(cve_id, kev_lookup)
+                    or nvd.get("affected_product")
                     or self._clean_rapid7_title(r7_scan.get("title", ""))
                     or r7_vuln.get("title", "")
                     or self._extract_product_from_description(
@@ -807,19 +836,15 @@ Do not use Hyphens."""
                     cve_entry["affected_product"] = backup_product
                     gaps_filled += 1
 
-            # Fill exploited_by if AI left it blank
+            # Fill exploited_by from KEV/EPSS/Rapid7 (in priority order)
             exploited_by = cve_entry.get("exploited_by", "")
             if exploited_by in ("", None, "Unknown", "unknown", "None known", "N/A"):
-                exploit_info = r7_scan.get("exploit_info", {})
-                if exploit_info:
-                    kits = exploit_info.get("malware_kits", 0)
-                    exploits = exploit_info.get("exploits", 0)
-                    if kits:
-                        cve_entry["exploited_by"] = f"Malware kits ({kits} known)"
-                        gaps_filled += 1
-                    elif exploits:
-                        cve_entry["exploited_by"] = f"Public exploits ({exploits} known)"
-                        gaps_filled += 1
+                kev_epss_result = build_exploited_by(cve_id, kev_lookup, epss_lookup)
+                if kev_epss_result:
+                    cve_entry["exploited_by"] = kev_epss_result
+                    if "CISA KEV" in kev_epss_result:
+                        cve_entry["exploited"] = True
+                    gaps_filled += 1
                 elif r7_vuln.get("exploitable"):
                     kits = r7_vuln.get("malware_kits_count", 0)
                     exploits = r7_vuln.get("exploits_count", 0)
@@ -830,11 +855,6 @@ Do not use Hyphens."""
                     else:
                         cve_entry["exploited_by"] = "Exploit available"
                     gaps_filled += 1
-                else:
-                    backup_exploited_by = nvd.get("exploited_by", "")
-                    if backup_exploited_by and backup_exploited_by not in ("N/A", ""):
-                        cve_entry["exploited_by"] = backup_exploited_by
-                        gaps_filled += 1
 
             # Fill weeks_detected from Rapid7 scan 'added' date
             weeks = cve_entry.get("weeks_detected", 1)
@@ -865,7 +885,9 @@ Do not use Hyphens."""
         crowdstrike_data: List[Dict],
         threatq_data: List[Dict],
         rapid7_data: List[Dict],
-        rapid7_scans_data: List[Dict] = None
+        rapid7_scans_data: List[Dict] = None,
+        kev_lookup: Dict[str, dict] = None,
+        epss_lookup: Dict[str, dict] = None,
     ) -> Dict[str, Any]:
         """
         Generate a default analysis structure when AI analysis fails.
@@ -873,6 +895,8 @@ Do not use Hyphens."""
         cross-references with NVD data for product names and severity.
         """
         rapid7_scans_data = rapid7_scans_data or []
+        kev_lookup = kev_lookup or {}
+        epss_lookup = epss_lookup or {}
         
         # Build exposure map and scan enrichment from Rapid7 scans
         rapid7_cve_map = {}
@@ -912,9 +936,10 @@ Do not use Hyphens."""
                 rapid7_vuln = rapid7_vuln_lookup.get(cve_id, {})
                 r7_scan = rapid7_scan_lookup.get(cve_id, {})
                 
-                # Get affected product from NVD CPE, scan title, or Rapid7 vuln title
+                # Get affected product from KEV, NVD CPE, scan title, or Rapid7 vuln title
                 affected_product = (
-                    nvd_info.get("affected_product")
+                    build_affected_product_from_kev(cve_id, kev_lookup)
+                    or nvd_info.get("affected_product")
                     or self._clean_rapid7_title(r7_scan.get("title", ""))
                     or rapid7_vuln.get("title", "")
                     or self._extract_product_from_description(
@@ -929,15 +954,12 @@ Do not use Hyphens."""
                 exploited = nvd_info.get("exploited", rapid7_vuln.get("exploitable", False))
                 description = nvd_info.get("description", rapid7_vuln.get("description", ""))[:200]
 
-                exploited_by = "None known"
-                exploit_info = r7_scan.get("exploit_info", {})
-                if exploit_info:
-                    kits = exploit_info.get("malware_kits", 0)
-                    exploits = exploit_info.get("exploits", 0)
-                    if kits:
-                        exploited_by = f"Malware kits ({kits} known)"
-                    elif exploits:
-                        exploited_by = f"Public exploits ({exploits} known)"
+                # Derive exploited_by from KEV/EPSS first, then Rapid7
+                kev_epss_result = build_exploited_by(cve_id, kev_lookup, epss_lookup)
+                if kev_epss_result:
+                    exploited_by = kev_epss_result
+                    if "CISA KEV" in kev_epss_result:
+                        exploited = True
                 elif rapid7_vuln.get("exploitable"):
                     kits = rapid7_vuln.get("malware_kits_count", 0)
                     exploits = rapid7_vuln.get("exploits_count", 0)
@@ -947,6 +969,8 @@ Do not use Hyphens."""
                         exploited_by = f"Public exploits ({exploits} known)"
                     else:
                         exploited_by = "Exploit available"
+                else:
+                    exploited_by = "None known"
                 
                 # Determine priority based on severity and exploitation
                 if exploited and severity in ("CRITICAL", "Critical"):
