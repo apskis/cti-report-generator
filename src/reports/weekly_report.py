@@ -616,63 +616,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
         
         return (False, "")
 
-    def _add_exploitation_callout(self, cve_analysis: List[Dict[str, Any]]) -> None:
-        """Add callout box listing actively exploited CVEs."""
-        # Find exploited CVEs
-        exploited_cves = []
-        for cve in cve_analysis:
-            is_exploited, reason = self._is_actively_exploited(cve)
-            if is_exploited:
-                exploited_cves.append({
-                    "cve_id": cve.get("cve_id", "N/A"),
-                    "product": cve.get("affected_product", "Unknown"),
-                    "reason": reason
-                })
-        
-        if not exploited_cves:
-            return  # No callout needed
-        
-        # Create callout box
-        table = self.doc.add_table(rows=1, cols=1)
-        cell = table.rows[0].cells[0]
-        
-        # Light red background for alert
-        self._set_cell_shading(cell, "FFE6E6")  # Light red
-        self._set_cell_borders(cell, "CC0000", "8")  # Red border
-        
-        # Clear default paragraph
-        cell.paragraphs[0].clear()
-        
-        # Title with warning icon
-        title_para = cell.paragraphs[0]
-        title_run = title_para.add_run(f"⚠️ {len(exploited_cves)} CVE{'s' if len(exploited_cves) > 1 else ''} with Active Exploitation")
-        title_run.font.size = FontSizes.BODY
-        title_run.font.bold = True
-        title_run.font.color.rgb = RGBColor(0xCC, 0x00, 0x00)  # Red text
-        title_run.font.name = "Arial"
-        title_para.paragraph_format.space_after = Pt(4)
-        
-        # List exploited CVEs (limit to top 5 if many)
-        for i, cve_info in enumerate(exploited_cves[:5]):
-            bullet_para = cell.add_paragraph()
-            bullet_text = f"• {cve_info['cve_id']} ({cve_info['product'][:40]}) - {cve_info['reason']}"
-            bullet_run = bullet_para.add_run(bullet_text)
-            bullet_run.font.size = FontSizes.BODY_SMALL
-            bullet_run.font.color.rgb = BrandColors.TEXT_DARK
-            bullet_run.font.name = "Arial"
-            bullet_para.paragraph_format.space_before = Pt(0)
-            bullet_para.paragraph_format.space_after = Pt(2)
-        
-        # If more than 5, add note
-        if len(exploited_cves) > 5:
-            more_para = cell.add_paragraph()
-            more_run = more_para.add_run(f"...and {len(exploited_cves) - 5} more (see table below)")
-            more_run.font.size = FontSizes.FOOTNOTE
-            more_run.font.italic = True
-            more_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-        
-        self.doc.add_paragraph()  # Small gap after callout
-
     def _add_vulnerability_exposure(self, analysis_result: Dict[str, Any]) -> None:
         """Add Vulnerability Exposure section with grouped and individual CVEs."""
         logger.info("Adding Vulnerability Exposure section")
@@ -686,9 +629,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self.doc.add_paragraph("No actively exploited vulnerabilities detected in the environment this week.")
             self.doc.add_paragraph()
             return
-        
-        # Add exploitation callout if any CVEs are actively exploited
-        self._add_exploitation_callout(cve_analysis)
         
         # Group CVEs by technology
         grouped_items, individual_cves, all_cves = self._group_cves_by_technology(cve_analysis)
@@ -757,6 +697,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     for run in para.runs:
                         run.font.size = FontSizes.SUBTITLE
                         run.font.color.rgb = BrandColors.TEXT_DARK
+                        # Make CVE ID bold if exploited
+                        if idx == 0 and is_exploited:
+                            run.font.bold = True
 
             # Wks: pastel background if 3+, or light red if exploited
             if is_exploited:
@@ -815,6 +758,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         
         caption_text = (
             f"Wks = consecutive weeks detected. Items at 3+ weeks (yellow) require escalation, 4+ weeks (red) are overdue. "
+            f"Bold CVE IDs with red highlighting indicate active exploitation (CISA KEV, ransomware, or threat actors). "
             f"Table shows {individual_shown} individual CVEs (top by exposure/severity) and "
             f"{len(grouped_items)} technology groups covering {grouped_cves} CVEs. "
             f"Total: {total_cves} CVEs detected. "
