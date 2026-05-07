@@ -453,11 +453,14 @@ class CrowdStrikeCollector(BaseCollector):
         [{"slug": "healthcare", "value": "Healthcare"}, ...]
 
         Args:
-            industries_raw: Raw industries list from API
+            industries_raw: Raw industries list from API (may be None)
 
         Returns:
             List of industry name strings
         """
+        if not industries_raw:
+            return []
+        
         names = []
         for item in industries_raw:
             if isinstance(item, dict):
