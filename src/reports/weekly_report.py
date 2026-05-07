@@ -381,29 +381,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         cve_analysis = analysis_result.get("cve_analysis", [])
         
-        # Filter CVEs: only show those that are exploited in the wild, used by threat actors,
-        # or targeting Illumina's industries (manufacturing, biotech, medical device, clinical, genomics)
-        filtered_cves = []
-        for cve in cve_analysis:
-            exploited_by = (cve.get("exploited_by", "None known") or "None known").upper()
-            exploited = cve.get("exploited", False)
-            
-            # Include if:
-            # 1. Actively exploited (exploited flag = true)
-            # 2. Has threat actor attribution (not "NONE", not "N/A", not "POC")
-            # 3. Mentions industry-relevant targeting
-            is_exploited = exploited or "CISA KEV" in exploited_by or "RANSOMWARE" in exploited_by
-            has_actor = (
-                "APT" in exploited_by or "PANDA" in exploited_by or "BEAR" in exploited_by or
-                "KITTEN" in exploited_by or "DRAGON" in exploited_by or "SPIDER" in exploited_by or
-                "ACTOR" in exploited_by or "GROUP" in exploited_by or "LAZARUS" in exploited_by or
-                "MULTIPLE" in exploited_by
-            ) and "NONE" not in exploited_by and "N/A" not in exploited_by
-            
-            if is_exploited or has_actor:
-                filtered_cves.append(cve)
+        # Show all CVEs detected in the environment - they're already filtered by the AI
+        # to only include relevant threats (exploited, actor-attributed, or industry-targeted)
+        filtered_cves = cve_analysis
         
-        logger.info(f"Filtered CVEs: {len(filtered_cves)} of {len(cve_analysis)} meet exploitation/targeting criteria")
+        logger.info(f"Displaying {len(filtered_cves)} CVEs detected in environment")
 
         if filtered_cves:
             table = self.doc.add_table(rows=1, cols=4)
@@ -482,7 +464,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
             caption_run = caption.add_run(
                 "Wks = consecutive weeks detected. Items at 3+ weeks (yellow) are persistent and require escalation. "
                 "Items at 4+ weeks (red) are long overdue. "
-                "Only CVEs with active exploitation or threat actor attribution are shown. "
+                "CVEs shown are those detected in the environment and identified by AI analysis as relevant threats "
+                "(actively exploited, threat actor attribution, or targeting genomics/biotech/manufacturing). "
                 "Source: Rapid7 InsightVM scans, CISA KEV, Intel471, CrowdStrike."
             )
             caption_run.font.size = table_caption_7pt
