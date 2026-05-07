@@ -86,7 +86,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._add_week_at_glance(analysis_result)
             self._add_vulnerability_exposure(analysis_result)
             self._add_sector_threat_activity(analysis_result)
-            self._add_exploitation_indicators(analysis_result)
             self._add_recommended_actions(analysis_result)
             self._add_ai_disclaimer()
             self._add_footer()
@@ -385,7 +384,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         Group CVEs by technology/product family for cleaner reporting.
         
         Returns:
-            tuple: (grouped_items, individual_cves, all_cves_for_appendix)
+            tuple: (grouped_items, individual_cves, all_cves)
         """
         from collections import defaultdict
         
@@ -561,7 +560,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
             # Column 0: Group name with count
             cells[0].text = f"{group_item['group_name']}\n({group_item['cve_count']} CVEs)"
-            cells[1].text = "Multiple products (see appendix)"
+            cells[1].text = f"Multiple products ({group_item['cve_count']} vulnerabilities)"
             cells[2].text = group_item.get("exposure", "Multiple")
             
             weeks_num = group_item.get("weeks_detected", 1)
@@ -680,36 +679,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
                             run.font.color.rgb = BrandColors.TEXT_DARK
         else:
             self.doc.add_paragraph("No threat actor activity data available.")
-
-        self.doc.add_paragraph()
-
-    def _add_exploitation_indicators(self, analysis_result: Dict[str, Any]) -> None:
-        """Add exploitation indicators section."""
-        logger.info("Adding Exploitation Indicators section")
-
-        h = self.doc.add_heading("Exploitation Indicators for This Week's CVEs", level=1)
-        self._style_heading_1(h)
-
-        indicators = analysis_result.get("exploitation_indicators", [])
-
-        # If no explicit indicators, generate from CVE data
-        if not indicators:
-            cve_analysis = analysis_result.get("cve_analysis", [])
-            for cve in cve_analysis[:5]:  # Limit to top 5
-                cve_id = cve.get("cve_id", "")
-                product = cve.get("affected_product", cve.get("product", "Unknown"))
-                description = cve.get("exploitation_indicator", cve.get("description", ""))
-                if description:
-                    indicators.append(f"{cve_id} ({product}): {description[:150]}")
-
-        if indicators:
-            for indicator in indicators:
-                para = self.doc.add_paragraph(indicator, style="List Bullet")
-                for run in para.runs:
-                    run.font.size = FontSizes.BODY_SMALL
-                    run.font.bold = True
-        else:
-            self.doc.add_paragraph("No exploitation indicators available for this week's CVEs.")
 
         self.doc.add_paragraph()
 
