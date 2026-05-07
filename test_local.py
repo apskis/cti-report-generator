@@ -46,34 +46,52 @@ except ImportError:
         BRIGHT = RESET_ALL = ""
     COLORS_ENABLED = False
 
-# Configure logging with cleaner format
-logging.basicConfig(
-    level=logging.WARNING,  # Set to WARNING to reduce noise
-    format='%(message)s'  # Simpler format
-)
+# Configure logging - will be set based on --debug flag
 logger = logging.getLogger(__name__)
 
-# Suppress all verbose logging
-logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(logging.ERROR)
-logging.getLogger('azure.identity').setLevel(logging.ERROR)
-logging.getLogger('httpx').setLevel(logging.ERROR)
-logging.getLogger('semantic_kernel').setLevel(logging.ERROR)
-logging.getLogger('azure').setLevel(logging.ERROR)
-
-# Only show critical errors from collectors
-logging.getLogger('src.collectors').setLevel(logging.DEBUG)  # Enable DEBUG to see asset count fields
-logging.getLogger('src.enrichment').setLevel(logging.WARNING)
-logging.getLogger('src.agents').setLevel(logging.INFO)  # Enable INFO to see exposure mapping
-logging.getLogger('src.reports').setLevel(logging.WARNING)
+def configure_logging(debug_mode: bool = False):
+    """Configure logging based on debug mode."""
+    if debug_mode:
+        # Debug mode: show detailed logs
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)s - %(name)s - %(message)s',
+            force=True
+        )
+        logging.getLogger('src.collectors').setLevel(logging.DEBUG)
+        logging.getLogger('src.enrichment').setLevel(logging.DEBUG)
+        logging.getLogger('src.agents').setLevel(logging.DEBUG)
+        logging.getLogger('src.reports').setLevel(logging.DEBUG)
+        logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(logging.WARNING)
+        logging.getLogger('azure.identity').setLevel(logging.WARNING)
+        logging.getLogger('httpx').setLevel(logging.WARNING)
+        logging.getLogger('semantic_kernel').setLevel(logging.INFO)
+        logging.getLogger('azure').setLevel(logging.WARNING)
+    else:
+        # Clean mode: only show clean status messages and errors
+        logging.basicConfig(
+            level=logging.ERROR,
+            format='%(message)s',
+            force=True
+        )
+        logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(logging.ERROR)
+        logging.getLogger('azure.identity').setLevel(logging.ERROR)
+        logging.getLogger('httpx').setLevel(logging.ERROR)
+        logging.getLogger('semantic_kernel').setLevel(logging.ERROR)
+        logging.getLogger('azure').setLevel(logging.ERROR)
+        logging.getLogger('src.collectors').setLevel(logging.ERROR)
+        logging.getLogger('src.enrichment').setLevel(logging.ERROR)
+        logging.getLogger('src.agents').setLevel(logging.ERROR)
+        logging.getLogger('src.reports').setLevel(logging.ERROR)
 
 
 def print_status(message: str, status: str = "info"):
     """Print a status message with color."""
     icons = {
-        "info": "ℹ",
+        "info": "i",
         "success": "✓",
-        "error": "✗",
-        "warning": "⚠",
+        "error": "x",
+        "warning": "!",
         "progress": "→",
     }
     colors = {
@@ -85,19 +103,37 @@ def print_status(message: str, status: str = "info"):
     }
     icon = icons.get(status, "•")
     color = colors.get(status, "")
-    print(f"{color}{icon} {message}{Style.RESET_ALL}")
+    try:
+        print(f"{color}{icon} {message}{Style.RESET_ALL}")
+    except UnicodeEncodeError:
+        # Fallback for terminals that don't support Unicode
+        fallback_icons = {"info": "[i]", "success": "[✓]", "error": "[x]", "warning": "[!]", "progress": "[>]"}
+        icon_fallback = fallback_icons.get(status, "[*]")
+        print(f"{color}{icon_fallback} {message}{Style.RESET_ALL}".encode('ascii', 'ignore').decode('ascii'))
 
 
 def print_header(title: str):
     """Print a section header."""
-    print(f"\n{Fore.MAGENTA}{Style.BRIGHT}{'=' * 60}")
-    print(f"{title}")
-    print(f"{'=' * 60}{Style.RESET_ALL}")
+    try:
+        print(f"\n{Fore.MAGENTA}{Style.BRIGHT}{'=' * 60}")
+        print(f"{title}")
+        print(f"{'=' * 60}{Style.RESET_ALL}")
+    except UnicodeEncodeError:
+        # Fallback for terminals that don't support Unicode
+        safe_title = title.encode('ascii', 'ignore').decode('ascii')
+        print(f"\n{Fore.MAGENTA}{Style.BRIGHT}{'=' * 60}")
+        print(f"{safe_title}")
+        print(f"{'=' * 60}{Style.RESET_ALL}")
 
 
 def print_section(title: str):
     """Print a subsection."""
-    print(f"\n{Fore.CYAN}{Style.BRIGHT}{title}{Style.RESET_ALL}")
+    try:
+        print(f"\n{Fore.CYAN}{Style.BRIGHT}{title}{Style.RESET_ALL}")
+    except UnicodeEncodeError:
+        # Fallback for terminals that don't support Unicode
+        safe_title = title.encode('ascii', 'ignore').decode('ascii')
+        print(f"\n{Fore.CYAN}{Style.BRIGHT}{safe_title}{Style.RESET_ALL}")
 
 
 
@@ -599,6 +635,7 @@ def main():
 Data Source Options:
   --mock    Use hardcoded example data (no Azure/API access needed)
   --real    Use real data from APIs (requires Key Vault access)
+  --debug   Enable verbose logging output (shows all API calls, data processing, etc.)
 
 Examples:
   # MOCK DATA - Test report formatting without any API calls
@@ -615,6 +652,9 @@ Examples:
 
   # Custom output directory
   python test_local.py weekly --local --mock --output ./test_reports
+
+  # Enable debug mode to see detailed logs
+  python test_local.py weekly --local --real --debug
         """
     )
 
@@ -654,7 +694,16 @@ Examples:
         help="Output directory for local generation (default: current directory)"
     )
 
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug mode with verbose logging output"
+    )
+
     args = parser.parse_args()
+
+    # Configure logging based on debug flag
+    configure_logging(args.debug)
 
     # Validate arguments
     if not args.local and not args.azure:
@@ -677,7 +726,10 @@ Examples:
     try:
         print_header(f"CTI Report Generator - {args.report_type.upper()}")
         print(f"{Fore.WHITE}Data Source: {data_source}")
-        print(f"Output: {'Azure Blob Storage' if args.azure else f'Local ({args.output})'}{Style.RESET_ALL}\n")
+        print(f"Output: {'Azure Blob Storage' if args.azure else f'Local ({args.output})'}")
+        if args.debug:
+            print(f"Debug Mode: {Fore.YELLOW}ENABLED (verbose logging){Style.RESET_ALL}")
+        print(f"{Style.RESET_ALL}\n")
 
         result = asyncio.run(generate_report_local(
             report_type=args.report_type,

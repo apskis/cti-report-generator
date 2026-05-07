@@ -88,7 +88,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._add_sector_threat_activity(analysis_result)
             self._add_exploitation_indicators(analysis_result)
             self._add_recommended_actions(analysis_result)
-            self._add_sources()
+            self._add_ai_disclaimer()
             self._add_footer()
 
             logger.info("Weekly CTI Report generated successfully")
@@ -380,10 +380,34 @@ class WeeklyReportGenerator(BaseReportGenerator):
         self._style_heading_1(h)
 
         cve_analysis = analysis_result.get("cve_analysis", [])
+        
+        # Filter CVEs: only show those that are exploited in the wild, used by threat actors,
+        # or targeting Illumina's industries (manufacturing, biotech, medical device, clinical, genomics)
+        filtered_cves = []
+        for cve in cve_analysis:
+            exploited_by = (cve.get("exploited_by", "None known") or "None known").upper()
+            exploited = cve.get("exploited", False)
+            
+            # Include if:
+            # 1. Actively exploited (exploited flag = true)
+            # 2. Has threat actor attribution (not "NONE", not "N/A", not "POC")
+            # 3. Mentions industry-relevant targeting
+            is_exploited = exploited or "CISA KEV" in exploited_by or "RANSOMWARE" in exploited_by
+            has_actor = (
+                "APT" in exploited_by or "PANDA" in exploited_by or "BEAR" in exploited_by or
+                "KITTEN" in exploited_by or "DRAGON" in exploited_by or "SPIDER" in exploited_by or
+                "ACTOR" in exploited_by or "GROUP" in exploited_by or "LAZARUS" in exploited_by or
+                "MULTIPLE" in exploited_by
+            ) and "NONE" not in exploited_by and "N/A" not in exploited_by
+            
+            if is_exploited or has_actor:
+                filtered_cves.append(cve)
+        
+        logger.info(f"Filtered CVEs: {len(filtered_cves)} of {len(cve_analysis)} meet exploitation/targeting criteria")
 
-        if cve_analysis:
-            table = self.doc.add_table(rows=1, cols=6)
-            headers = ["CVE ID", "Affected Product", "Exposure", "Exploited By", "Priority", "Wks"]
+        if filtered_cves:
+            table = self.doc.add_table(rows=1, cols=4)
+            headers = ["CVE ID", "Affected Product", "Exposure", "Wks"]
             header_cells = table.rows[0].cells
             table_caption_7pt = Pt(7)
 
@@ -402,29 +426,13 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 self._set_cell_margins_tight(cell, 2)
 
             # Data rows: styled per CTI_Weekly_Report_Template_Spec.json
-            for cve in cve_analysis:
+            for cve in filtered_cves:
                 row = table.add_row()
                 cells = row.cells
 
                 cells[0].text = cve.get("cve_id", "N/A")
                 cells[1].text = cve.get("affected_product", cve.get("product", "N/A"))
                 cells[2].text = self._format_exposure_cell(cve)
-                exploited_by = cve.get("exploited_by", "None known")
-                cells[3].text = exploited_by
-                
-                # Priority: Use priority if available, otherwise fall back to severity, default to P2
-                priority_text = cve.get("priority", "")
-                if not priority_text:
-                    severity = cve.get("severity", "").upper()
-                    if severity == "CRITICAL":
-                        priority_text = "P1"
-                    elif severity == "HIGH":
-                        priority_text = "P2"
-                    elif severity == "MEDIUM":
-                        priority_text = "P3"
-                    else:
-                        priority_text = "P2"
-                cells[4].text = priority_text
 
                 # Parse weeks for display and 3+ weeks highlighting
                 weeks = cve.get("weeks_detected", cve.get("wks", 1))
@@ -442,7 +450,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 else:
                     weeks_num = int(weeks) if weeks is not None else 0
                     weeks_display = "New" if weeks_num == 0 or weeks_num == 1 else str(weeks_num)
-                cells[5].text = weeks_display
+                cells[3].text = weeks_display
 
                 # CVE ID, Affected Product, Exposure: no fill (inherit background)
                 for idx in (0, 1, 2):
@@ -453,68 +461,29 @@ class WeeklyReportGenerator(BaseReportGenerator):
                             run.font.size = FontSizes.SUBTITLE
                             run.font.color.rgb = BrandColors.TEXT_DARK
 
-                # Exploited By: pastel background based on content
-                exploited_upper = exploited_by.upper() if exploited_by else ""
-                if any(kw in exploited_upper for kw in ["APT", "PANDA", "BEAR", "KITTEN", "DRAGON", "SPIDER", "ACTOR", "GROUP", "RANSOMWARE", "MULTIPLE"]):
-                    # Threat actor names - light pink background
-                    self._set_cell_shading(cells[3], BrandColors.EXPLOITED_ACTOR_BG)
-                elif "NONE" in exploited_upper or "N/A" in exploited_upper:
-                    # None observed/known - light green background
-                    self._set_cell_shading(cells[3], BrandColors.EXPLOITED_NONE_BG)
-                elif "POC" in exploited_upper or "PROOF" in exploited_upper:
-                    # PoC available - light yellow background
-                    self._set_cell_shading(cells[3], BrandColors.EXPLOITED_POC_BG)
-                else:
-                    # Other (assume actor) - light pink background
-                    self._set_cell_shading(cells[3], BrandColors.EXPLOITED_ACTOR_BG)
-                self._set_cell_borders(cells[3], "CCCCCC")
-                for para in cells[3].paragraphs:
-                    for run in para.runs:
-                        run.font.size = FontSizes.SUBTITLE
-                        run.font.color.rgb = BrandColors.TEXT_DARK
-
-                # Priority: pastel background based on priority level
-                priority_upper = priority_text.upper() if priority_text else ""
-                if priority_upper in ("P1", "CRITICAL", "HIGH"):
-                    self._set_cell_shading(cells[4], BrandColors.RISK_HIGH_BG_LIGHT)
-                elif priority_upper in ("P2", "MEDIUM", "MODERATE"):
-                    self._set_cell_shading(cells[4], BrandColors.RISK_MED_BG_LIGHT)
-                else:
-                    # P3 or unknown - light green
-                    self._set_cell_shading(cells[4], BrandColors.RISK_LOW_BG_LIGHT)
-                self._set_cell_borders(cells[4], "CCCCCC")
-                for para in cells[4].paragraphs:
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    for run in para.runs:
-                        run.font.size = FontSizes.SUBTITLE
-                        run.font.color.rgb = BrandColors.TEXT_DARK
-                        run.font.bold = True
-
                 # Wks: pastel background if 3+, no fill otherwise
                 if weeks_num >= 4:
                     # Long overdue - light red
-                    self._set_cell_shading(cells[5], BrandColors.WKS_OVERDUE_BG)
+                    self._set_cell_shading(cells[3], BrandColors.WKS_OVERDUE_BG)
                 elif weeks_num >= 3:
                     # 3+ weeks - light yellow
-                    self._set_cell_shading(cells[5], BrandColors.WKS_3PLUS_BG)
+                    self._set_cell_shading(cells[3], BrandColors.WKS_3PLUS_BG)
                 else:
-                    self._clear_cell_shading(cells[5])
-                self._set_cell_borders(cells[5], "CCCCCC")
-                for para in cells[5].paragraphs:
+                    self._clear_cell_shading(cells[3])
+                self._set_cell_borders(cells[3], "CCCCCC")
+                for para in cells[3].paragraphs:
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     for run in para.runs:
                         run.font.size = FontSizes.SUBTITLE
                         run.font.color.rgb = BrandColors.TEXT_DARK
 
-            # Caption below table with priority urgency guide
+            # Caption below table
             caption = self.doc.add_paragraph()
             caption_run = caption.add_run(
-                "Priority: P1 = Address immediately (24-48 hours) • "
-                "P2 = Patch within 7-14 days • "
-                "P3 = Schedule within 30 days   |   "
                 "Wks = consecutive weeks detected. Items at 3+ weeks (yellow) are persistent and require escalation. "
                 "Items at 4+ weeks (red) are long overdue. "
-                "Source: Rapid7 InsightVM scans."
+                "Only CVEs with active exploitation or threat actor attribution are shown. "
+                "Source: Rapid7 InsightVM scans, CISA KEV, Intel471, CrowdStrike."
             )
             caption_run.font.size = table_caption_7pt
             caption_run.font.italic = True
@@ -522,7 +491,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             caption_run.font.name = "Arial"
             caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
         else:
-            self.doc.add_paragraph("No vulnerability data available.")
+            self.doc.add_paragraph("No actively exploited vulnerabilities detected in the environment this week.")
 
         self.doc.add_paragraph()
 
@@ -663,39 +632,54 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         self.doc.add_paragraph()
 
-    def _add_sources(self) -> None:
-        """Add a Sources section listing public intelligence sources used."""
-        logger.info("Adding Sources section")
+    def _add_ai_disclaimer(self) -> None:
+        """Add AI-generated disclaimer box with intelligence sources."""
+        logger.info("Adding AI disclaimer box")
 
-        h = self.doc.add_heading("Sources", level=1)
-        self._style_heading_1(h)
+        # Add a small gap before the disclaimer
+        self.doc.add_paragraph()
 
-        sources = [
-            ("NIST National Vulnerability Database (NVD)", "https://nvd.nist.gov/"),
-            ("CISA Known Exploited Vulnerabilities (KEV) Catalog", "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"),
-            ("Rapid7 InsightVM", "Asset vulnerability scans and exposure data"),
-            ("CrowdStrike Falcon Intelligence", "Threat actor profiles and APT tracking"),
-            ("Intel471 Titan", "Underground threat intelligence and breach reporting"),
-            ("ThreatQ", "Indicator of compromise (IOC) aggregation"),
-            ("MITRE ATT&CK", "https://attack.mitre.org/"),
-        ]
-
-        for name, detail in sources:
-            para = self.doc.add_paragraph(style="List Bullet")
-            name_run = para.add_run(f"{name}")
-            name_run.font.size = FontSizes.BODY_SMALL
-            name_run.font.bold = True
-            if detail.startswith("http"):
-                detail_run = para.add_run(f"  {detail}")
-            else:
-                detail_run = para.add_run(f" — {detail}")
-            detail_run.font.size = FontSizes.BODY_SMALL
-            detail_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+        # Create a single-cell table for the box
+        table = self.doc.add_table(rows=1, cols=1)
+        cell = table.rows[0].cells[0]
+        
+        # Light blue/gray background for the info box
+        self._set_cell_shading(cell, "E8F4F8")  # Light blue-gray
+        self._set_cell_borders(cell, "B0D4E3", "8")  # Slightly darker blue border
+        
+        # Clear default paragraph
+        cell.paragraphs[0].clear()
+        
+        # Title in the box
+        title_para = cell.paragraphs[0]
+        title_run = title_para.add_run("AI-Generated Intelligence Report")
+        title_run.font.size = FontSizes.BODY_SMALL
+        title_run.font.bold = True
+        title_run.font.color.rgb = BrandColors.TEXT_DARK
+        title_run.font.name = "Arial"
+        title_para.paragraph_format.space_after = Pt(4)
+        
+        # Body text
+        body_para = cell.add_paragraph()
+        body_text = (
+            "This report was generated using AI-powered analysis to curate and correlate threat intelligence from the following sources: "
+            "NIST National Vulnerability Database (NVD), CISA Known Exploited Vulnerabilities (KEV) Catalog, "
+            "Rapid7 InsightVM, CrowdStrike Falcon Intelligence, Intel471 Titan, ThreatQ, and MITRE ATT&CK. "
+            "The analysis identifies threats actively exploited in the wild or targeting the manufacturing, biotech, "
+            "medical device, clinical, and genomics industries."
+        )
+        body_run = body_para.add_run(body_text)
+        body_run.font.size = Pt(8)
+        body_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+        body_run.font.name = "Arial"
+        body_para.paragraph_format.space_before = Pt(0)
+        body_para.paragraph_format.space_after = Pt(6)
+        body_para.paragraph_format.line_spacing = 1.15
 
         self.doc.add_paragraph()
 
     def _add_footer(self) -> None:
-        """Add footer with contact info and data sources."""
+        """Add footer with contact info."""
         logger.info("Adding footer")
 
         # Contact info
@@ -708,5 +692,3 @@ class WeeklyReportGenerator(BaseReportGenerator):
         contact.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
         self.doc.add_paragraph()
-
-        # Data sources - removed, now covered by Sources section

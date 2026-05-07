@@ -222,7 +222,7 @@ class ThreatAnalystAgent:
                 logger.info("Successfully parsed analysis results")
                 analysis_result = self._fill_gaps_from_backup(
                     analysis_result, cve_data, rapid7_data, rapid7_scans_data,
-                    kev_lookup, epss_lookup,
+                    kev_lookup, epss_lookup, intel471_data, crowdstrike_data,
                 )
                 return analysis_result
             else:
@@ -566,15 +566,14 @@ Please provide your analysis in the following JSON format:
 }}
 
 Priority Guidelines (for CVEs detected in our environment):
-- P1: Critical vulnerabilities being actively exploited AND detected in our environment
+Priority is computed from a weighted score (CVSS severity, EPSS exploitation probability, CISA KEV status, threat actor association, and asset exposure). Use these as guidance:
+- P1 (score >= 60): Critical/High CVSS + high EPSS or CISA KEV + wide exposure or actor involvement
   - Action required: Address immediately (24-48 hours)
-  - These pose imminent risk to operations
-- P2: High-severity vulnerabilities with active exploitation OR wide exposure (5+ systems)
+- P2 (score 30-59): High severity OR moderate EPSS OR some exposure
   - Action required: Patch within 7-14 days
-  - Significant risk requiring prompt attention
-- P3: Vulnerabilities detected in our environment but lower severity/urgency
+- P3 (score < 30): Lower severity, low EPSS, minimal exposure
   - Action required: Schedule within 30 days
-  - Lower exposure (1-4 systems) AND no active exploitation
+Note: Priority will be recalculated deterministically after your analysis using EPSS, KEV, and threat actor data. Focus on accurate severity, exploitation, and exposure values.
 
 Exposure Field Guidelines:
 - Use the EXACT exposure string from the exposure map (e.g., "1 server", "7 systems", "12 endpoints")
@@ -765,6 +764,8 @@ Do not use Hyphens."""
         rapid7_scans_data: List[Dict] = None,
         kev_lookup: Dict[str, dict] = None,
         epss_lookup: Dict[str, dict] = None,
+        intel471_data: List[Dict] = None,
+        crowdstrike_data: List[Dict] = None,
     ) -> Dict[str, Any]:
         """
         Patch AI analysis results with Rapid7/NVD/KEV/EPSS backup data where
@@ -822,7 +823,14 @@ Do not use Hyphens."""
 
             # Fill affected_product if AI left it blank
             product = cve_entry.get("affected_product", "N/A")
-            if product in ("N/A", "", None, "Unknown", "unknown") or "vendor product" in product.lower():
+            product_lower = (product or "").lower()
+            needs_product = (
+                product in ("N/A", "", None)
+                or product_lower.startswith("unknown")
+                or "vendor product" in product_lower
+                or "see asset" in product_lower
+            )
+            if needs_product:
                 backup_product = (
                     build_affected_product_from_kev(cve_id, kev_lookup)
                     or nvd.get("affected_product")
@@ -838,7 +846,15 @@ Do not use Hyphens."""
 
             # Fill exploited_by from KEV/EPSS/Rapid7 (in priority order)
             exploited_by = cve_entry.get("exploited_by", "")
-            if exploited_by in ("", None, "Unknown", "unknown", "None known", "N/A"):
+            exploited_lower = (exploited_by or "").lower()
+            needs_exploit = (
+                exploited_by in ("", None)
+                or exploited_lower in ("unknown", "none known", "n/a", "none", "no")
+                or exploited_lower.startswith("none")
+                or exploited_lower.startswith("unknown")
+                or exploited_lower.startswith("no known")
+            )
+            if needs_exploit:
                 kev_epss_result = build_exploited_by(cve_id, kev_lookup, epss_lookup)
                 if kev_epss_result:
                     cve_entry["exploited_by"] = kev_epss_result
@@ -863,6 +879,32 @@ Do not use Hyphens."""
                 if scan_weeks and scan_weeks > 1:
                     cve_entry["weeks_detected"] = scan_weeks
                     gaps_filled += 1
+
+        # Recompute priority using weighted scoring
+        apt_cve_map = self._build_apt_cve_map(
+            intel471_data or [], crowdstrike_data or [],
+        )
+        for cve_entry in cve_analysis:
+            label, num_score, justification = self.compute_priority(
+                cve_entry, kev_lookup or {}, epss_lookup or {}, apt_cve_map,
+            )
+            cve_entry["priority"] = label
+            cve_entry["priority_score"] = num_score
+            cve_entry["priority_justification"] = justification
+
+        priority_order = {"P1": 0, "P2": 1, "P3": 2}
+        cve_analysis.sort(key=lambda x: (
+            priority_order.get(x.get("priority", "P3"), 3),
+            -x.get("priority_score", 0),
+            -self._extract_count(x.get("exposure", "0")),
+        ))
+
+        # Recount after re-scoring
+        stats = analysis_result.get("statistics", {})
+        if stats:
+            stats["p1_count"] = sum(1 for c in cve_analysis if c.get("priority") == "P1")
+            stats["p2_count"] = sum(1 for c in cve_analysis if c.get("priority") == "P2")
+            stats["p3_count"] = sum(1 for c in cve_analysis if c.get("priority") == "P3")
 
         # Filter: only keep CVEs that exist in Rapid7 scans
         if rapid7_cve_map:
@@ -972,19 +1014,9 @@ Do not use Hyphens."""
                 else:
                     exploited_by = "None known"
                 
-                # Determine priority based on severity and exploitation
-                if exploited and severity in ("CRITICAL", "Critical"):
-                    priority = "P1"
-                elif exploited or severity in ("CRITICAL", "Critical"):
-                    priority = "P2"
-                elif severity in ("HIGH", "Severe", "High"):
-                    priority = "P2"
-                else:
-                    priority = "P3"
-                
                 cve_analysis.append({
                     "cve_id": cve_id,
-                    "priority": priority,
+                    "priority": "P3",
                     "severity": severity,
                     "exploited": exploited,
                     "description": description,
@@ -995,11 +1027,21 @@ Do not use Hyphens."""
                     "weeks_detected": r7_scan.get("weeks_detected", 1),
                 })
             
-            # Sort by priority (P1 first), then by exposure count descending
+            # Weighted priority scoring
+            apt_cve_map = self._build_apt_cve_map(intel471_data, crowdstrike_data)
+            for cve_entry in cve_analysis:
+                label, num_score, justification = self.compute_priority(
+                    cve_entry, kev_lookup, epss_lookup, apt_cve_map,
+                )
+                cve_entry["priority"] = label
+                cve_entry["priority_score"] = num_score
+                cve_entry["priority_justification"] = justification
+
             priority_order = {"P1": 0, "P2": 1, "P3": 2}
             cve_analysis.sort(key=lambda x: (
                 priority_order.get(x.get("priority", "P3"), 3),
-                -self._extract_count(x.get("exposure", "0"))
+                -x.get("priority_score", 0),
+                -self._extract_count(x.get("exposure", "0")),
             ))
         
         total_cves = len(cve_analysis)
@@ -1071,6 +1113,155 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
             return int(exposure_str.split()[0])
         except (ValueError, IndexError):
             return 0
+
+    @staticmethod
+    def compute_priority(
+        cve_entry: Dict[str, Any],
+        kev_lookup: Dict[str, dict],
+        epss_lookup: Dict[str, dict],
+        apt_cve_map: Dict[str, str],
+    ) -> tuple:
+        """
+        Deterministic weighted priority scoring (0-100 scale).
+
+        Weights:
+            CVSS severity   0-30
+            EPSS score       0-30
+            CISA KEV         0-20
+            Threat actor     0-15
+            Exposure         0-5
+
+        Returns (priority_label, numeric_score, justification_string).
+        """
+        cve_id = cve_entry.get("cve_id", "")
+        score = 0
+        factors = []
+
+        # --- CVSS severity (0-30) ---
+        severity = (cve_entry.get("severity") or "").upper()
+        cvss_raw = cve_entry.get("cvss_score")
+        try:
+            cvss = float(cvss_raw) if cvss_raw is not None else None
+        except (TypeError, ValueError):
+            cvss = None
+
+        if cvss is not None:
+            if cvss >= 9.0:
+                score += 30
+                factors.append(f"CVSS {cvss}")
+            elif cvss >= 7.0:
+                score += 20
+                factors.append(f"CVSS {cvss}")
+            elif cvss >= 4.0:
+                score += 10
+                factors.append(f"CVSS {cvss}")
+            else:
+                score += 5
+                factors.append(f"CVSS {cvss}")
+        else:
+            if severity in ("CRITICAL",):
+                score += 30
+                factors.append("Critical severity")
+            elif severity in ("HIGH", "SEVERE"):
+                score += 20
+                factors.append("High severity")
+            elif severity in ("MEDIUM", "MODERATE"):
+                score += 10
+                factors.append("Medium severity")
+            else:
+                score += 5
+                factors.append(severity or "Unknown severity")
+
+        # --- EPSS (0-30) ---
+        epss_entry = epss_lookup.get(cve_id)
+        if epss_entry:
+            epss_score = epss_entry["epss"]
+            if epss_score >= 0.6:
+                score += 30
+                factors.append(f"EPSS {epss_score:.0%}")
+            elif epss_score >= 0.2:
+                score += 20
+                factors.append(f"EPSS {epss_score:.0%}")
+            elif epss_score >= 0.04:
+                score += 10
+                factors.append(f"EPSS {epss_score:.1%}")
+            else:
+                score += 3
+                factors.append(f"EPSS {epss_score:.2%}")
+
+        # --- CISA KEV (0-20) ---
+        kev = kev_lookup.get(cve_id)
+        if kev:
+            score += 20
+            factors.append("CISA KEV")
+
+        # --- Threat actor relevance (0-15) ---
+        actor_label = apt_cve_map.get(cve_id)
+        if actor_label:
+            if "crowdstrike" in actor_label.lower() or "apt" in actor_label.lower():
+                score += 15
+                factors.append(f"Actor: {actor_label}")
+            else:
+                score += 10
+                factors.append(f"Intel471: {actor_label}")
+
+        # --- Exposure (0-5) ---
+        exposure_str = cve_entry.get("exposure", "0")
+        try:
+            asset_count = int(str(exposure_str).split()[0])
+        except (ValueError, IndexError):
+            asset_count = 0
+        if asset_count >= 5:
+            score += 5
+            factors.append(f"{asset_count} assets")
+        elif asset_count >= 1:
+            score += 2
+            factors.append(f"{asset_count} asset{'s' if asset_count > 1 else ''}")
+
+        # --- Thresholds ---
+        if score >= 60:
+            label = "P1"
+        elif score >= 30:
+            label = "P2"
+        else:
+            label = "P3"
+
+        justification = "; ".join(factors) + f" [score {score}]"
+        return label, score, justification
+
+    @staticmethod
+    def _build_apt_cve_map(
+        intel471_data: List[Dict],
+        crowdstrike_data: List[Dict],
+    ) -> Dict[str, str]:
+        """
+        Build CVE-ID -> actor-label mapping from Intel471 reports and
+        CrowdStrike actor data so the priority scorer can give credit for
+        threat-actor association.
+        """
+        apt_cve_map: Dict[str, str] = {}
+        cve_pattern = re.compile(r'CVE-\d{4}-\d{4,7}')
+
+        for item in (intel471_data or []):
+            actor = item.get("threat_actor", "")
+            if not actor or actor == "Unknown":
+                actor = item.get("threat_type", "Intel471 report")
+            text = item.get("summary", "") + " " + item.get("description", "")
+            for cve_id in cve_pattern.findall(text):
+                if cve_id not in apt_cve_map:
+                    apt_cve_map[cve_id] = actor
+
+        for actor in (crowdstrike_data or []):
+            actor_name = actor.get("actor_name", actor.get("name", ""))
+            if not actor_name:
+                continue
+            for field in ("description", "summary", "rich_text_description"):
+                text = actor.get(field, "")
+                if isinstance(text, str):
+                    for cve_id in cve_pattern.findall(text):
+                        apt_cve_map[cve_id] = f"{actor_name} (CrowdStrike)"
+
+        return apt_cve_map
 
     @staticmethod
     def _extract_product_from_description(description: str) -> str:
