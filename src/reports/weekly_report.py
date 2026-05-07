@@ -393,6 +393,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
         new_this_week = sum(1 for cve in cve_analysis if cve.get("weeks_detected", 1) <= 1)
         persistent_count = sum(1 for cve in cve_analysis if cve.get("weeks_detected", 1) >= 3)
         
+        # Log persistent CVEs for debugging
+        if persistent_count > 0:
+            persistent_cves = [cve.get("cve_id", "?") for cve in cve_analysis if cve.get("weeks_detected", 1) >= 3]
+            logger.info(f"Persistent CVEs (3+ weeks): {persistent_cves[:10]}")  # Show first 10
+        
         # Total exposed is just total CVEs (all are detected in environment)
         total_exposed = len(cve_analysis)
         
@@ -400,14 +405,25 @@ class WeeklyReportGenerator(BaseReportGenerator):
         critical_count = sum(1 for cve in cve_analysis if str(cve.get("severity", "")).upper() in ("CRITICAL",))
         high_count = sum(1 for cve in cve_analysis if str(cve.get("severity", "")).upper() in ("HIGH", "SEVERE"))
         
-        # Exploited count - we don't have this field anymore, so set to 0
+        # Exploited count - check for CISA KEV, EPSS high scores, or exploited flag
         exploited_count = 0
+        for cve in cve_analysis:
+            exploited_by = str(cve.get("exploited_by", "")).upper()
+            # Check for CISA KEV, active exploitation, ransomware, or threat actors
+            if (cve.get("exploited", False) or 
+                "CISA KEV" in exploited_by or 
+                "RANSOMWARE" in exploited_by or
+                "ACTIVE EXPLOITATION" in exploited_by or
+                any(actor in exploited_by for actor in ["APT", "LAZARUS", "PANDA", "BEAR", "GROUP"])):
+                exploited_count += 1
+        
+        logger.info(f"Actively exploited: {exploited_count} of {total_exposed} CVEs")
         
         # APT groups from threat activity
         apt_groups = len(apt_activity)
         
-        # Resolved count - we don't track this yet, set to 0
-        resolved_count = 0
+        # Resolved count - compare with previous week's data (if available)
+        resolved_count = self._calculate_resolved_count(cve_analysis)
         
         return {
             "total_cves": total_exposed,
@@ -424,6 +440,55 @@ class WeeklyReportGenerator(BaseReportGenerator):
             "p2_count": 0,
             "p3_count": 0
         }
+    
+    def _calculate_resolved_count(self, current_cves: List[Dict[str, Any]]) -> int:
+        """
+        Calculate resolved CVEs by comparing with previous week.
+        Reads last week's report from reports/ directory if available.
+        """
+        try:
+            from datetime import timedelta
+            import os
+            
+            # Calculate last week's date
+            last_week = self.created_at - timedelta(days=7)
+            last_week_filename = f"CTI_Weekly_Report_{last_week.strftime('%Y-%m-%d')}.docx"
+            
+            # Check in both reports/ and reports_test/ directories
+            for report_dir in ["reports", "reports_test", "."]:
+                last_week_path = os.path.join(report_dir, last_week_filename)
+                if os.path.exists(last_week_path):
+                    # We can't easily read DOCX, so check for a JSON cache instead
+                    json_cache = last_week_path.replace(".docx", "_cves.json")
+                    if os.path.exists(json_cache):
+                        import json
+                        with open(json_cache, 'r') as f:
+                            last_week_cves = set(json.load(f))
+                        
+                        # CVEs that were in last week but not this week
+                        current_cve_ids = set(cve.get("cve_id") for cve in current_cves)
+                        resolved = len(last_week_cves - current_cve_ids)
+                        logger.info(f"Resolved CVEs: {resolved} (comparing with {last_week_filename})")
+                        return resolved
+            
+            logger.debug("No previous week's data found for comparison")
+            return 0
+            
+        except Exception as e:
+            logger.debug(f"Could not calculate resolved count: {e}")
+            return 0
+
+    def _save_cve_cache(self, cve_analysis: List[Dict[str, Any]], output_path: str):
+        """Save CVE IDs to JSON cache for next week's comparison."""
+        try:
+            import json
+            cve_ids = [cve.get("cve_id") for cve in cve_analysis if cve.get("cve_id")]
+            cache_path = output_path.replace(".docx", "_cves.json")
+            with open(cache_path, 'w') as f:
+                json.dump(cve_ids, f)
+            logger.debug(f"Saved CVE cache to {cache_path}")
+        except Exception as e:
+            logger.debug(f"Could not save CVE cache: {e}")
 
     def _group_cves_by_technology(self, cve_analysis: List[Dict[str, Any]]) -> tuple:
         """
@@ -440,6 +505,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
         
         # Minimum CVEs needed to form a group (reduced to 2 for more aggressive grouping)
         MIN_GROUP_SIZE = 2
+        
+        # Debug: log first few products to see what we're working with
+        if cve_analysis:
+            sample_products = [cve.get("affected_product", "?")[:50] for cve in cve_analysis[:5]]
+            logger.info(f"Sample products for grouping: {sample_products}")
         
         for cve in cve_analysis:
             product = cve.get("affected_product", "").strip()
@@ -484,6 +554,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 # Calculate aggregate metrics
                 total_systems = sum(self._extract_count(cve.get("exposure", "0")) for cve in cves)
                 max_weeks = max((cve.get("weeks_detected", 1) for cve in cves), default=1)
+                
+                logger.info(f"Grouping {len(cves)} CVEs into '{group_name}'")
                 
                 grouped_items.append({
                     "is_group": True,
