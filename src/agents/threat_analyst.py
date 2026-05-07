@@ -549,18 +549,10 @@ Please provide your analysis in the following JSON format:
     "Specific, actionable recommendation 3 (e.g., 'Monitor for IOCs from Intel471 underground intelligence')",
     "Specific, actionable recommendation 4",
     "Specific, actionable recommendation 5"
-  ],
-  "statistics": {{
-    "total_cves": {len(cve_data)},
-    "critical_count": 0,
-    "high_count": 0,
-    "exploited_count": 0,
-    "apt_groups": {len([item for item in crowdstrike_data if item.get('type') == 'actor'])},
-    "p1_count": 0,
-    "p2_count": 0,
-    "p3_count": 0
-  }}
+  ]
 }}
+
+IMPORTANT: Do NOT include a "statistics" field - statistics are calculated deterministically from the CVE data after your analysis.
 
 IMPORTANT CVE Analysis Guidelines:
 - Include ALL CVEs from the exposure map above - they are all detected in the environment

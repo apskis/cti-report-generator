@@ -227,7 +227,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
         sub_run.font.color.rgb = BrandColors.GRAY_LIGHT
         sub_run.font.name = "Arial"
 
-        stats = analysis_result.get("statistics", {})
+        # Calculate deterministic statistics from actual data
+        stats = self._calculate_statistics(analysis_result)
+        logger.info(f"Calculated stats: {stats}")
 
         # All six metrics in 2x3 grid (row1 then row2)
         metrics_row1 = [
@@ -378,6 +380,50 @@ class WeeklyReportGenerator(BaseReportGenerator):
             return int(str(exposure_str).split()[0])
         except (ValueError, IndexError, AttributeError):
             return 0
+
+    def _calculate_statistics(self, analysis_result: Dict[str, Any]) -> Dict[str, int]:
+        """
+        Calculate deterministic statistics from actual CVE data.
+        Don't trust AI-generated stats - compute from real data.
+        """
+        cve_analysis = analysis_result.get("cve_analysis", [])
+        apt_activity = analysis_result.get("apt_activity", [])
+        
+        # Count CVEs by weeks detected
+        new_this_week = sum(1 for cve in cve_analysis if cve.get("weeks_detected", 1) <= 1)
+        persistent_count = sum(1 for cve in cve_analysis if cve.get("weeks_detected", 1) >= 3)
+        
+        # Total exposed is just total CVEs (all are detected in environment)
+        total_exposed = len(cve_analysis)
+        
+        # Count CVEs by severity (from AI, but we validate it exists)
+        critical_count = sum(1 for cve in cve_analysis if str(cve.get("severity", "")).upper() in ("CRITICAL",))
+        high_count = sum(1 for cve in cve_analysis if str(cve.get("severity", "")).upper() in ("HIGH", "SEVERE"))
+        
+        # Exploited count - we don't have this field anymore, so set to 0
+        exploited_count = 0
+        
+        # APT groups from threat activity
+        apt_groups = len(apt_activity)
+        
+        # Resolved count - we don't track this yet, set to 0
+        resolved_count = 0
+        
+        return {
+            "total_cves": total_exposed,
+            "new_this_week": new_this_week,
+            "persistent_count": persistent_count,
+            "resolved_count": resolved_count,
+            "total_exposed": total_exposed,
+            "exploited_count": exploited_count,
+            "actively_exploited": exploited_count,
+            "apt_groups": apt_groups,
+            "critical_count": critical_count,
+            "high_count": high_count,
+            "p1_count": 0,  # No longer using priority
+            "p2_count": 0,
+            "p3_count": 0
+        }
 
     def _group_cves_by_technology(self, cve_analysis: List[Dict[str, Any]]) -> tuple:
         """
