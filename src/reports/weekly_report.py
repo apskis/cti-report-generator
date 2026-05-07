@@ -660,8 +660,22 @@ class WeeklyReportGenerator(BaseReportGenerator):
             row = table.add_row()
             cells = row.cells
 
-            cells[0].text = cve.get("cve_id", "N/A")
+            # Check if this CVE is actively exploited (need to check before setting text)
+            is_exploited, _ = self._is_actively_exploited(cve)
+
+            # Column 0: CVE ID (bold if exploited)
+            cells[0].text = ""  # Clear first
+            cve_para = cells[0].paragraphs[0]
+            cve_run = cve_para.add_run(cve.get("cve_id", "N/A"))
+            cve_run.font.size = FontSizes.SUBTITLE
+            cve_run.font.color.rgb = BrandColors.TEXT_DARK
+            if is_exploited:
+                cve_run.font.bold = True
+            
+            # Column 1: Product
             cells[1].text = cve.get("affected_product", cve.get("product", "N/A"))
+            
+            # Column 2: Exposure
             cells[2].text = self._format_exposure_cell(cve)
 
             # Parse weeks for display and 3+ weeks highlighting
@@ -682,11 +696,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 weeks_display = "New" if weeks_num == 0 or weeks_num == 1 else str(weeks_num)
             cells[3].text = weeks_display
 
-            # Check if this CVE is actively exploited
-            is_exploited, _ = self._is_actively_exploited(cve)
-
-            # Styling for individual CVEs
-            for idx in (0, 1, 2):
+            # Styling for columns 1 and 2 (column 0 already styled above)
+            for idx in (1, 2):
                 # Light red background for exploited CVEs
                 if is_exploited:
                     self._set_cell_shading(cells[idx], "FFE6E6")  # Light red
@@ -697,9 +708,13 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     for run in para.runs:
                         run.font.size = FontSizes.SUBTITLE
                         run.font.color.rgb = BrandColors.TEXT_DARK
-                        # Make CVE ID bold if exploited
-                        if idx == 0 and is_exploited:
-                            run.font.bold = True
+            
+            # Also apply shading to column 0 (CVE ID)
+            if is_exploited:
+                self._set_cell_shading(cells[0], "FFE6E6")  # Light red
+            else:
+                self._clear_cell_shading(cells[0])
+            self._set_cell_borders(cells[0], "CCCCCC")
 
             # Wks: pastel background if 3+, or light red if exploited
             if is_exploited:
