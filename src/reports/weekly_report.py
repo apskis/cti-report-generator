@@ -88,7 +88,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._add_sector_threat_activity(analysis_result)
             self._add_exploitation_indicators(analysis_result)
             self._add_recommended_actions(analysis_result)
-            self._add_vulnerability_appendix(analysis_result)
             self._add_ai_disclaimer()
             self._add_footer()
 
@@ -394,8 +393,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
         groups = defaultdict(list)
         individual_cves = []
         
-        # Minimum CVEs needed to form a group
-        MIN_GROUP_SIZE = 3
+        # Minimum CVEs needed to form a group (reduced to 2 for more aggressive grouping)
+        MIN_GROUP_SIZE = 2
         
         for cve in cve_analysis:
             product = cve.get("affected_product", "").strip()
@@ -417,6 +416,18 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 groups["Apache Products"].append(cve)
             elif product.startswith("VMware ") or product.startswith("VMWare "):
                 groups["VMware Products"].append(cve)
+            elif product.startswith("Oracle "):
+                groups["Oracle Products"].append(cve)
+            elif product.startswith("Cisco "):
+                groups["Cisco Products"].append(cve)
+            elif product.startswith("Adobe "):
+                groups["Adobe Products"].append(cve)
+            elif "linux kernel" in product_lower or "kernel" in product_lower:
+                groups["Linux Kernel"].append(cve)
+            elif "python" in product_lower:
+                groups["Python Packages"].append(cve)
+            elif "node" in product_lower or "npm" in product_lower:
+                groups["Node.js/NPM Packages"].append(cve)
             else:
                 # Don't group unique products
                 individual_cves.append(cve)
@@ -441,11 +452,16 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 # If group is too small, treat as individual CVEs
                 individual_cves.extend(cves)
         
-        # Sort individual CVEs by severity/exposure
+        # Sort individual CVEs by severity/exposure (show most critical first)
         individual_cves.sort(key=lambda x: (
             -self._extract_count(x.get("exposure", "0")),
             -x.get("weeks_detected", 1)
         ))
+        
+        # Limit individual CVEs to top 5 most critical
+        if len(individual_cves) > 5:
+            logger.info(f"Limiting individual CVEs to top 5 (total: {len(individual_cves)})")
+            individual_cves = individual_cves[:5]
         
         return grouped_items, individual_cves, cve_analysis
 
@@ -573,12 +589,18 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         # Caption below table
         caption = self.doc.add_paragraph()
-        caption_run = caption.add_run(
-            "Wks = consecutive weeks detected. Items at 3+ weeks (yellow) require escalation, 4+ weeks (red) are overdue. "
-            f"Grouped items show {len(grouped_items)} technology families with 3+ CVEs each (full details in appendix). "
-            "Individual CVEs shown are unique or critical threats. "
+        total_cves = len(all_cves)
+        grouped_cves = sum(item['cve_count'] for item in grouped_items)
+        individual_shown = len(individual_cves)
+        
+        caption_text = (
+            f"Wks = consecutive weeks detected. Items at 3+ weeks (yellow) require escalation, 4+ weeks (red) are overdue. "
+            f"Table shows {individual_shown} individual CVEs (top by exposure/severity) and "
+            f"{len(grouped_items)} technology groups covering {grouped_cves} CVEs. "
+            f"Total: {total_cves} CVEs detected. "
             "Source: Rapid7 InsightVM, CISA KEV, Intel471, CrowdStrike."
         )
+        caption_run = caption.add_run(caption_text)
         caption_run.font.size = table_caption_7pt
         caption_run.font.italic = True
         caption_run.font.color.rgb = BrandColors.GRAY_MEDIUM
@@ -721,82 +743,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 para = self.doc.add_paragraph(rec, style="List Bullet")
                 for run in para.runs:
                     run.font.size = FontSizes.BODY_SMALL
-
-        self.doc.add_paragraph()
-
-    def _add_vulnerability_appendix(self, analysis_result: Dict[str, Any]) -> None:
-        """Add detailed vulnerability appendix listing all CVEs."""
-        logger.info("Adding Vulnerability Appendix section")
-
-        cve_analysis = analysis_result.get("cve_analysis", [])
-        
-        if not cve_analysis:
-            return  # Skip appendix if no CVEs
-        
-        # Only add appendix if we have enough CVEs to warrant it
-        if len(cve_analysis) < 5:
-            return
-
-        h = self.doc.add_heading("Appendix: Complete CVE Listing", level=1)
-        self._style_heading_1(h)
-
-        # Intro text
-        intro = self.doc.add_paragraph()
-        intro_run = intro.add_run(
-            f"This appendix provides complete details for all {len(cve_analysis)} vulnerabilities detected in the environment. "
-            "The summary table in the main report groups common technologies for clarity."
-        )
-        intro_run.font.size = FontSizes.BODY_SMALL
-        intro_run.font.italic = True
-        intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-
-        self.doc.add_paragraph()
-
-        # Create detailed table
-        table = self.doc.add_table(rows=1, cols=4)
-        headers = ["CVE ID", "Affected Product", "Exposure", "Wks"]
-        header_cells = table.rows[0].cells
-
-        # Header row
-        for i, header in enumerate(headers):
-            cell = header_cells[i]
-            cell.text = header
-            para = cell.paragraphs[0]
-            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = para.runs[0]
-            run.font.bold = True
-            run.font.size = Pt(7)
-            run.font.color.rgb = BrandColors.WHITE
-            self._set_cell_shading(cell, BrandColors.TABLE_HEADER_BG)
-            self._set_cell_borders(cell, "CCCCCC")
-
-        # Add all CVEs
-        for cve in cve_analysis:
-            row = table.add_row()
-            cells = row.cells
-
-            cells[0].text = cve.get("cve_id", "N/A")
-            cells[1].text = cve.get("affected_product", cve.get("product", "N/A"))
-            cells[2].text = self._format_exposure_cell(cve)
-
-            weeks = cve.get("weeks_detected", 1)
-            if isinstance(weeks, str):
-                weeks_display = weeks if weeks.lower() != "new" else "1"
-            else:
-                weeks_num = int(weeks) if weeks is not None else 1
-                weeks_display = str(weeks_num)
-            cells[3].text = weeks_display
-
-            # Compact styling for appendix
-            for idx in range(4):
-                self._clear_cell_shading(cells[idx])
-                self._set_cell_borders(cells[idx], "CCCCCC")
-                for para in cells[idx].paragraphs:
-                    for run in para.runs:
-                        run.font.size = Pt(7)
-                        run.font.color.rgb = BrandColors.TEXT_DARK
-
-            cells[3].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
         self.doc.add_paragraph()
 
