@@ -524,14 +524,11 @@ Please provide your analysis in the following JSON format:
   "cve_analysis": [
     {{
       "cve_id": "CVE-XXXX-XXXX",
-      "priority": "P1/P2/P3",
-      "severity": "Critical/High/Medium",
-      "exploited": true/false,
-      "description": "Brief description",
-      "impact": "Potential impact on biotech/manufacturing operations",
-      "affected_product": "Vendor Product Name (e.g., 'Microsoft Exchange Server', 'Fortinet FortiOS')",
-      "exploited_by": "Who is exploiting it (e.g., 'Ransomware groups', 'APT28', 'None known')",
-      "exposure": "REQUIRED: Asset count from exposure map (e.g., '12 servers', '3 databases', '28 devices') or 'N/A' if not in environment",
+      "severity": "Critical/High/Medium/Low",
+      "description": "Brief technical description of the vulnerability",
+      "impact": "Potential impact on genomics/biotech/manufacturing operations",
+      "affected_product": "Vendor Product Name (e.g., 'WordPress Plugin: contact-form-7', 'Microsoft Exchange Server', 'Fortinet FortiOS')",
+      "exposure": "REQUIRED: Asset count from exposure map (e.g., '12 systems', '3 systems', '1 system')",
       "weeks_detected": 1
     }}
   ],
@@ -565,25 +562,22 @@ Please provide your analysis in the following JSON format:
   }}
 }}
 
-Priority Guidelines (for CVEs detected in our environment):
-Priority is computed from a weighted score (CVSS severity, EPSS exploitation probability, CISA KEV status, threat actor association, and asset exposure). Use these as guidance:
-- P1 (score >= 60): Critical/High CVSS + high EPSS or CISA KEV + wide exposure or actor involvement
-  - Action required: Address immediately (24-48 hours)
-- P2 (score 30-59): High severity OR moderate EPSS OR some exposure
-  - Action required: Patch within 7-14 days
-- P3 (score < 30): Lower severity, low EPSS, minimal exposure
-  - Action required: Schedule within 30 days
-Note: Priority will be recalculated deterministically after your analysis using EPSS, KEV, and threat actor data. Focus on accurate severity, exploitation, and exposure values.
+IMPORTANT CVE Analysis Guidelines:
+- Include ALL CVEs from the exposure map above - they are all detected in the environment
+- Focus on accurate severity assessment and impact analysis
+- The report will automatically group similar technologies (e.g., WordPress plugins) for readability
+- Priority scoring is no longer used - focus on clear severity and impact descriptions
+- Do NOT filter CVEs - include everything from the exposure map
 
 Exposure Field Guidelines:
-- Use the EXACT exposure string from the exposure map (e.g., "1 server", "7 systems", "12 endpoints")
+- Use the EXACT exposure string from the exposure map (e.g., "1 system", "7 systems")
 - DO NOT modify or reformat these values - copy them exactly as shown
-- All CVEs in your analysis will have exposure data (since we're only analyzing detected CVEs)
+- All CVEs in your analysis must have exposure data
 
 Weeks Detected Guidelines:
 - Set weeks_detected to 1 for all CVEs by default (new this week)
 - If a CVE appears to be older or recurring based on publish date or context, use a higher value
-- The report will highlight CVEs with weeks_detected >= 3 as "Persistent (3+ Wks)"
+- The report will highlight CVEs with weeks_detected >= 3 as persistent issues
 
 Respond ONLY with valid JSON. Do not include any markdown formatting or code blocks.
 
