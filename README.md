@@ -433,6 +433,185 @@ az functionapp config appsettings set \
 func azure functionapp publish your-function-app
 ```
 
+## Adding New Report Types
+
+The system supports multiple report types (Weekly, Quarterly) and is designed for easy extensibility. Here's how to add a new report type (e.g., Monthly):
+
+### Step 1: Create Report Generator
+
+Create a new file `src/reports/monthly_report.py`:
+
+```python
+from src.reports.base import BaseReportGenerator
+from src.reports.registry import register_report_generator
+
+@register_report_generator("monthly")
+class MonthlyReportGenerator(BaseReportGenerator):
+    @property
+    def report_type(self) -> str:
+        return "monthly"
+    
+    @property
+    def filename_prefix(self) -> str:
+        return "CTI_Monthly_Report"
+    
+    def generate(self, analysis_result: dict) -> Document:
+        """Generate the monthly report document."""
+        # Implement your monthly report structure
+        # See weekly_report.py for reference
+        pass
+```
+
+**Key points:**
+- Inherit from `BaseReportGenerator`
+- Use `@register_report_generator("monthly")` decorator
+- Override `report_type`, `filename_prefix`, and `generate()` method
+- Follow the existing pattern in `weekly_report.py` or `quarterly_report.py`
+
+### Step 2: Add Statistics Validation (Gate 1A)
+
+Edit `gates/gate1a_statistics.py` and add monthly validation:
+
+```python
+def run(gate_input: GateInput, llm_client: Any, report_type: str) -> GateResult:
+    if report_type == "WEEKLY":
+        return _validate_weekly_statistics(gate_input)
+    elif report_type == "QUARTERLY":
+        return _validate_quarterly_statistics(gate_input)
+    elif report_type == "MONTHLY":  # ADD THIS
+        return _validate_monthly_statistics(gate_input)
+    else:
+        # ... existing code ...
+```
+
+Then implement the validation function:
+
+```python
+def _validate_monthly_statistics(gate_input: GateInput) -> GateResult:
+    """
+    Validate monthly report statistics.
+    
+    Add checks specific to monthly reports:
+    - Month-over-month trend validation
+    - Data coverage for the full month
+    - Metric consistency
+    """
+    validations = []
+    warnings = []
+    
+    # Example: Check data coverage
+    gate1_result = gate_input.prior_results.get("1")
+    tier1_sources = gate1_result.payload.get("tier1_sources", [])
+    
+    # Add your monthly-specific validations here
+    # ...
+    
+    return GateResult(
+        gate_id="1A",
+        status="COMPLETE",
+        payload={
+            "report_type": "MONTHLY",
+            "validations": validations,
+            "warnings": warnings,
+            "summary": {
+                "total_checks": len(validations),
+                "passed": sum(1 for v in validations if v["passed"]),
+            }
+        }
+    )
+```
+
+### Step 3: Add Azure Function Handler (Optional)
+
+If you want an HTTP endpoint for the monthly report, add to `function_app.py`:
+
+```python
+@app.function_name(name="GenerateMonthlyReport")
+@app.route(route="GenerateMonthlyReport", auth_level=func.AuthLevel.FUNCTION)
+async def generate_monthly_report(req: func.HttpRequest) -> func.HttpResponse:
+    """Generate a monthly CTI report."""
+    logger.info('Monthly CTI Report Generation triggered')
+    
+    try:
+        # ... similar to weekly/quarterly handlers ...
+        
+        # Optional: Run gate framework validation
+        if _gate_framework_enabled():
+            logger.info('Running gate framework validation (monthly)...')
+            publish_ok, gate_info, session = run_gate_framework_over_collected_data(
+                report_type="monthly",
+                data_by_source=data_by_source,
+                osint_articles=osint_data,
+                period_days=30,  # Monthly = 30 days
+            )
+            if not publish_ok:
+                return func.HttpResponse(
+                    json.dumps({
+                        'status': 'blocked',
+                        'report_type': 'monthly',
+                        'message': 'Gate framework blocked report publication',
+                        'gate_info': gate_info,
+                    }, indent=2),
+                    mimetype='application/json',
+                    status_code=409,
+                )
+        
+        # Generate report
+        report_result = create_and_upload_report(
+            report_type="monthly",
+            analysis_result=analysis,
+            storage_account_name=storage_account_name,
+            storage_account_key=storage_account_key
+        )
+        
+        # Return response
+        # ...
+    
+    except Exception as e:
+        logger.error(f'Error generating monthly report: {str(e)}', exc_info=True)
+        # ... error handling ...
+```
+
+### Step 4: Update Configuration (Optional)
+
+If your monthly report has different collection settings, update `src/core/config.py`:
+
+```python
+@dataclass(frozen=True)
+class CollectorConfig:
+    # Existing fields...
+    
+    # Monthly report settings
+    monthly_lookback_days: int = 30
+    monthly_max_results: int = 200
+```
+
+### Step 5: Test Your New Report Type
+
+```bash
+# Test with mock data
+python test_local.py monthly --local --mock
+
+# Test with real data
+python test_local.py monthly --local --real
+
+# Upload to Azure
+python test_local.py monthly --azure
+```
+
+### Architecture Notes
+
+**Gate 1A Design:** Uses internal branching (not separate gates) so the gate sequence remains clean:
+```
+Gate 1  → Gate 1A → Gate 1B → Gate 2 → Gate 3 → Gate 4 → Gate 5 → Gate 6
+```
+
+Gate 1A automatically branches based on `report_type`, so you don't need to modify the orchestrator or gate sequence.
+
+**Report Registry:** The `@register_report_generator` decorator automatically registers your report type. No manual registration needed.
+
+**CLI Support:** `test_local.py` will automatically support your new report type once the generator is registered.
+
 ## API Response
 
 The function returns JSON with:
