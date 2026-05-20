@@ -149,7 +149,10 @@ def _print_gate_summary(session: dict, gate_info: dict) -> None:
         gate_info: Info dict returned by run_gate_framework_over_collected_data
     """
     print()
-    print(f"{Fore.CYAN}{Style.BRIGHT}── Gate Framework Summary {'─' * 30}{Style.RESET_ALL}")
+    try:
+        print(f"{Fore.CYAN}{Style.BRIGHT}── Gate Framework Summary {'─' * 30}{Style.RESET_ALL}")
+    except UnicodeEncodeError:
+        print(f"{Fore.CYAN}{Style.BRIGHT}-- Gate Framework Summary {'-' * 30}{Style.RESET_ALL}")
     
     # Gate names for display
     gate_names = {
