@@ -158,6 +158,7 @@ def _print_gate_summary(session: dict, gate_info: dict) -> None:
     # Gate names for display
     gate_names = {
         "1": "Tier 1 Source Inventory",
+        "1A": "Statistics Validation",
         "1B": "OSINT Article Triage",
         "2": "IOC Extraction",
         "3": "Actor Linkage",
@@ -166,7 +167,7 @@ def _print_gate_summary(session: dict, gate_info: dict) -> None:
         "6": "Adversarial Review",
     }
     
-    for gate_id in ["1", "1B", "2", "3", "4", "5", "6"]:
+    for gate_id in ["1", "1A", "1B", "2", "3", "4", "5", "6"]:
         if gate_id in session:
             result = session[gate_id]
             status_display = result.status
@@ -484,6 +485,7 @@ async def generate_report_local(
             print()
             gate_names = {
                 "1": "Tier 1 Source Inventory",
+                "1A": "Statistics Validation",
                 "1B": "OSINT Article Triage",
                 "2": "IOC Extraction",
                 "3": "Actor Linkage",

@@ -63,7 +63,7 @@ def run_gate_framework_over_collected_data(
 
     if interactive_mode:
         # Interactive mode: run gates one by one with manual clearance
-        gate_sequence = ["1", "1B", "2", "3", "4", "5", "6"]
+        gate_sequence = ["1", "1A", "1B", "2", "3", "4", "5", "6"]
         
         for gate_id in gate_sequence:
             try:

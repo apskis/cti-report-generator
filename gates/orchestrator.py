@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from . import (
     gate1_tier1_inventory,
+    gate1a_statistics,
     gate1b_osint_triage,
     gate2_ioc_extraction,
     gate3_actor_linkage,
@@ -28,10 +29,11 @@ from .models import GateInput, GateResult
 logger = logging.getLogger(__name__)
 
 
-_GATE_SEQUENCE: list[str] = ["1", "1B", "2", "3", "4", "5", "6"]
+_GATE_SEQUENCE: list[str] = ["1", "1A", "1B", "2", "3", "4", "5", "6"]
 
 _GATE_RUNNERS = {
     "1": gate1_tier1_inventory.run,
+    "1A": gate1a_statistics.run,
     "1B": gate1b_osint_triage.run,
     "2": gate2_ioc_extraction.run,
     "3": gate3_actor_linkage.run,
