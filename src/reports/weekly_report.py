@@ -87,6 +87,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._add_vulnerability_exposure(analysis_result)
             self._add_sector_threat_activity(analysis_result)
             self._add_recommended_actions(analysis_result)
+            self._add_resources_section(analysis_result)
             self._add_ai_disclaimer()
             self._add_footer()
 
@@ -393,10 +394,17 @@ class WeeklyReportGenerator(BaseReportGenerator):
         new_this_week = sum(1 for cve in cve_analysis if cve.get("weeks_detected", 1) <= 1)
         persistent_count = sum(1 for cve in cve_analysis if cve.get("weeks_detected", 1) >= 3)
         
+        # Log new CVEs for debugging
+        if new_this_week > 0:
+            new_cves = [f"{cve.get('cve_id', '?')} (weeks={cve.get('weeks_detected', 1)})" 
+                       for cve in cve_analysis if cve.get("weeks_detected", 1) <= 1]
+            logger.info(f"New CVEs this week ({new_this_week}): {new_cves[:10]}")  # Show first 10
+        
         # Log persistent CVEs for debugging
         if persistent_count > 0:
-            persistent_cves = [cve.get("cve_id", "?") for cve in cve_analysis if cve.get("weeks_detected", 1) >= 3]
-            logger.info(f"Persistent CVEs (3+ weeks): {persistent_cves[:10]}")  # Show first 10
+            persistent_cves = [f"{cve.get('cve_id', '?')} (weeks={cve.get('weeks_detected', 1)})" 
+                             for cve in cve_analysis if cve.get("weeks_detected", 1) >= 3]
+            logger.info(f"Persistent CVEs (3+ weeks, {persistent_count}): {persistent_cves[:10]}")  # Show first 10
         
         # Total exposed is just total CVEs (all are detected in environment)
         total_exposed = len(cve_analysis)
@@ -407,6 +415,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         
         # Exploited count - check for CISA KEV, EPSS high scores, or exploited flag
         exploited_count = 0
+        exploited_cves = []
         for cve in cve_analysis:
             exploited_by = str(cve.get("exploited_by", "")).upper()
             # Check for CISA KEV, active exploitation, ransomware, or threat actors
@@ -416,8 +425,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 "ACTIVE EXPLOITATION" in exploited_by or
                 any(actor in exploited_by for actor in ["APT", "LAZARUS", "PANDA", "BEAR", "GROUP"])):
                 exploited_count += 1
+                exploited_cves.append(f"{cve.get('cve_id', '?')} ({exploited_by[:30]})")
         
         logger.info(f"Actively exploited: {exploited_count} of {total_exposed} CVEs")
+        if exploited_count > 0:
+            logger.info(f"Exploited CVEs: {exploited_cves[:5]}")  # Show first 5
         
         # APT groups from threat activity
         apt_groups = len(apt_activity)
@@ -587,32 +599,40 @@ class WeeklyReportGenerator(BaseReportGenerator):
         Check if a CVE is actively exploited.
         Returns (is_exploited: bool, reason: str)
         """
-        exploited_by = str(cve.get("exploited_by", "")).upper()
-        
-        # Check for CISA KEV
-        if "CISA KEV" in exploited_by:
-            return (True, "CISA KEV")
-        
-        # Check for ransomware
-        if "RANSOMWARE" in exploited_by:
-            return (True, "Ransomware campaigns")
-        
-        # Check for active exploitation mention
-        if "ACTIVE EXPLOITATION" in exploited_by:
-            return (True, "Active exploitation")
-        
-        # Check for threat actors
-        threat_actors = ["APT", "LAZARUS", "PANDA", "BEAR", "KITTEN", "DRAGON", "SPIDER", "GROUP"]
-        for actor in threat_actors:
-            if actor in exploited_by and "NONE" not in exploited_by:
-                # Extract actor name if possible
-                if "APT" in exploited_by:
-                    return (True, "Threat actor activity")
-                return (True, "Threat actor activity")
-        
-        # Check exploited flag
+        # Check boolean exploited flag (from enrichment)
         if cve.get("exploited", False):
             return (True, "Confirmed exploitation")
+        
+        # Check in_cisa_kev flag (from enrichment)
+        if cve.get("in_cisa_kev", False):
+            return (True, "CISA KEV")
+        
+        # Check exploited_by field (from enrichment)
+        exploited_by = str(cve.get("exploited_by", "")).upper()
+        
+        if exploited_by and exploited_by != "NONE KNOWN":
+            # Check for CISA KEV
+            if "CISA KEV" in exploited_by:
+                return (True, "CISA KEV")
+            
+            # Check for ransomware
+            if "RANSOMWARE" in exploited_by:
+                return (True, "Ransomware campaigns")
+            
+            # Check for active exploitation mention
+            if "ACTIVE EXPLOITATION" in exploited_by:
+                return (True, "Active exploitation")
+            
+            # Check for threat actors
+            threat_actors = ["APT", "LAZARUS", "PANDA", "BEAR", "KITTEN", "DRAGON", "SPIDER", "GROUP"]
+            for actor in threat_actors:
+                if actor in exploited_by and "NONE" not in exploited_by:
+                    return (True, "Threat actor activity")
+        
+        # Check known_ransomware field (from KEV enrichment)
+        known_ransomware = str(cve.get("known_ransomware", "")).upper()
+        if known_ransomware and known_ransomware not in ("UNKNOWN", ""):
+            return (True, "Ransomware campaigns")
         
         return (False, "")
 
@@ -632,8 +652,19 @@ class WeeklyReportGenerator(BaseReportGenerator):
         
         # Group CVEs by technology
         grouped_items, individual_cves, all_cves = self._group_cves_by_technology(cve_analysis)
-        
+
         logger.info(f"Grouped: {len(grouped_items)} technology groups, {len(individual_cves)} individual CVEs")
+
+        # Add legend for exploitation indicator
+        legend = self.doc.add_paragraph()
+        legend.space_before = Pt(0)
+        legend.space_after = Pt(6)
+        
+        # Add explanation text
+        text_run = legend.add_run("Bright red background indicates active exploitation (CISA KEV, ransomware, or threat actors)")
+        text_run.font.size = Pt(8)
+        text_run.font.color.rgb = BrandColors.TEXT_DARK
+        text_run.font.italic = True
 
         # Create table
         table = self.doc.add_table(rows=1, cols=4)
@@ -660,11 +691,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
             row = table.add_row()
             cells = row.cells
 
-            # Check if this CVE is actively exploited (need to check before setting text)
+            # Check if this CVE is actively exploited
             is_exploited, _ = self._is_actively_exploited(cve)
 
             # Column 0: CVE ID (bold if exploited)
-            cells[0].text = ""  # Clear first
+            cells[0].text = ""
             cve_para = cells[0].paragraphs[0]
             cve_run = cve_para.add_run(cve.get("cve_id", "N/A"))
             cve_run.font.size = FontSizes.SUBTITLE
@@ -696,35 +727,30 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 weeks_display = "New" if weeks_num == 0 or weeks_num == 1 else str(weeks_num)
             cells[3].text = weeks_display
 
-            # Styling for columns 1 and 2 (column 0 already styled above)
-            for idx in (1, 2):
-                # Light red background for exploited CVEs
+            # Styling for columns 0, 1, 2
+            for idx in (0, 1, 2):
+                # Bright red background for exploited CVEs
                 if is_exploited:
-                    self._set_cell_shading(cells[idx], "FFE6E6")  # Light red
+                    self._set_cell_shading(cells[idx], "FF6B6B")  # Bright red
                 else:
-                    self._clear_cell_shading(cells[idx])
+                    self._clear_cell_shading(cells[idx])  # White/no fill
                 self._set_cell_borders(cells[idx], "CCCCCC")
                 for para in cells[idx].paragraphs:
                     for run in para.runs:
                         run.font.size = FontSizes.SUBTITLE
                         run.font.color.rgb = BrandColors.TEXT_DARK
-            
-            # Also apply shading to column 0 (CVE ID)
-            if is_exploited:
-                self._set_cell_shading(cells[0], "FFE6E6")  # Light red
-            else:
-                self._clear_cell_shading(cells[0])
-            self._set_cell_borders(cells[0], "CCCCCC")
+                        if is_exploited and idx == 0:  # Bold CVE ID if exploited
+                            run.font.bold = True
 
-            # Wks: pastel background if 3+, or light red if exploited
+            # Wks column: weeks highlighting takes precedence, but add red bg if exploited and <3 weeks
             if is_exploited:
-                self._set_cell_shading(cells[3], "FFE6E6")  # Light red for exploited
+                self._set_cell_shading(cells[3], "FF6B6B")  # Bright red
             elif weeks_num >= 4:
                 self._set_cell_shading(cells[3], BrandColors.WKS_OVERDUE_BG)
             elif weeks_num >= 3:
                 self._set_cell_shading(cells[3], BrandColors.WKS_3PLUS_BG)
             else:
-                self._clear_cell_shading(cells[3])
+                self._clear_cell_shading(cells[3])  # White/no fill
             self._set_cell_borders(cells[3], "CCCCCC")
             for para in cells[3].paragraphs:
                 para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -737,18 +763,37 @@ class WeeklyReportGenerator(BaseReportGenerator):
             row = table.add_row()
             cells = row.cells
 
-            # Column 0: Group name with count
-            cells[0].text = f"{group_item['group_name']}\n({group_item['cve_count']} CVEs)"
+            # Check if any CVE in this group is actively exploited
+            group_has_exploited = any(
+                self._is_actively_exploited(cve)[0] 
+                for cve in group_item.get("cves", [])
+            )
+
+            # Column 0: Group name with count (and exploitation count if any)
+            exploited_in_group = sum(1 for cve in group_item.get("cves", []) if self._is_actively_exploited(cve)[0])
+            if exploited_in_group > 0:
+                cells[0].text = f"{group_item['group_name']}\n({group_item['cve_count']} CVEs, {exploited_in_group} exploited)"
+            else:
+                cells[0].text = f"{group_item['group_name']}\n({group_item['cve_count']} CVEs)"
+            
+            # Column 1: Product
             cells[1].text = f"Multiple products ({group_item['cve_count']} vulnerabilities)"
+            
+            # Column 2: Exposure
             cells[2].text = group_item.get("exposure", "Multiple")
             
+            # Column 3: Weeks
             weeks_num = group_item.get("weeks_detected", 1)
             weeks_display = "New" if weeks_num <= 1 else str(weeks_num)
             cells[3].text = weeks_display
 
-            # Light gray background for grouped items
-            for idx in range(4):
-                self._set_cell_shading(cells[idx], "F5F5F5")
+            # Styling for grouped items - bright red if any exploited, else white/no fill
+            bg_color = "FF6B6B" if group_has_exploited else None
+            for idx in range(0, 3):
+                if bg_color:
+                    self._set_cell_shading(cells[idx], bg_color)
+                else:
+                    self._clear_cell_shading(cells[idx])
                 self._set_cell_borders(cells[idx], "CCCCCC")
                 for para in cells[idx].paragraphs:
                     for run in para.runs:
@@ -762,8 +807,15 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 self._set_cell_shading(cells[3], BrandColors.WKS_OVERDUE_BG)
             elif weeks_num >= 3:
                 self._set_cell_shading(cells[3], BrandColors.WKS_3PLUS_BG)
-            
+            elif group_has_exploited:
+                self._set_cell_shading(cells[3], "FF6B6B")  # Match red if exploited
+            else:
+                self._clear_cell_shading(cells[3])
+            self._set_cell_borders(cells[3], "CCCCCC")
             cells[3].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for run in cells[3].paragraphs[0].runs:
+                run.font.size = FontSizes.SUBTITLE
+                run.font.color.rgb = BrandColors.TEXT_DARK
 
         # Caption below table
         caption = self.doc.add_paragraph()
@@ -773,7 +825,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         
         caption_text = (
             f"Wks = consecutive weeks detected. Items at 3+ weeks (yellow) require escalation, 4+ weeks (red) are overdue. "
-            f"Bold CVE IDs with red highlighting indicate active exploitation (CISA KEV, ransomware, or threat actors). "
+            f"Bright red background indicates active exploitation (CISA KEV, ransomware, or threat actors). "
             f"Table shows {individual_shown} individual CVEs (top by exposure/severity) and "
             f"{len(grouped_items)} technology groups covering {grouped_cves} CVEs. "
             f"Total: {total_cves} CVEs detected. "
@@ -895,6 +947,56 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         self.doc.add_paragraph()
 
+    def _add_resources_section(self, analysis_result: Dict[str, Any]) -> None:
+        """Add Resources section listing OSINT sources used in analysis."""
+        logger.info("Adding Resources section")
+
+        h = self.doc.add_heading("Resources & Intelligence Sources", level=1)
+        self._style_heading_1(h)
+
+        # Intro text
+        intro = self.doc.add_paragraph()
+        intro_run = intro.add_run(
+            "This report was compiled using the following intelligence sources:"
+        )
+        intro_run.font.size = FontSizes.BODY_SMALL
+        intro_run.font.italic = True
+        intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+
+        # Primary sources (always used)
+        primary_sources = [
+            "NIST National Vulnerability Database (NVD)",
+            "CISA Known Exploited Vulnerabilities (KEV) Catalog",
+            "Rapid7 InsightVM vulnerability scanning platform",
+            "CrowdStrike Falcon Intelligence",
+            "Intel471 Titan threat intelligence platform",
+            "ThreatQ threat intelligence management platform",
+            "MITRE ATT&CK Framework"
+        ]
+
+        for source in primary_sources:
+            para = self.doc.add_paragraph(source, style="List Bullet")
+            for run in para.runs:
+                run.font.size = FontSizes.BODY_SMALL
+
+        # OSINT sources (if any were listed by the AI)
+        osint_sources = analysis_result.get("osint_sources_used", [])
+        if osint_sources:
+            self.doc.add_paragraph()
+            osint_heading = self.doc.add_paragraph()
+            osint_heading_run = osint_heading.add_run("Open Source Intelligence (OSINT) Sources:")
+            osint_heading_run.font.size = FontSizes.BODY_SMALL
+            osint_heading_run.font.bold = True
+            osint_heading_run.font.color.rgb = BrandColors.TEXT_DARK
+
+            for source in osint_sources:
+                if isinstance(source, str) and source.strip():
+                    para = self.doc.add_paragraph(source, style="List Bullet")
+                    for run in para.runs:
+                        run.font.size = FontSizes.BODY_SMALL
+
+        self.doc.add_paragraph()
+
     def _add_ai_disclaimer(self) -> None:
         """Add AI-generated disclaimer box with intelligence sources."""
         logger.info("Adding AI disclaimer box")
@@ -925,11 +1027,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Body text
         body_para = cell.add_paragraph()
         body_text = (
-            "This report was generated using AI-powered analysis to curate and correlate threat intelligence from the following sources: "
-            "NIST National Vulnerability Database (NVD), CISA Known Exploited Vulnerabilities (KEV) Catalog, "
-            "Rapid7 InsightVM, CrowdStrike Falcon Intelligence, Intel471 Titan, ThreatQ, and MITRE ATT&CK. "
+            "This report was generated using AI-powered analysis to curate and correlate threat intelligence. "
+            "Vulnerability and threat actor data are sourced from the intelligence platforms listed in the Resources section above. "
             "The analysis identifies threats actively exploited in the wild or targeting the manufacturing, biotech, "
-            "medical device, clinical, and genomics industries."
+            "medical device, clinical, and genomics industries. All CVEs listed have been detected in our environment "
+            "through automated scanning."
         )
         body_run = body_para.add_run(body_text)
         body_run.font.size = Pt(8)
@@ -948,7 +1050,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Contact info
         contact = self.doc.add_paragraph()
         contact_run = contact.add_run(
-            "Questions or suspicious activity: secops@company.com | ServiceNow | cti@company.com"
+            "Questions or suspicious activity: secops@illumina.com | ServiceNow"
         )
         contact_run.font.size = FontSizes.BODY_SMALL
         contact_run.font.bold = True

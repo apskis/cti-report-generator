@@ -513,7 +513,7 @@ RAW DATA:
 
 Please provide your analysis in the following JSON format:
 {{
-  "executive_summary": "2-3 paragraph summary highlighting the most critical threats and their potential impact on genomics/biotech/manufacturing operations",
+  "executive_summary": "2-3 paragraph summary highlighting the most critical threats and their potential impact on genomics/biotech/manufacturing operations. DO NOT reference sources like 'Rapid7', 'OSINT', 'Microsoft Threat Intelligence' in this summary - just state the facts.",
   "top_threats": [
     {{
       "threat": "Description of threat",
@@ -544,15 +544,25 @@ Please provide your analysis in the following JSON format:
     }}
   ],
   "recommendations": [
-    "Specific, actionable recommendation 1 (mention source if relevant: 'Based on Intel471 breach reports...')",
+    "Specific, actionable recommendation 1 (DO NOT say 'Refer to Rapid7' or 'Refer to OSINT sources' - be specific about what to do)",
     "Specific, actionable recommendation 2",
-    "Specific, actionable recommendation 3 (e.g., 'Monitor for IOCs from Intel471 underground intelligence')",
+    "Specific, actionable recommendation 3",
     "Specific, actionable recommendation 4",
     "Specific, actionable recommendation 5"
+  ],
+  "osint_sources_used": [
+    "List any OSINT article titles/sources that were particularly relevant to your analysis"
   ]
 }}
 
 IMPORTANT: Do NOT include a "statistics" field - statistics are calculated deterministically from the CVE data after your analysis.
+
+CRITICAL - AVOID VAGUE SOURCE REFERENCES:
+- DO NOT write "Refer to Rapid7 for remediation guidance" or "Refer to OSINT sources"
+- DO NOT write "as highlighted by OSINT and Microsoft Threat Intelligence" in the executive summary
+- Be specific: Instead of "Refer to X", say exactly what to do (e.g., "Patch systems immediately", "Review firewall rules", "Enable MFA")
+- Only mention specific OSINT articles by name if you're citing them (list them in osint_sources_used)
+- The Resources section will automatically list all data sources - you don't need to reference them
 
 IMPORTANT CVE Analysis Guidelines:
 - Include ALL CVEs from the exposure map above - they are all detected in the environment
@@ -830,7 +840,7 @@ Do not use Hyphens."""
                     cve_entry["affected_product"] = backup_product
                     gaps_filled += 1
 
-            # Fill exploited_by from KEV/EPSS/Rapid7 (in priority order)
+            # Fill exploited_by from KEV/EPSS/Rapid7/NVD (in priority order)
             exploited_by = cve_entry.get("exploited_by", "")
             exploited_lower = (exploited_by or "").lower()
             needs_exploit = (
@@ -841,12 +851,15 @@ Do not use Hyphens."""
                 or exploited_lower.startswith("no known")
             )
             if needs_exploit:
+                # First try KEV/EPSS
                 kev_epss_result = build_exploited_by(cve_id, kev_lookup, epss_lookup)
                 if kev_epss_result:
                     cve_entry["exploited_by"] = kev_epss_result
                     if "CISA KEV" in kev_epss_result:
                         cve_entry["exploited"] = True
+                        cve_entry["in_cisa_kev"] = True
                     gaps_filled += 1
+                # Then try Rapid7
                 elif r7_vuln.get("exploitable"):
                     kits = r7_vuln.get("malware_kits_count", 0)
                     exploits = r7_vuln.get("exploits_count", 0)
@@ -857,6 +870,19 @@ Do not use Hyphens."""
                     else:
                         cve_entry["exploited_by"] = "Exploit available"
                     gaps_filled += 1
+                # Finally check NVD data for enrichment fields
+                elif nvd.get("exploited") or nvd.get("in_cisa_kev"):
+                    cve_entry["exploited"] = nvd.get("exploited", False)
+                    cve_entry["in_cisa_kev"] = nvd.get("in_cisa_kev", False)
+                    cve_entry["exploited_by"] = nvd.get("exploited_by", "Unknown")
+                    if nvd.get("known_ransomware"):
+                        cve_entry["known_ransomware"] = nvd.get("known_ransomware")
+                    gaps_filled += 1
+            else:
+                # Even if exploited_by exists, ensure boolean flags are set
+                if "CISA KEV" in exploited_by:
+                    cve_entry["exploited"] = True
+                    cve_entry["in_cisa_kev"] = True
 
             # Fill weeks_detected from Rapid7 scan 'added' date
             weeks = cve_entry.get("weeks_detected", 1)
