@@ -995,10 +995,18 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     title = source.get("title", "")
                     url = source.get("url", "")
                     relevance = source.get("relevance", "")
+                    citation_num = source.get("citation_number", None)
                     
                     if title and url:
                         # Create paragraph with bullet
                         para = self.doc.add_paragraph(style="List Bullet")
+                        
+                        # Add citation number if provided
+                        if citation_num:
+                            cite_run = para.add_run(f"[{citation_num}] ")
+                            cite_run.font.size = FontSizes.FOOTNOTE
+                            cite_run.font.bold = True
+                            cite_run.font.color.rgb = BrandColors.TEXT_DARK
                         
                         # Add hyperlink for the title
                         self._add_hyperlink(para, title, url)
