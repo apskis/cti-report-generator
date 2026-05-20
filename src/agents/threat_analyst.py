@@ -517,7 +517,7 @@ RAW DATA:
 
 Please provide your analysis in the following JSON format:
 {{
-  "executive_summary": "2-3 paragraph summary highlighting the most critical threats and their potential impact on genomics/biotech/manufacturing operations. DO NOT reference sources like 'Rapid7', 'OSINT', 'Microsoft Threat Intelligence' in this summary - just state the facts.",
+  "executive_summary": "2-3 paragraph summary highlighting the most critical threats. CRITICAL RULES: (1) ONLY mention CVE IDs that appear in the cve_analysis array below - do NOT invent or reference external CVEs. (2) If referencing OSINT intelligence, add inline citations like [1], [2] matching the osint_sources_used array. (3) If mentioning industry threats NOT detected in our environment, explicitly state 'not currently detected' or 'industry threat to monitor'. (4) DO NOT reference source names like 'Rapid7', 'OSINT', 'Microsoft Threat Intelligence' - just state facts with citations.",
   "top_threats": [
     {{
       "threat": "Description of threat",
@@ -556,21 +556,28 @@ Please provide your analysis in the following JSON format:
   ],
   "osint_sources_used": [
     {{
-      "title": "Article title or source name",
+      "title": "Short reference (2-4 words, e.g., 'GitHub Breach', 'OT Robot Flaw')",
       "url": "https://example.com/article",
-      "relevance": "Brief note on why this source was relevant to the analysis"
+      "relevance": "Brief note on why this source was relevant (1 sentence)",
+      "citation_number": 1
     }}
   ]
 }}
 
 IMPORTANT: Do NOT include a "statistics" field - statistics are calculated deterministically from the CVE data after your analysis.
 
+OSINT Citation Rules:
+- Use SHORT reference titles (2-4 words max), not full article titles
+- Example: "GitHub Breach" not "GitHub Confirms Breach, 4K Internal Repos Stolen"
+- When you reference OSINT in the executive_summary, add [1], [2] inline citations
+- Assign citation_number sequentially starting from 1
+- Only mention specific OSINT articles by name if you're citing them (list them in osint_sources_used)
+- The Resources section will automatically list all data sources - you don't need to reference them
+
 CRITICAL - AVOID VAGUE SOURCE REFERENCES:
 - DO NOT write "Refer to Rapid7 for remediation guidance" or "Refer to OSINT sources"
 - DO NOT write "as highlighted by OSINT and Microsoft Threat Intelligence" in the executive summary
 - Be specific: Instead of "Refer to X", say exactly what to do (e.g., "Patch systems immediately", "Review firewall rules", "Enable MFA")
-- Only mention specific OSINT articles by name if you're citing them (list them in osint_sources_used)
-- The Resources section will automatically list all data sources - you don't need to reference them
 
 IMPORTANT CVE Analysis Guidelines:
 - Include ALL CVEs from the exposure map above - they are all detected in the environment

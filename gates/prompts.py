@@ -241,10 +241,14 @@ TRACK A (must fix, block publish):
 - Invented or estimated numbers
 - Any OSINT article used as the sole citation for a Threat Findings claim (OSINT corroborates, it does not prove)
 - Any Open Signals item that appeared in the Threat Findings section instead of the Open Signals Appendix
+- **Narrative cohesion**: CVEs mentioned in executive summary must either appear in threat findings OR be explicitly labeled as "industry threats to monitor" (not detected in environment)
+- **Narrative cohesion**: Key findings in tables should be referenced in the executive summary
 
 TRACK B (fix in place, no restart needed):
 - Filler phrases that survived
 - Section order violations
+- **OSINT citations**: If OSINT sources are listed, they should have inline citations [1], [2] in the narrative showing which claims come from which sources
+- Missing context for why specific OSINT articles were included
 - Formatting issues (em dashes, bullets where prose was required)
 
 Output format:
