@@ -990,7 +990,37 @@ class WeeklyReportGenerator(BaseReportGenerator):
             osint_heading_run.font.color.rgb = BrandColors.TEXT_DARK
 
             for source in osint_sources:
-                if isinstance(source, str) and source.strip():
+                # Handle both old string format and new dict format
+                if isinstance(source, dict):
+                    title = source.get("title", "")
+                    url = source.get("url", "")
+                    relevance = source.get("relevance", "")
+                    
+                    if title and url:
+                        # Create paragraph with bullet
+                        para = self.doc.add_paragraph(style="List Bullet")
+                        
+                        # Add hyperlink for the title
+                        self._add_hyperlink(para, title, url)
+                        
+                        # Add relevance note if provided
+                        if relevance:
+                            rel_run = para.add_run(f" - {relevance}")
+                            rel_run.font.size = FontSizes.FOOTNOTE
+                            rel_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+                            rel_run.font.italic = True
+                        
+                        # Set font size for the whole paragraph
+                        for run in para.runs:
+                            if run.font.size is None:
+                                run.font.size = FontSizes.BODY_SMALL
+                    elif title:
+                        # No URL, just show title
+                        para = self.doc.add_paragraph(title, style="List Bullet")
+                        for run in para.runs:
+                            run.font.size = FontSizes.BODY_SMALL
+                elif isinstance(source, str) and source.strip():
+                    # Legacy string format
                     para = self.doc.add_paragraph(source, style="List Bullet")
                     for run in para.runs:
                         run.font.size = FontSizes.BODY_SMALL

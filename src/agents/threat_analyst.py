@@ -478,21 +478,25 @@ Cross-reference with CrowdStrike actors when possible to provide:
         if osint_data:
             osint_articles = []
             for article in osint_data[:15]:
-                entry = f"- [{article.get('source', 'Unknown')}] {article.get('title', 'No title')}"
+                entry = {
+                    "title": article.get('title', 'No title'),
+                    "source": article.get('source', 'Unknown'),
+                    "url": article.get('url', ''),
+                    "summary": article.get('summary', '')[:150]
+                }
                 if article.get("cves_mentioned"):
-                    entry += f" (CVEs: {', '.join(article['cves_mentioned'])})"
-                if article.get("summary"):
-                    entry += f"\n  {article['summary'][:150]}"
+                    entry["cves_mentioned"] = article['cves_mentioned']
                 osint_articles.append(entry)
 
             osint_context = f"""
 OSINT - CURATED PUBLIC INTELLIGENCE ({len(osint_data)} articles from vetted sources):
-{chr(10).join(osint_articles)}
+{json.dumps(osint_articles, indent=2)}
 
 Use these OSINT articles to:
 - Provide additional context for CVEs or threat actors mentioned
 - Identify emerging threats not yet in commercial feeds
-- Reference specific articles in the executive summary or recommendations where relevant
+- If an article is particularly relevant to your analysis, include it in osint_sources_used with its title and URL
+- You can reference specific articles in the executive summary if they provide unique insights
 """
 
         return f"""Analyze this threat intelligence data and provide a comprehensive report.
@@ -551,7 +555,11 @@ Please provide your analysis in the following JSON format:
     "Specific, actionable recommendation 5"
   ],
   "osint_sources_used": [
-    "List any OSINT article titles/sources that were particularly relevant to your analysis"
+    {{
+      "title": "Article title or source name",
+      "url": "https://example.com/article",
+      "relevance": "Brief note on why this source was relevant to the analysis"
+    }}
   ]
 }}
 

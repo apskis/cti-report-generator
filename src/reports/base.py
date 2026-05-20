@@ -506,6 +506,47 @@ class BaseReportGenerator(ABC):
                 if style_name == 'Heading 1':
                     heading_font.size = Pt(14)
 
+    @staticmethod
+    def _add_hyperlink(paragraph, text, url):
+        """
+        Add a hyperlink to a paragraph.
+        
+        Args:
+            paragraph: The paragraph to add the hyperlink to
+            text: The display text for the hyperlink
+            url: The URL to link to
+            
+        Returns:
+            The hyperlink run
+        """
+        # Create the hyperlink element
+        part = paragraph.part
+        r_id = part.relate_to(url, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink", is_external=True)
+        
+        hyperlink = OxmlElement('w:hyperlink')
+        hyperlink.set(qn('r:id'), r_id)
+        
+        # Create a run element with the link text
+        new_run = OxmlElement('w:r')
+        rPr = OxmlElement('w:rPr')
+        
+        # Style the hyperlink (blue, underlined)
+        color = OxmlElement('w:color')
+        color.set(qn('w:val'), '0563C1')
+        rPr.append(color)
+        
+        u = OxmlElement('w:u')
+        u.set(qn('w:val'), 'single')
+        rPr.append(u)
+        
+        new_run.append(rPr)
+        new_run.text = text
+        hyperlink.append(new_run)
+        
+        paragraph._p.append(hyperlink)
+        
+        return new_run
+
     def _configure_page_settings(self) -> None:
         """
         Configure page setup to match CTI template (Page Setup dialog).
