@@ -91,8 +91,15 @@ def _scan_narrative_cohesion(report: dict, gate2_iocs: list) -> list[str]:
     """
     violations: list[str] = []
     
-    # Extract CVEs from executive summary
+    # Extract CVEs from executive summary - handle both string and dict formats
     exec_summary = report.get("executive_summary", "")
+    if isinstance(exec_summary, dict):
+        # Sometimes it's a dict with nested content
+        exec_summary = str(exec_summary)
+    elif not isinstance(exec_summary, str):
+        # If it's something else, convert to string
+        exec_summary = str(exec_summary) if exec_summary else ""
+    
     # Regex to find CVE IDs in text
     import re
     summary_cves = set(re.findall(r'CVE-\d{4}-\d{4,}', exec_summary, re.IGNORECASE))
@@ -101,14 +108,16 @@ def _scan_narrative_cohesion(report: dict, gate2_iocs: list) -> list[str]:
     finding_cves = set()
     for finding in report.get("threat_findings", []):
         value = finding.get("value", "")
-        if value.startswith("CVE-"):
+        if isinstance(value, str) and value.startswith("CVE-"):
             finding_cves.add(value.upper())
     
     # Extract CVEs from Gate 2 IOCs (actual detected CVEs)
     detected_cves = set()
     for ioc in gate2_iocs:
-        if ioc.get("ioc_type") == "CVE":
-            detected_cves.add(ioc.get("value", "").upper())
+        if isinstance(ioc, dict) and ioc.get("ioc_type") == "CVE":
+            cve_value = ioc.get("value", "")
+            if isinstance(cve_value, str):
+                detected_cves.add(cve_value.upper())
     
     # Check: CVEs in summary should either be in findings or explicitly noted as external threats
     orphaned_summary_cves = summary_cves - finding_cves
