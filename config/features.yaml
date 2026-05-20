@@ -20,7 +20,18 @@ features:
   # Default: false (disabled by default, enable when ready for production use)
   
   gate_framework:
-    enabled: false
+    enabled: true
+    
+    # Interactive mode - Pause after each gate for manual review
+    # When true:
+    #   - Each gate runs and displays results
+    #   - CLI prompts for approval before proceeding to next gate
+    #   - Allows analyst to review each gate's output
+    # When false:
+    #   - All gates run automatically in sequence (automated pipeline)
+    #   - No prompts, suitable for unattended execution
+    # Default: false (automated mode)
+    interactive_mode: false
     
     # Optional: Override with environment variable ENABLE_GATE_FRAMEWORK=1
     # to temporarily enable without changing this file

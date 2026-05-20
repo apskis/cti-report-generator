@@ -463,20 +463,70 @@ async def generate_report_local(
     if _gate_framework_enabled():
         print_section("🔒 Gate Framework Validation")
         from gates.pipeline_hook import run_gate_framework_over_collected_data
+        from src.core.config import get_feature_config
+        
+        feature_config = get_feature_config()
+        interactive_mode = feature_config.gate_framework_interactive
+        
+        if interactive_mode:
+            print_status("Interactive mode enabled - you will be prompted after each gate", "info")
+            print()
         
         period_days = 7 if report_type == "weekly" else 90
+        
+        # Define interactive callback for prompting user
+        def interactive_callback(gate_id, result, session):
+            """Called after each gate in interactive mode."""
+            # Print gate result
+            _print_gate_summary(session, {})
+            
+            # Prompt user
+            print()
+            gate_names = {
+                "1": "Tier 1 Source Inventory",
+                "1B": "OSINT Article Triage",
+                "2": "IOC Extraction",
+                "3": "Actor Linkage",
+                "4": "Structured Assembly",
+                "5": "Report Draft",
+                "6": "Adversarial Review",
+            }
+            gate_name = gate_names.get(gate_id, f"Gate {gate_id}")
+            print(f"{Fore.CYAN}Gate {gate_id} ({gate_name}) completed with status: {Fore.GREEN}{result.status}{Style.RESET_ALL}")
+            print()
+            
+            while True:
+                choice = input(f"{Fore.CYAN}Continue to next gate? [Y/n]: {Style.RESET_ALL}").strip().lower()
+                if choice in {"", "y", "yes"}:
+                    print()
+                    return True
+                elif choice in {"n", "no"}:
+                    print_status("Gate framework aborted by user", "warning")
+                    return False
+                else:
+                    print_status("Please enter 'y' or 'n'", "warning")
+        
         publish_ok, gate_info, session = run_gate_framework_over_collected_data(
             report_type=report_type,
             data_by_source=data_by_source or {},
             osint_articles=data_by_source.get("OSINT", []) if data_by_source else [],
             period_days=period_days,
+            interactive_mode=interactive_mode,
+            interactive_callback=interactive_callback if interactive_mode else None,
         )
         
-        # Print gate summary
-        _print_gate_summary(session, gate_info)
+        # Print final gate summary (only in non-interactive or after completion)
+        if not interactive_mode or publish_ok or not gate_info.get("user_abort"):
+            _print_gate_summary(session, gate_info)
         
         # Handle blocking conditions
         if not publish_ok:
+            # Check for user abort
+            if gate_info.get("user_abort"):
+                print_status(f"Aborted at Gate {gate_info.get('aborted_at_gate')}", "warning")
+                print()
+                sys.exit(0)
+            
             # For mock data, treat HALT as warning rather than hard block
             if use_mock and "halt_gate" in gate_info:
                 print_status(

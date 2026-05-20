@@ -121,6 +121,9 @@ class FeatureConfig:
 
     # Gate framework validation pipeline
     gate_framework_enabled: bool = False
+    
+    # Gate framework interactive mode (manual clearance after each gate)
+    gate_framework_interactive: bool = False
 
 
 @dataclass(frozen=True)
@@ -211,7 +214,8 @@ def _load_features_from_yaml() -> FeatureConfig:
     gate_framework = features.get("gate_framework", {})
     
     return FeatureConfig(
-        gate_framework_enabled=gate_framework.get("enabled", False)
+        gate_framework_enabled=gate_framework.get("enabled", False),
+        gate_framework_interactive=gate_framework.get("interactive_mode", False)
     )
 
 
@@ -230,7 +234,10 @@ def get_feature_config() -> FeatureConfig:
     env_gate_enabled = os.environ.get("ENABLE_GATE_FRAMEWORK", "").lower() in {"1", "true", "yes"}
     if env_gate_enabled:
         # Can't modify frozen dataclass, so create new instance
-        return FeatureConfig(gate_framework_enabled=True)
+        return FeatureConfig(
+            gate_framework_enabled=True,
+            gate_framework_interactive=config.gate_framework_interactive
+        )
     
     return config
 
