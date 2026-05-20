@@ -7,6 +7,8 @@ threat intelligence reports.
 import azure.functions as func  # type: ignore
 import logging
 import json
+import os
+from datetime import date, timedelta
 
 from src.core.keyvault import get_all_api_keys
 from src.collectors import collect_all, get_data_by_source
@@ -14,7 +16,70 @@ from src.agents.threat_analyst import ThreatAnalystAgent
 from src.reports.blob_storage import create_and_upload_report
 from src.core.config import azure_config, analysis_config
 
+from gates.orchestrator import GateOrchestrator
+from gates.llm_adapter import StructuralLLMClient
+from gates.halt import GateHaltError
+from gates.escape_handler import EscapeDetectedError
+
 logger = logging.getLogger(__name__)
+
+
+def _gate_framework_enabled() -> bool:
+    return os.environ.get("ENABLE_GATE_FRAMEWORK", "").lower() in {"1", "true", "yes"}
+
+
+def _run_gate_framework(
+    report_type: str,
+    data_by_source: dict,
+    osint_data: list,
+    period_days: int,
+) -> tuple[bool, dict]:
+    """Run the gate framework over collected data.
+
+    Returns (publish_ok, info). On HALT, ESCAPE, or BLOCK, publish_ok is False
+    and info contains the diagnostic detail. On PASS, publish_ok is True.
+    """
+    period_end = date.today()
+    period_start = period_end - timedelta(days=period_days)
+
+    tier1_data = {
+        "ThreatQ": data_by_source.get("ThreatQ", []),
+        "NVD": data_by_source.get("NVD", []),
+        "Intel471": data_by_source.get("Intel471", []),
+        "Rapid7": data_by_source.get("Rapid7", []),
+        "CrowdStrike": data_by_source.get("CrowdStrike", []),
+    }
+
+    orchestrator = GateOrchestrator(
+        llm_client=StructuralLLMClient(),
+        report_type=report_type.upper(),
+    )
+    try:
+        gate6 = orchestrator.run_full_sequence(
+            tier1_data=tier1_data,
+            osint_articles=osint_data or [],
+            period_start=period_start.isoformat(),
+            period_end=period_end.isoformat(),
+        )
+    except GateHaltError as e:
+        logger.warning(f"Gate framework HALT at Gate {e.gate_id}: {e.reason}")
+        return False, {"halt_gate": e.gate_id, "halt_reason": e.reason, "halt_payload": e.payload}
+    except EscapeDetectedError as e:
+        logger.warning(
+            f"Gate framework ESCAPE at Gate {e.gate_id} ({e.escape_type.value}): {e.offending_text[:200]}"
+        )
+        return False, {
+            "escape_gate": e.gate_id,
+            "escape_type": e.escape_type.value,
+            "offending_text": e.offending_text,
+        }
+
+    if gate6.status == "BLOCK":
+        track_a = gate6.payload.get("track_a", [])
+        logger.warning(f"Gate 6 BLOCK with {len(track_a)} Track A findings: {track_a}")
+        return False, {"gate6_status": "BLOCK", "track_a": track_a}
+
+    return True, {"gate6_status": "PASS", "track_b": gate6.payload.get("track_b", [])}
 
 
 def _extract_rapid7_cve_counts(rapid7_data: list) -> dict:
@@ -160,6 +225,27 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         # Merge Rapid7 and CrowdStrike (Spotlight) asset/device counts into CVE analysis for Exposure column
         _merge_exposure_into_analysis(analysis, rapid7_data, crowdstrike_data)
 
+        # Optional: gate framework validation pass (feature-flagged)
+        if _gate_framework_enabled():
+            logger.info('Running gate framework validation over collected data...')
+            publish_ok, gate_info = _run_gate_framework(
+                report_type="weekly",
+                data_by_source=data_by_source,
+                osint_data=osint_data,
+                period_days=7,
+            )
+            if not publish_ok:
+                return func.HttpResponse(
+                    json.dumps({
+                        'status': 'blocked',
+                        'report_type': 'weekly',
+                        'message': 'Gate framework blocked report publication',
+                        'gate_info': gate_info,
+                    }, indent=2),
+                    mimetype='application/json',
+                    status_code=409,
+                )
+
         # Step 4: Generate Word document and upload to blob storage
         logger.info('Generating Weekly Word document and uploading to Azure Blob Storage...')
         storage_account_name = credentials['storage_account_name']
@@ -290,6 +376,27 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
             crowdstrike_data=crowdstrike_data,
             breach_data=breach_data if breach_data else None
         )
+
+        # Optional: gate framework validation pass (feature-flagged)
+        if _gate_framework_enabled():
+            logger.info('Running gate framework validation over collected data (quarterly)...')
+            publish_ok, gate_info = _run_gate_framework(
+                report_type="quarterly",
+                data_by_source=data_by_source,
+                osint_data=data_by_source.get("OSINT", []),
+                period_days=90,
+            )
+            if not publish_ok:
+                return func.HttpResponse(
+                    json.dumps({
+                        'status': 'blocked',
+                        'report_type': 'quarterly',
+                        'message': 'Gate framework blocked report publication',
+                        'gate_info': gate_info,
+                    }, indent=2),
+                    mimetype='application/json',
+                    status_code=409,
+                )
 
         # Step 4: Generate Word document and upload to blob storage
         logger.info('Generating Quarterly Word document and uploading to Azure Blob Storage...')
