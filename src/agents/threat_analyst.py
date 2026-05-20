@@ -501,6 +501,12 @@ Use these OSINT articles to:
 
         return f"""Analyze this threat intelligence data and provide a comprehensive report.
 
+ENVIRONMENTAL CONTEXT:
+You are analyzing threats for a biotechnology/genomics/manufacturing organization. When mentioning vulnerabilities or threats:
+- If a product/technology (e.g., "WordPress", "FortiOS", "Exchange Server") appears in the CVE data with non-zero exposure counts from Rapid7, then it IS confirmed in the environment
+- If a product is mentioned in OSINT or threat feeds but has NO corresponding CVE detections in Rapid7, you should state it as an "industry threat to monitor" or "not currently detected in our environment"
+- DO NOT assume a technology is in the environment just because it's commonly used - rely on the Rapid7 exposure data
+
 DATA SUMMARY:
 - CVEs: {len(cve_data)} records
 - Intel471 Threats: {len(intel471_data)} records
@@ -533,6 +539,7 @@ Please provide your analysis in the following JSON format:
       "impact": "Potential impact on genomics/biotech/manufacturing operations",
       "affected_product": "Vendor Product Name (e.g., 'WordPress Plugin: contact-form-7', 'Microsoft Exchange Server', 'Fortinet FortiOS')",
       "exposure": "REQUIRED: Asset count from exposure map (e.g., '12 systems', '3 systems', '1 system')",
+      "targeted_by_actors": "OPTIONAL: List specific threat actors exploiting this CVE if mentioned in Intel471 or CrowdStrike data (e.g., 'APT28', 'Lazarus Group', 'FIN7'). Leave blank if no actor targeting is known.",
       "weeks_detected": 1
     }}
   ],

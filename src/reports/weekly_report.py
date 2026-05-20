@@ -417,6 +417,13 @@ class WeeklyReportGenerator(BaseReportGenerator):
         exploited_count = 0
         exploited_cves = []
         for cve in cve_analysis:
+            # Check for targeted_by_actors first (from AI analysis)
+            targeted_by = str(cve.get("targeted_by_actors", "")).strip()
+            if targeted_by and targeted_by.lower() not in ("", "none", "unknown", "n/a"):
+                exploited_count += 1
+                exploited_cves.append(f"{cve.get('cve_id', '?')} (Targeted by: {targeted_by[:30]})")
+                continue
+            
             exploited_by = str(cve.get("exploited_by", "")).upper()
             # Check for CISA KEV, active exploitation, ransomware, or threat actors
             if (cve.get("exploited", False) or 
@@ -602,38 +609,43 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Check boolean exploited flag (from enrichment)
         if cve.get("exploited", False):
             return (True, "Confirmed exploitation")
-        
+
         # Check in_cisa_kev flag (from enrichment)
         if cve.get("in_cisa_kev", False):
             return (True, "CISA KEV")
-        
+
+        # Check targeted_by_actors field (from AI analysis)
+        targeted_by = str(cve.get("targeted_by_actors", "")).strip()
+        if targeted_by and targeted_by.lower() not in ("", "none", "unknown", "n/a"):
+            return (True, f"Targeted by: {targeted_by}")
+
         # Check exploited_by field (from enrichment)
         exploited_by = str(cve.get("exploited_by", "")).upper()
-        
+
         if exploited_by and exploited_by != "NONE KNOWN":
             # Check for CISA KEV
             if "CISA KEV" in exploited_by:
                 return (True, "CISA KEV")
-            
+
             # Check for ransomware
             if "RANSOMWARE" in exploited_by:
                 return (True, "Ransomware campaigns")
-            
+
             # Check for active exploitation mention
             if "ACTIVE EXPLOITATION" in exploited_by:
                 return (True, "Active exploitation")
-            
+
             # Check for threat actors
             threat_actors = ["APT", "LAZARUS", "PANDA", "BEAR", "KITTEN", "DRAGON", "SPIDER", "GROUP"]
             for actor in threat_actors:
                 if actor in exploited_by and "NONE" not in exploited_by:
                     return (True, "Threat actor activity")
-        
+
         # Check known_ransomware field (from KEV enrichment)
         known_ransomware = str(cve.get("known_ransomware", "")).upper()
         if known_ransomware and known_ransomware not in ("UNKNOWN", ""):
             return (True, "Ransomware campaigns")
-        
+
         return (False, "")
 
     def _add_vulnerability_exposure(self, analysis_result: Dict[str, Any]) -> None:
