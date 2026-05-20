@@ -155,7 +155,13 @@ def _scan_osint_citations(report: dict) -> list[str]:
     """
     violations: list[str] = []
     
+    # Extract executive summary - handle both string and dict formats
     exec_summary = report.get("executive_summary", "")
+    if isinstance(exec_summary, dict):
+        exec_summary = str(exec_summary)
+    elif not isinstance(exec_summary, str):
+        exec_summary = str(exec_summary) if exec_summary else ""
+    
     osint_sources = report.get("osint_sources_used", [])
     
     # Check if any OSINT sources are cited inline (look for superscript numbers or [1] style refs)
