@@ -136,6 +136,63 @@ def print_section(title: str):
         print(f"\n{Fore.CYAN}{Style.BRIGHT}{safe_title}{Style.RESET_ALL}")
 
 
+def _gate_framework_enabled() -> bool:
+    """Check if the gate framework feature flag is enabled."""
+    return os.environ.get("ENABLE_GATE_FRAMEWORK", "").lower() in {"1", "true", "yes"}
+
+
+def _print_gate_summary(session: dict, gate_info: dict) -> None:
+    """Print a summary of gate framework execution.
+    
+    Args:
+        session: Orchestrator session dict mapping gate_id -> GateResult
+        gate_info: Info dict returned by run_gate_framework_over_collected_data
+    """
+    print()
+    print(f"{Fore.CYAN}{Style.BRIGHT}── Gate Framework Summary {'─' * 30}{Style.RESET_ALL}")
+    
+    # Gate names for display
+    gate_names = {
+        "1": "Tier 1 Source Inventory",
+        "1B": "OSINT Article Triage",
+        "2": "IOC Extraction",
+        "3": "Actor Linkage",
+        "4": "Structured Assembly",
+        "5": "Report Draft",
+        "6": "Adversarial Review",
+    }
+    
+    for gate_id in ["1", "1B", "2", "3", "4", "5", "6"]:
+        if gate_id in session:
+            result = session[gate_id]
+            status_display = result.status
+            
+            # Color-code the status
+            if status_display in {"COMPLETE", "PASS"}:
+                color = Fore.GREEN
+            elif status_display == "BLOCK":
+                color = Fore.RED
+            elif status_display in {"HALT", "ESCAPE_DETECTED"}:
+                color = Fore.YELLOW
+            else:
+                color = Fore.WHITE
+            
+            gate_name = gate_names.get(gate_id, f"Gate {gate_id}")
+            print(f"Gate {gate_id:<3} ({gate_name:<30}): {color}{status_display}{Style.RESET_ALL}")
+        else:
+            gate_name = gate_names.get(gate_id, f"Gate {gate_id}")
+            print(f"Gate {gate_id:<3} ({gate_name:<30}): {Fore.WHITE}NOT RUN{Style.RESET_ALL}")
+    
+    # Print Track A/B findings if Gate 6 ran
+    if "6" in session:
+        track_a = gate_info.get("track_a", [])
+        track_b = gate_info.get("track_b", [])
+        print(f"\nTrack A findings: {len(track_a)}")
+        print(f"Track B findings: {len(track_b)}")
+    
+    print()
+
+
 
 def get_mock_weekly_analysis() -> dict:
     """Generate mock data for weekly report testing."""
@@ -378,20 +435,71 @@ async def generate_report_local(
         raise ValueError(f"Unknown report type: {report_type}")
 
     # Determine data source
+    data_by_source = None  # Will hold raw collected data for gate framework
     if use_mock:
         print_section("📋 Using Mock Data")
         if report_type == "weekly":
             analysis = get_mock_weekly_analysis()
         else:
             analysis = get_mock_quarterly_analysis()
+        # Mock data: no raw collected data, use empty dicts for gate framework
+        data_by_source = {}
     elif use_real or use_azure:
-        analysis = await collect_and_analyze(report_type)
+        analysis, data_by_source = await collect_and_analyze(report_type)
     else:
         print_section("📋 Using Mock Data (default)")
         if report_type == "weekly":
             analysis = get_mock_weekly_analysis()
         else:
             analysis = get_mock_quarterly_analysis()
+        # Mock data: no raw collected data, use empty dicts for gate framework
+        data_by_source = {}
+
+    # Optional: gate framework validation pass (feature-flagged)
+    if _gate_framework_enabled():
+        print_section("🔒 Gate Framework Validation")
+        from gates.pipeline_hook import run_gate_framework_over_collected_data
+        
+        period_days = 7 if report_type == "weekly" else 90
+        publish_ok, gate_info, session = run_gate_framework_over_collected_data(
+            report_type=report_type,
+            data_by_source=data_by_source or {},
+            osint_articles=data_by_source.get("OSINT", []) if data_by_source else [],
+            period_days=period_days,
+        )
+        
+        # Print gate summary
+        _print_gate_summary(session, gate_info)
+        
+        # Handle blocking conditions
+        if not publish_ok:
+            # For mock data, treat HALT as warning rather than hard block
+            if use_mock and "halt_gate" in gate_info:
+                print_status(
+                    f"Mock data triggered Gate {gate_info['halt_gate']} HALT (treating as warning in mock mode)",
+                    "warning"
+                )
+                print_status("Continuing with report generation...", "info")
+            else:
+                # Real data or ESCAPE/BLOCK: stop here
+                if "halt_gate" in gate_info:
+                    print_status(
+                        f"Gate {gate_info['halt_gate']} HALT: {gate_info['halt_reason']}",
+                        "error"
+                    )
+                elif "escape_gate" in gate_info:
+                    print_status(
+                        f"Gate {gate_info['escape_gate']} ESCAPE ({gate_info['escape_type']})",
+                        "error"
+                    )
+                elif gate_info.get("gate6_status") == "BLOCK":
+                    track_a_count = len(gate_info.get("track_a", []))
+                    print_status(
+                        f"Gate 6 BLOCK: {track_a_count} Track A findings prevent publication",
+                        "error"
+                    )
+                print()
+                sys.exit(1)
 
     # Generate the document
     print_section("📄 Generating Report")
@@ -480,8 +588,13 @@ async def check_openai_connectivity(
         return False
 
 
-async def collect_and_analyze(report_type: str) -> dict:
-    """Collect data and run analysis (requires Azure credentials)."""
+async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
+    """Collect data and run analysis (requires Azure credentials).
+    
+    Returns:
+        (analysis, data_by_source) tuple where analysis is the AI analysis result
+        and data_by_source is the raw collected data dict
+    """
     from src.core.keyvault import get_all_api_keys
     from src.collectors import collect_all, get_data_by_source
     from src.agents.threat_analyst import ThreatAnalystAgent
@@ -582,7 +695,7 @@ async def collect_and_analyze(report_type: str) -> dict:
                 breach_data if breach_data else None
             )
         print_status("Backup analysis complete", "success")
-        return result
+        return result, data_by_source
 
     print_status("Initializing threat analyst agent...", "progress")
     agent = ThreatAnalystAgent(
@@ -603,7 +716,7 @@ async def collect_and_analyze(report_type: str) -> dict:
             data_by_source.get("OSINT", [])
         )
         print_status("Analysis complete", "success")
-        return result
+        return result, data_by_source
     else:
         print_status("Running strategic analysis...", "progress")
         
@@ -624,7 +737,7 @@ async def collect_and_analyze(report_type: str) -> dict:
             breach_data=breach_data if breach_data else None
         )
         print_status("Analysis complete", "success")
-        return result
+        return result, data_by_source
 
 
 def main():
