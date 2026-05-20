@@ -14,7 +14,7 @@ from src.core.keyvault import get_all_api_keys
 from src.collectors import collect_all, get_data_by_source
 from src.agents.threat_analyst import ThreatAnalystAgent
 from src.reports.blob_storage import create_and_upload_report
-from src.core.config import azure_config, analysis_config
+from src.core.config import azure_config, analysis_config, feature_config
 
 from gates.pipeline_hook import run_gate_framework_over_collected_data
 
@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 
 def _gate_framework_enabled() -> bool:
-    return os.environ.get("ENABLE_GATE_FRAMEWORK", "").lower() in {"1", "true", "yes"}
+    from src.core.config import get_feature_config
+    return get_feature_config().gate_framework_enabled
 
 
 def _extract_rapid7_cve_counts(rapid7_data: list) -> dict:

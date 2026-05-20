@@ -138,7 +138,8 @@ def print_section(title: str):
 
 def _gate_framework_enabled() -> bool:
     """Check if the gate framework feature flag is enabled."""
-    return os.environ.get("ENABLE_GATE_FRAMEWORK", "").lower() in {"1", "true", "yes"}
+    from src.core.config import get_feature_config
+    return get_feature_config().gate_framework_enabled
 
 
 def _print_gate_summary(session: dict, gate_info: dict) -> None:

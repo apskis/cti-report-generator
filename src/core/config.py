@@ -116,6 +116,14 @@ class ReportConfig:
 
 
 @dataclass(frozen=True)
+class FeatureConfig:
+    """Configuration for feature flags and experimental features."""
+
+    # Gate framework validation pipeline
+    gate_framework_enabled: bool = False
+
+
+@dataclass(frozen=True)
 class AzureConfig:
     """
     Azure infrastructure configuration.
@@ -155,6 +163,7 @@ azure_config = AzureConfig()
 
 
 _COLLECTORS_YAML = Path(__file__).resolve().parent.parent.parent / "config" / "collectors.yaml"
+_FEATURES_YAML = Path(__file__).resolve().parent.parent.parent / "config" / "features.yaml"
 
 
 def _load_collectors_from_yaml() -> List[str]:
@@ -187,3 +196,44 @@ def get_enabled_collectors() -> List[str]:
     if env:
         return [c.strip().lower() for c in env.split(",")]
     return _load_collectors_from_yaml()
+
+
+def _load_features_from_yaml() -> FeatureConfig:
+    """Load feature flags from config/features.yaml."""
+    if not _FEATURES_YAML.exists():
+        # If features.yaml doesn't exist, return defaults
+        return FeatureConfig()
+    
+    with open(_FEATURES_YAML, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+    
+    features = cfg.get("features", {})
+    gate_framework = features.get("gate_framework", {})
+    
+    return FeatureConfig(
+        gate_framework_enabled=gate_framework.get("enabled", False)
+    )
+
+
+def get_feature_config() -> FeatureConfig:
+    """
+    Get feature configuration.
+    
+    Priority order:
+      1. Environment variable overrides (e.g., ENABLE_GATE_FRAMEWORK=1)
+      2. config/features.yaml settings
+      3. Default values (all features disabled)
+    """
+    config = _load_features_from_yaml()
+    
+    # Environment variable override for gate framework
+    env_gate_enabled = os.environ.get("ENABLE_GATE_FRAMEWORK", "").lower() in {"1", "true", "yes"}
+    if env_gate_enabled:
+        # Can't modify frozen dataclass, so create new instance
+        return FeatureConfig(gate_framework_enabled=True)
+    
+    return config
+
+
+# Lazy-loaded feature config (call get_feature_config() to get current state)
+feature_config = get_feature_config()

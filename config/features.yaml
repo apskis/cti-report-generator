@@ -1,0 +1,26 @@
+# Feature Flags Configuration
+# Enable or disable experimental or optional features here.
+
+features:
+
+  # ── Gate Framework ──────────────────────────────────────────────────
+  # The Gate Framework is a multi-stage validation pipeline that runs
+  # between data collection and report generation. It validates data
+  # quality, extracts IOCs, performs actor linkage, assembles structured
+  # findings, drafts a report, and performs adversarial review.
+  #
+  # When enabled:
+  #   - CLI: `python test_local.py weekly --local --mock` will run all gates
+  #   - Azure Functions: Both GenerateWeeklyReport and GenerateQuarterlyReport
+  #     will validate data through the gate framework before publishing
+  #
+  # When disabled:
+  #   - Reports are generated directly from collected data (existing behavior)
+  #
+  # Default: false (disabled by default, enable when ready for production use)
+  
+  gate_framework:
+    enabled: false
+    
+    # Optional: Override with environment variable ENABLE_GATE_FRAMEWORK=1
+    # to temporarily enable without changing this file
