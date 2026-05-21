@@ -144,56 +144,91 @@ class Rapid7ScanCollector(BaseCollector):
             start_date, end_date = self.get_date_range()
             since_date = start_date.strftime("%Y-%m-%dT00:00:00Z")
             
-            # Try to get vulnerability instances (findings on assets)
-            # According to Rapid7 Integration API v4, we can query for vuln findings
-            request_body = {}  # Start with empty filter to see what we get
+            logger.info(f"Date range for vulnerability query: {since_date} to present")
+            logger.info(f"Lookback period: {self.lookback_days} days")
             
-            params = {
-                "size": 500,  # Get more results per page
-                "page": 0
-            }
+            # IMPORTANT: For weekly reports, we want ALL current vulnerabilities,
+            # not just those added in the last 7 days. Persistent vulnerabilities
+            # should continue to appear in reports with increasing "weeks_detected" count.
+            # The /vulnerabilities endpoint returns vulnerability DEFINITIONS, not
+            # asset-specific findings, so we query ALL and track weeks via 'added' date.
+            request_body = {}  # Empty filter = return ALL current vulnerabilities
             
-            response = await client.post_raw_response(
-                vuln_url,
-                headers=headers,
-                json_data=request_body,
-                params=params
-            )
+            # Fetch multiple pages to get all vulnerabilities
+            all_vulns = []
+            page = 0
+            max_pages = 20  # Fetch up to 20 pages (10,000 vulnerabilities max)
             
-            response_text = await response.text()
-            
-            if response.status == 200:
-                data = await response.json()
-                vulns = data.get("data", [])
-                logger.info(f"Retrieved {len(vulns)} vulnerability instances from /vulnerabilities endpoint")
+            while page < max_pages:
+                params = {
+                    "size": 500,  # Get more results per page
+                    "page": page
+                }
                 
-                if len(vulns) > 0:
-                    logger.info(f"Sample vuln keys: {list(vulns[0].keys())}")
-                    logger.info(f"Sample vuln (first 500 chars): {str(vulns[0])[:500]}...")
+                logger.info(f"Fetching vulnerabilities page {page}...")
                 
-                    # Build CVE map from vulnerability findings (returns raw map)
-                    cve_asset_map = self._build_cve_map_from_vulnerability_findings(vulns)
+                response = await client.post_raw_response(
+                    vuln_url,
+                    headers=headers,
+                    json_data=request_body,
+                    params=params
+                )
+                
+                response_text = await response.text()
+                
+                if response.status == 200:
+                    data = await response.json()
+                    vulns = data.get("data", [])
                     
-                    # Enrich with asset hostnames for CVEs with < 3 occurrences
-                    await self._enrich_low_count_cves_with_hostnames(
-                        client, base_url, headers, cve_asset_map
-                    )
+                    if not vulns:
+                        logger.info(f"No more vulnerabilities on page {page}")
+                        break
                     
-                    # Format the enriched data
-                    cve_exposure = self._format_cve_exposure_summary(cve_asset_map, len(vulns))
+                    all_vulns.extend(vulns)
+                    logger.info(f"Page {page}: Retrieved {len(vulns)} vulnerabilities (total so far: {len(all_vulns)})")
                     
-                    return cve_exposure
-                else:
-                    logger.warning("Vulnerabilities endpoint returned 0 results, falling back to asset-based approach")
+                    # Check if there are more pages
+                    metadata = data.get("metadata", {})
+                    total_pages = metadata.get("totalPages", 1)
+                    total_resources = metadata.get("totalResources", len(all_vulns))
+                    
+                    logger.info(f"API metadata: totalPages={total_pages}, totalResources={total_resources}")
+                    
+                    if page >= total_pages - 1:
+                        logger.info(f"Reached last page ({page + 1} of {total_pages})")
+                        break
+                    
+                    page += 1
+                    
+                elif response.status == 404:
+                    # Endpoint doesn't exist
+                    logger.info(f"Vulnerabilities endpoint not found (404), using asset-based approach")
                     return await self._fetch_exposure_from_assets(client, base_url, headers)
-            elif response.status == 404:
-                # Endpoint doesn't exist
-                logger.info(f"Vulnerabilities endpoint not found (404), using asset-based approach")
-                return await self._fetch_exposure_from_assets(client, base_url, headers)
+                else:
+                    # Fall back to asset-based approach
+                    logger.warning(f"Vulnerability endpoint returned {response.status}: {response_text[:200]}")
+                    logger.warning("Falling back to asset-based approach")
+                    return await self._fetch_exposure_from_assets(client, base_url, headers)
+            
+            if len(all_vulns) > 0:
+                logger.info(f"Total vulnerabilities retrieved: {len(all_vulns)}")
+                logger.info(f"Sample vuln keys: {list(all_vulns[0].keys())}")
+                logger.info(f"Sample vuln (first 500 chars): {str(all_vulns[0])[:500]}...")
+                
+                # Build CVE map from vulnerability findings (returns raw map)
+                cve_asset_map = self._build_cve_map_from_vulnerability_findings(all_vulns)
+                
+                # Enrich with asset hostnames for CVEs with < 3 occurrences
+                await self._enrich_low_count_cves_with_hostnames(
+                    client, base_url, headers, cve_asset_map
+                )
+                
+                # Format the enriched data
+                cve_exposure = self._format_cve_exposure_summary(cve_asset_map, len(all_vulns))
+                
+                return cve_exposure
             else:
-                # Fall back to asset-based approach
-                logger.warning(f"Vulnerability endpoint returned {response.status}: {response_text[:200]}")
-                logger.warning("Falling back to asset-based approach")
+                logger.warning("Vulnerabilities endpoint returned 0 results, falling back to asset-based approach")
                 return await self._fetch_exposure_from_assets(client, base_url, headers)
                 
         except Exception as e:
