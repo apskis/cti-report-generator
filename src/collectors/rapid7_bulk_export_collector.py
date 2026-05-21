@@ -66,8 +66,9 @@ class Rapid7BulkExportCollector(BaseCollector):
         logger.info(f"Fetching vulnerability data via Rapid7 Bulk Export API (region: {region})")
 
         try:
-            # Build GraphQL endpoint URL
-            graphql_url = f"https://{region}.api.insight.rapid7.com/graphql"
+            # Build GraphQL endpoint URL for Bulk Export API
+            # Note: Bulk Export is a Platform-level API
+            graphql_url = f"https://{region}.api.insight.rapid7.com/export/graphql"
             
             headers = {
                 "X-Api-Key": api_key,
@@ -155,6 +156,10 @@ class Rapid7BulkExportCollector(BaseCollector):
             "query": mutation
         }
         
+        logger.info(f"Sending GraphQL mutation to {graphql_url}")
+        logger.debug(f"Headers: X-Api-Key={'*'*8}, Content-Type={headers.get('Content-Type')}")
+        logger.debug(f"Payload: {payload}")
+        
         try:
             response = await client.post_raw_response(
                 graphql_url,
@@ -167,15 +172,20 @@ class Rapid7BulkExportCollector(BaseCollector):
                 logger.error(f"GraphQL mutation failed: {response.status} - {response_text}")
                 return ""
             
+            logger.info(f"GraphQL response status: {response.status}")
             data = await response.json()
+            logger.debug(f"GraphQL response data: {data}")
             
             # Extract export ID from response
             export_id = data.get("data", {}).get("createVulnerabilityExport", {}).get("id", "")
             
+            if not export_id:
+                logger.error(f"No export ID in response. Full response: {data}")
+            
             return export_id
             
         except Exception as e:
-            logger.error(f"Error creating vulnerability export: {e}")
+            logger.error(f"Error creating vulnerability export: {e}", exc_info=True)
             return ""
 
     async def _poll_export_status(
@@ -232,8 +242,9 @@ class Rapid7BulkExportCollector(BaseCollector):
                     continue
                 
                 data = await response.json()
+                logger.debug(f"Status check response: {data}")
                 export_data = data.get("data", {}).get("export", {})
-                status = export_data.get("status", "")
+                status = export_data.get("status", "UNKNOWN")
                 
                 logger.info(f"Export status (attempt {attempt + 1}/{max_attempts}): {status}")
                 
