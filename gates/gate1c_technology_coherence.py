@@ -75,8 +75,10 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     Dynamically validates that technologies mentioned in the executive summary
     are actually detected in Rapid7 scans. Learns from your actual environment.
     
+    Runs after Gate 5 to validate the drafted report.
+    
     Args:
-        input: GateInput with report_draft and collected data
+        input: GateInput with prior_results containing Gate 5's report draft
         llm_client: LLM client for AI reviews
         report_type: 'weekly' or 'quarterly'
     
@@ -86,10 +88,17 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     issues = []
     warnings = []
     
+    # Get the report draft from Gate 5
+    g5 = input.prior_results.get("5")
+    if g5 is None:
+        raise RuntimeError("Gate 1C requires Gate 5 GateResult in input.prior_results['5']")
+    
+    report = g5.payload.get("report", {})
+    
     # Extract ALL technologies from CVE data (learns from Rapid7 scans)
     detected_technologies = set()
     detected_products_full = set()  # Full product names for reference
-    cve_analysis = input.report_draft.get("cve_analysis", [])
+    cve_analysis = report.get("cve_analysis", [])
     
     for cve in cve_analysis:
         affected_product = cve.get("affected_product", "")
@@ -107,9 +116,9 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     technology_keywords = _extract_technology_keywords(detected_technologies)
     
     # Extract executive summary text
-    exec_summary = input.report_draft.get("executive_summary", "")
+    exec_summary = report.get("executive_summary", "")
     if isinstance(exec_summary, dict):
-        exec_summary = exec_summary.get("text", "")
+        exec_summary = exec_summary.get("text", "") or exec_summary.get("what_you_need_to_know", "")
     exec_summary = str(exec_summary)
     
     # Extract technology mentions from the executive summary

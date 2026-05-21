@@ -30,7 +30,7 @@ from .models import GateInput, GateResult
 logger = logging.getLogger(__name__)
 
 
-_GATE_SEQUENCE: list[str] = ["1", "1A", "1B", "1C", "2", "3", "4", "5", "6"]
+_GATE_SEQUENCE: list[str] = ["1", "1A", "1B", "2", "3", "4", "5", "1C", "6"]
 
 _GATE_RUNNERS = {
     "1": gate1_tier1_inventory.run,
