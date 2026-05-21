@@ -114,6 +114,8 @@ def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
         'intel471': ['intel471_email', 'intel471_key'],
         'crowdstrike': ['crowdstrike_id', 'crowdstrike_secret', 'crowdstrike_base_url'],
         'rapid7': ['rapid7_key', 'rapid7_region'],
+        'rapid7-scans': ['rapid7_key', 'rapid7_region'],
+        'rapid7-bulk-export': ['rapid7_key', 'rapid7_region'],
     }
     
     # Always required (not collector-specific)
