@@ -301,11 +301,13 @@ class Rapid7ScanCollector(BaseCollector):
             
             # Request body - filter for recently scanned assets
             # Include vulnerabilities in the response
+            # NOTE: Rapid7 Cloud API v4 filter syntax can be finicky
+            # If this fails, we'll try without filters
             request_body = {
-                "asset": f"last-scan-date > {recent_date}",
                 "vulnerability": "results > 0"  # Only assets with vulnerability results
             }
             
+            # First try with vulnerability filter
             try:
                 response = await client.post_raw_response(
                     assets_url,
@@ -313,6 +315,17 @@ class Rapid7ScanCollector(BaseCollector):
                     json_data=request_body,
                     params=params
                 )
+                
+                if response.status == 400:
+                    # Filter syntax failed, try with empty body (get ALL assets)
+                    logger.warning("Vulnerability filter failed (status 400), trying to fetch ALL assets without filter")
+                    request_body = {}
+                    response = await client.post_raw_response(
+                        assets_url,
+                        headers=headers,
+                        json_data=request_body,
+                        params=params
+                    )
                 
                 if response.status == 200:
                     data = await response.json()
