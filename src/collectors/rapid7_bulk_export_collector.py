@@ -45,7 +45,10 @@ class Rapid7BulkExportCollector(BaseCollector):
 
     async def collect(self, report_type: str = "weekly") -> CollectorResult:
         """
-        Fetch vulnerability data via Bulk Export API.
+        Fetch vulnerability data via Bulk Export API or from cache.
+        
+        First checks if fresh cached data exists (< 6 hours old).
+        If not, performs full export (takes 10-20 minutes).
 
         Returns:
             CollectorResult with CVE exposure mapping
@@ -53,6 +56,8 @@ class Rapid7BulkExportCollector(BaseCollector):
         # Get credentials
         api_key = self.credentials.get("rapid7_key", "")
         region = self.credentials.get("rapid7_region", "us")
+        storage_account_name = self.credentials.get("storage_account_name", "")
+        storage_account_key = self.credentials.get("storage_account_key", "")
         
         if not api_key:
             logger.warning("Rapid7 API key not provided, skipping Bulk Export collection")
@@ -62,8 +67,32 @@ class Rapid7BulkExportCollector(BaseCollector):
                 data=[],
                 record_count=0
             )
+        
+        # Try to load from cache first
+        if storage_account_name and storage_account_key:
+            try:
+                from src.utils.cache_manager import CacheManager
+                cache_manager = CacheManager(storage_account_name, storage_account_key)
+                
+                cache_key = "rapid7-bulk-export-latest"
+                cached_data = cache_manager.get_cache(cache_key, max_age_hours=6)
+                
+                if cached_data:
+                    record_count = len(cached_data.get("cve_exposure_map", {}))
+                    logger.info(f"Using cached Rapid7 data: {record_count} CVEs")
+                    return CollectorResult(
+                        source=self.source_name,
+                        success=True,
+                        data=[cached_data],
+                        record_count=record_count
+                    )
+                else:
+                    logger.info("No fresh cache found, will fetch from Rapid7 API")
+            except Exception as e:
+                logger.warning(f"Cache check failed, will fetch from API: {e}")
 
         logger.info(f"Fetching vulnerability data via Rapid7 Bulk Export API (region: {region})")
+        logger.info("Note: This may take 10-20 minutes for large environments")
 
         try:
             # Build GraphQL endpoint URL for Bulk Export API

@@ -11,10 +11,13 @@ An Azure Functions-based Cyber Threat Intelligence (CTI) reporting system that a
   - ThreatQ (IOC management)
   - Rapid7 InsightVM (vulnerability enrichment)
   - Rapid7 InsightVM Scans (environmental CVE exposure with asset counts)
+  - **Rapid7 Bulk Export API** (comprehensive vulnerability data via GraphQL with automatic 6-hour sync)
   - OSINT (curated public news and research feeds you control)
 
 - **AI-powered analysis** using Azure OpenAI and Semantic Kernel
 - **Automatic AI gap-filling** from Rapid7/NVD backup when AI output is incomplete
+- **Background data sync** with Azure Timer Functions for instant report generation
+- **Intelligent caching** using Azure Blob Storage (6-hour TTL)
 - **VPN connectivity check** before analysis with interactive continue/stop prompt
 - **Automated Word document generation** with executive summaries and recommendations
 - **Azure Blob Storage** integration for report hosting with SAS URLs
@@ -432,6 +435,44 @@ az functionapp config appsettings set \
 ```bash
 func azure functionapp publish your-function-app
 ```
+
+### 6. Configure Rapid7 Background Sync (Recommended)
+
+The Rapid7 Bulk Export collector can take 10-20 minutes to fetch data. To make report generation instant, enable the automatic background sync timer:
+
+**What it does:**
+- Runs every 6 hours automatically
+- Fetches latest Rapid7 vulnerability data
+- Caches results in Azure Blob Storage
+- Makes weekly reports run instantly (reads from cache)
+
+**To enable:**
+
+The timer function is already included (`Rapid7SyncFunction`). It will automatically start running after deployment. You can verify it's working:
+
+```bash
+# View timer function logs
+func azure functionapp logstream your-function-app --browser
+
+# Or check in Azure Portal
+# Navigate to: Function App → Functions → Rapid7SyncFunction → Monitor
+```
+
+**Timer Schedule:** Runs at: 12am, 6am, 12pm, 6pm UTC daily
+
+**Manual trigger (optional):**
+```bash
+# Trigger sync immediately to populate cache
+az rest --method post \
+  --url "/subscriptions/{subscription-id}/resourceGroups/{rg}/providers/Microsoft.Web/sites/{function-app}/functions/Rapid7SyncFunction/triggers/default/invoke?api-version=2022-03-01"
+```
+
+**Cache behavior:**
+- Cache lifetime: 6 hours
+- Storage location: `cache` container in your storage account
+- Cache key: `rapid7-bulk-export-latest.json`
+- Report generator automatically uses cache if < 6 hours old
+- If cache expires or doesn't exist, falls back to live API call
 
 ## Adding New Report Types
 

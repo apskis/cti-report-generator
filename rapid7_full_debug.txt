@@ -1,0 +1,947 @@
+﻿
+============================================================
+CTI Report Generator - WEEKLY
+============================================================
+Data Source: REAL (API feeds + AI analysis)
+Output: Local (.)
+Debug Mode: ENABLED (verbose logging)
+
+
+python : DEBUG - asyncio - Using proactor: IocpProactor
+At C:\Users\aparker\AppData\Local\Temp\ps-script-588a51e3-6904-4c23-a90b-230b0138a20a.ps1:89 char:1
++ python test_local.py weekly --local --real --debug 2>&1 | Out-File -F ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (DEBUG - asyncio...r: IocpProactor:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+DEBUG - src.reports.registry - Registered report generator: weekly
+DEBUG - src.reports.registry - Registered report generator: quarterly
+[>] Connecting to Azure Key Vault...
+INFO - src.core.keyvault - Retrieving all API keys from vault: https://kv-cti-rep-prod.vault.azure.net/
+DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): kv-cti-rep-prod.vault.azure.net:443
+DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): kv-cti-rep-prod.vault.azure.net:443
+DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): kv-cti-rep-prod.vault.azure.net:443
+DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): kv-cti-rep-prod.vault.azure.net:443
+DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): kv-cti-rep-prod.vault.azure.net:443
+DEBUG - urllib3.connectionpool - Starting new HTTPS connection (1): kv-cti-rep-prod.vault.azure.net:443
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/storage-account-name/?api-version=7.6 HTTP/1.1" 401 108
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/nvd-api-key/?api-version=7.6 HTTP/1.1" 401 108
+DEBUG - urllib3.connectionpool - Starting new HTTP connection (1): 169.254.169.254:80
+DEBUG - urllib3.connectionpool - Starting new HTTP connection (1): 169.254.169.254:80
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/openai-api-key/?api-version=7.6 HTTP/1.1" 401 108
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/openai-endpoint/?api-version=7.6 HTTP/1.1" 401 108
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/storage-account-key/?api-version=7.6 HTTP/1.1" 401 108
+DEBUG - urllib3.connectionpool - Starting new HTTP connection (1): 169.254.169.254:80
+DEBUG - urllib3.connectionpool - Starting new HTTP connection (1): 169.254.169.254:80
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/threatq-client-id/?api-version=7.6 HTTP/1.1" 401 108
+DEBUG - urllib3.connectionpool - Starting new HTTP connection (1): 169.254.169.254:80
+DEBUG - urllib3.connectionpool - Starting new HTTP connection (1): 169.254.169.254:80
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/threatq-client-id/?api-version=7.6 HTTP/1.1" 200 316
+DEBUG - src.core.keyvault - Retrieved secret: threatq-client-id
+DEBUG - urllib3.connectionpool - Starting new HTTPS connection (2): kv-cti-rep-prod.vault.azure.net:443
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/openai-api-key/?api-version=7.6 HTTP/1.1" 200 365
+DEBUG - src.core.keyvault - Retrieved secret: openai-api-key
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/nvd-api-key/?api-version=7.6 HTTP/1.1" 200 314
+DEBUG - src.core.keyvault - Retrieved secret: nvd-api-key
+DEBUG - urllib3.connectionpool - Starting new HTTPS connection (3): kv-cti-rep-prod.vault.azure.net:443
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/storage-account-key/?api-version=7.6 HTTP/1.1" 200 374
+DEBUG - src.core.keyvault - Retrieved secret: storage-account-key
+DEBUG - urllib3.connectionpool - Starting new HTTPS connection (4): kv-cti-rep-prod.vault.azure.net:443
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/openai-endpoint/?api-version=7.6 HTTP/1.1" 200 337
+DEBUG - src.core.keyvault - Retrieved secret: openai-endpoint
+DEBUG - urllib3.connectionpool - Starting new HTTPS connection (5): kv-cti-rep-prod.vault.azure.net:443
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/threatq-url/?api-version=7.6 HTTP/1.1" 200 309
+DEBUG - src.core.keyvault - Retrieved secret: threatq-url
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/storage-account-name/?api-version=7.6 HTTP/1.1" 200 306
+DEBUG - src.core.keyvault - Retrieved secret: storage-account-name
+DEBUG - urllib3.connectionpool - Starting new HTTPS connection (6): kv-cti-rep-prod.vault.azure.net:443
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/crowdstrike-client-secret/?api-version=7.6 HTTP/1.1" 200 332
+DEBUG - src.core.keyvault - Retrieved secret: crowdstrike-client-secret
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/rapid7-api-key/?api-version=7.6 HTTP/1.1" 200 317
+DEBUG - src.core.keyvault - Retrieved secret: rapid7-api-key
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/rapid7-region/?api-version=7.6 HTTP/1.1" 200 283
+DEBUG - src.core.keyvault - Retrieved secret: rapid7-region
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/crowdstrike-client-id/?api-version=7.6 HTTP/1.1" 200 320
+DEBUG - src.core.keyvault - Retrieved secret: crowdstrike-client-id
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/threatq-client-secret/?api-version=7.6 HTTP/1.1" 200 352
+DEBUG - src.core.keyvault - Retrieved secret: threatq-client-secret
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/intel471-api-key/?api-version=7.6 HTTP/1.1" 200 331
+DEBUG - src.core.keyvault - Retrieved secret: intel471-api-key
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/intel471-email/?api-version=7.6 HTTP/1.1" 200 316
+DEBUG - src.core.keyvault - Retrieved secret: intel471-email
+DEBUG - urllib3.connectionpool - https://kv-cti-rep-prod.vault.azure.net:443 "GET 
+/secrets/crowdstrike-base-url/?api-version=7.6 HTTP/1.1" 200 319
+DEBUG - src.core.keyvault - Retrieved secret: crowdstrike-base-url
+INFO - src.core.keyvault - Successfully retrieved all API keys
+[] Credentials retrieved
+[] Azure OpenAI is reachable
+
+
+ Collecting Threat Intelligence
+INFO - src.collectors.registry - Running 6 collectors: ['NVD', 'Rapid7-BulkExport', 'Intel471', 'CrowdStrike', 
+'ThreatQ', 'OSINT'] (report_type: weekly)
+INFO - src.collectors.nvd_collector - Fetching CVEs from NVD API
+INFO - src.collectors.rapid7_bulk_export_collector - Fetching vulnerability data via Rapid7 Bulk Export API (region: 
+us2)
+INFO - src.collectors.intel471_collector - Fetching data from Intel471 API
+INFO - src.collectors.crowdstrike_collector - Fetching data from CrowdStrike API
+INFO - src.collectors.crowdstrike_collector - Requesting OAuth token from: 
+https://api.us-2.crowdstrike.com/oauth2/token
+INFO - src.collectors.threatq_collector - ThreatQ credentials check - URL exists: True, client_id exists: True, 
+client_secret exists: True
+INFO - src.collectors.threatq_collector - Fetching data from ThreatQ API
+INFO - src.collectors.threatq_collector - Requesting OAuth token from ThreatQ: 
+https://illumina.threatq.online/api/token
+DEBUG - src.collectors.threatq_collector - ThreatQ OAuth body keys: ['grant_type', 'client_id', 'client_secret'], 
+grant_type: client_credentials
+INFO - src.collectors.osint_collector - Collecting OSINT from 10 enabled sources (lookback: 7 days)
+ERROR - src.collectors.rapid7_bulk_export_collector - Failed to create vulnerability export
+INFO - src.collectors.nvd_collector - Retrieved 38 CRITICAL/HIGH CVEs from NVD
+INFO - src.collectors.osint_collector -   CISA Alerts: 5 articles
+ERROR - src.collectors.threatq_collector - ThreatQ OAuth token request failed with status 400: {"errors":["The 
+`client_id` and `client_secret` are required"]}
+INFO - src.collectors.intel471_collector - Retrieved 2 relevant items from Intel471 reports
+INFO - src.collectors.crowdstrike_collector - Successfully obtained CrowdStrike access token
+INFO - src.collectors.crowdstrike_collector - Fetching actors from: 
+https://api.us-2.crowdstrike.com/intel/combined/actors/v1
+INFO - src.collectors.osint_collector -   US-CERT Current Activity: 3 articles
+INFO - src.collectors.osint_collector -   Krebs on Security: 1 articles
+INFO - src.collectors.crowdstrike_collector - Retrieved 40 actors from CrowdStrike
+INFO - src.collectors.crowdstrike_collector - Fetching indicators from: 
+https://api.us-2.crowdstrike.com/intel/combined/indicators/v1
+INFO - src.collectors.osint_collector -   The Hacker News: 5 articles
+INFO - src.collectors.osint_collector -   BleepingComputer: 5 articles
+INFO - src.collectors.intel471_collector - Retrieved 0 breach alerts from Intel471
+INFO - src.collectors.intel471_collector - Retrieved 20 indicators from Intel471 /indicators/stream
+INFO - src.collectors.intel471_collector - Retrieved 22 total items from Intel471
+INFO - src.collectors.osint_collector -   Dark Reading: 5 articles
+INFO - src.collectors.osint_collector -   Microsoft Threat Intelligence: 5 articles
+INFO - src.collectors.crowdstrike_collector - Retrieved 6 high-confidence indicators from CrowdStrike
+INFO - src.collectors.crowdstrike_collector - Fetching detections from: 
+https://api.us-2.crowdstrike.com/detects/queries/detects/v1
+INFO - src.collectors.crowdstrike_collector - CrowdStrike Detections API not available (check API permissions: 
+'Detections - Read')
+INFO - src.collectors.crowdstrike_collector - Fetching CrowdStrike Spotlight vulnerabilities for exposure counts
+WARNING - src.collectors.osint_collector - Google Threat Analysis Group: HTTP 404
+DEBUG - src.collectors.osint_collector -   Google Threat Analysis Group: 0 articles in lookback window
+INFO - src.collectors.crowdstrike_collector - Spotlight API not available (requires Falcon Spotlight license). Using 
+Rapid7 for vulnerability exposure data.
+INFO - src.collectors.crowdstrike_collector - Retrieved 46 total items from CrowdStrike
+INFO - src.collectors.osint_collector -   Mandiant Blog: 1 articles
+INFO - src.collectors.osint_collector - OSINT collection complete: 30 articles from 10 sources
+INFO - src.collectors.registry - Collection complete: 4/6 sources successful, 136 total records
+[] NVD: 38 records
+[] Intel471: 22 records
+[] CrowdStrike: 46 records
+[] OSINT: 30 records
+
+
+ Enriching CVE Data
+[>] Checking CISA KEV catalog...
+INFO - src.enrichment.cve_enricher - Enriching 38 CVEs...
+INFO - src.enrichment.cve_enricher - Web search: ENABLED
+INFO - src.enrichment.cve_enricher - Fetching CISA KEV catalog...
+INFO - src.enrichment.cve_enricher - Loaded 1599 entries from CISA KEV catalog
+DEBUG - src.enrichment.cve_enricher - Web searching for CVE-2026-46419 product information...
+DEBUG - src.enrichment.cve_enricher - Searching: CVE-2026-46419 affected product vendor vulnerability
+DEBUG - src.enrichment.cve_enricher - Web searching for CVE-2026-46445 product information...
+DEBUG - src.enrichment.cve_enricher - Searching: CVE-2026-46445 affected product vendor vulnerability
+DEBUG - src.enrichment.cve_enricher - Web searching for CVE-2026-46446 product information...
+DEBUG - src.enrichment.cve_enricher - Searching: CVE-2026-46446 affected product vendor vulnerability
+DEBUG - src.enrichment.cve_enricher - Web searching for CVE-2025-14869 product information...
+DEBUG - src.enrichment.cve_enricher - Searching: CVE-2025-14869 affected product vendor vulnerability
+DEBUG - src.enrichment.cve_enricher - Web searching for CVE-2025-14870 product information...
+DEBUG - src.enrichment.cve_enricher - Searching: CVE-2025-14870 affected product vendor vulnerability
+DEBUG - src.enrichment.cve_enricher - Web searching for CVE-2026-1659 product information...
+DEBUG - src.enrichment.cve_enricher - Searching: CVE-2026-1659 affected product vendor vulnerability
+DEBUG - src.enrichment.cve_enricher - Web searching for CVE-2026-5396 product information...
+DEBUG - src.enrichment.cve_enricher - Searching: CVE-2026-5396 affected product vendor vulnerability
+DEBUG - src.enrichment.cve_enricher - Web searching for CVE-2026-8181 product information...
+DEBUG - src.enrichment.cve_enricher - Searching: CVE-2026-8181 affected product vendor vulnerability
+DEBUG - src.enrichment.cve_enricher - Web searching for CVE-2026-3718 product information...
+DEBUG - src.enrichment.cve_enricher - Searching: CVE-2026-3718 affected product vendor vulnerability
+DEBUG - src.enrichment.cve_enricher - Web searching for CVE-2026-3892 product information...
+DEBUG - src.enrichment.cve_enricher - Searching: CVE-2026-3892 affected product vendor vulnerability
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-5395 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-6271 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-6506 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-6510 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-6512 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-6514 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2025-11024 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-2347 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2025-12008 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-4029 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-4030 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-4031 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2025-15025 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-6473 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-6475 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-6476 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-6477 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-6479 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-6637 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-24712 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-41935 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-41937 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-42186 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-42457 - limit reached
+DEBUG - src.enrichment.cve_enricher - Skipping web search for CVE-2026-42559 - limit reached
+INFO - src.enrichment.cve_enricher - Enrichment complete. 38 CVEs enriched.
+INFO - src.enrichment.cve_enricher - Web searches performed: 10/10
+[] Enriched 38 CVEs
+
+
+ AI-Powered Analysis
+[>] Initializing threat analyst agent...
+INFO - src.agents.threat_analyst - Initializing ThreatAnalystAgent with deployment: gpt-4.1-cti
+INFO - src.agents.threat_analyst - Endpoint configured: True
+INFO - src.agents.threat_analyst - ThreatAnalystAgent initialized successfully
+[>] Running tactical analysis...
+INFO - src.agents.threat_analyst - Starting threat analysis
+INFO - src.agents.threat_analyst - Data counts - CVEs: 38, Intel471: 22, CrowdStrike: 46, ThreatQ: 0, Rapid7: 0, 
+Rapid7-Scans: 0, OSINT: 30
+INFO - src.agents.exploit_enrichment - CISA KEV: loaded 1599 known-exploited CVEs
+INFO - src.agents.exploit_enrichment - EPSS: scored 38 of 38 CVEs
+INFO - src.agents.threat_analyst - Rapid7 CVE exposure map: 0 CVEs with exposure data
+INFO - src.agents.threat_analyst - Combined exposure map: 0 CVEs total
+INFO - src.agents.threat_analyst - Sending request to Azure OpenAI
+DEBUG - openai._base_client - Request options: {'method': 'post', 'url': '/chat/completions', 'headers': {'api-key': 
+'<redacted>'}, 'files': None, 'idempotency_key': 'stainless-python-retry-784eb67c-e03e-4d58-85c7-9727e3382dbd', 
+'json_data': {'messages': [{'role': 'system', 'content': 'You are a Senior Cyber Threat Intelligence Analyst for a 
+genomics company.\nYour role is to analyze threat data from multiple sources, correlate findings across CVEs and 
+threat actors,\nprioritize threats based on relevance to the biotech, life sciences, and manufacturing industries, and 
+generate clear,\nactionable intelligence reports for technical and executive audiences.\n\nFocus on threats that could 
+impact:\n- Research data and intellectual property\n- Laboratory equipment and IoT devices\n- Healthcare systems and 
+patient data\n- Supply chain and vendor security\n- Regulatory compliance (HIPAA, FDA, etc.)\n\nDo not use Hyphens.'}, 
+{'role': 'user', 'content': 'Analyze this threat intelligence data and provide a comprehensive 
+report.\n\nENVIRONMENTAL CONTEXT:\nYou are analyzing threats for a biotechnology/genomics/manufacturing organization. 
+When mentioning vulnerabilities or threats:\n- If a product/technology (e.g., "WordPress", "FortiOS", "Exchange 
+Server") appears in the CVE data with non-zero exposure counts from Rapid7, then it IS confirmed in the environment\n- 
+If a product is mentioned in OSINT or threat feeds but has NO corresponding CVE detections in Rapid7, you should state 
+it as an "industry threat to monitor" or "not currently detected in our environment"\n- DO NOT assume a technology is 
+in the environment just because it\'s commonly used - rely on the Rapid7 exposure data\n\nDATA SUMMARY:\n- CVEs: 38 
+records\n- Intel471 Threats: 22 records\n- CrowdStrike APT Activity: 46 records\n- ThreatQ Indicators: 0 records\n- 
+Rapid7 Vulnerabilities: 0 records\n- OSINT Articles: 30 records\n\n\n\nOSINT - CURATED PUBLIC INTELLIGENCE (30 
+articles from vetted sources):\n[\n  {\n    "title": "Google accidentally exposed details of unfixed Chromium flaw",\n 
+   "source": "BleepingComputer",\n    "url": 
+"https://www.bleepingcomputer.com/news/security/google-accidentally-exposed-details-of-unfixed-chromium-flaw/",\n    
+"summary": "Google has accidentally leaked details about an unfixed issue in Chromium that keeps JavaScript running in 
+the background even when the browser is clo"\n  },\n  {\n    "title": "What\\u2019s new in Microsoft Security: May 
+2026",\n    "source": "Microsoft Threat Intelligence",\n    "url": 
+"https://www.microsoft.com/en-us/security/blog/2026/05/21/whats-new-in-microsoft-security-may-2026/",\n    "summary": 
+"Microsoft Security\\u2019s latest updates extend visibility, control, and protection across expanding ecosystems as 
+organizations accelerate AI adoption.\\nTh"\n  },\n  {\n    "title": "AI Agents Are Shifting Identity Security Budget 
+Dynamics",\n    "source": "Dark Reading",\n    "url": "https://www.darkreading.com/identity-access-management-security/
+shifting-budget-dynamics-identity-security-ai-agents",\n    "summary": "AI agent projects are proliferating throughout 
+the enterprise, and those AI agent identities require management, security, and governance. New Omdia r"\n  },\n  {\n  
+  "title": "Apple blocked over $11 billion in App Store fraud in 6 years",\n    "source": "BleepingComputer",\n    
+"url": "https://www.bleepingcomputer.com/news/apple/apple-blocked-22-billion-in-fraudulent-app-store-transactions-in-20
+25/",\n    "summary": "Apple revealed that it blocked over $11 billion in fraudulent App Store transactions over the 
+last six years, more than $2.2 billion in potentially fr"\n  },\n  {\n    "title": "Showboat Linux Malware Hits Middle 
+East Telecom with SOCKS5 Proxy Backdoor",\n    "source": "The Hacker News",\n    "url": 
+"https://thehackernews.com/2026/05/showboat-linux-malware-hits-middle-east.html",\n    "summary": "Cybersecurity 
+researchers have disclosed details of a new Linux malware dubbed Showboat that has been put to use in a campaign 
+targeting a telecommuni"\n  },\n  {\n    "title": "Inside a Crypto Drainer: How to Spot it Before it Empties Your 
+Wallet",\n    "source": "BleepingComputer",\n    "url": "https://www.bleepingcomputer.com/news/security/inside-a-crypto
+-drainer-how-to-spot-it-before-it-empties-your-wallet/",\n    "summary": "Modern crypto drainers don\'t hack wallets. 
+They trick users into approving malicious transactions.  Flare explores how the Lucifer DaaS platform scale"\n  },\n  
+{\n    "title": "Chinese hackers target telcos with new Linux, Windows malware",\n    "source": "BleepingComputer",\n  
+  "url": 
+"https://www.bleepingcomputer.com/news/security/chinese-hackers-target-telcos-with-new-linux-windows-malware/",\n    
+"summary": "A Chinese cyber-espionage campaign has been targeting telecommunications providers with newly discovered 
+Linux and Windows malware dubbed Showboat and"\n  },\n  {\n    "title": "Chinese APTs Share Linux Backdoor in Central 
+Asia Telco Attacks",\n    "source": "Dark Reading",\n    "url": 
+"https://www.darkreading.com/threat-intelligence/chinese-apts-linux-backdoor-telco-attacks",\n    "summary": 
+"&quot;Showboat&quot; doesn\'t show off, but clearly it doesn\'t need to, as it\'s long helped China spy on small 
+market communications providers."\n  },\n  {\n    "title": "Max severity Cisco Secure Workload flaw gives Site Admin 
+privileges",\n    "source": "BleepingComputer",\n    "url": "https://www.bleepingcomputer.com/news/security/cisco-max-s
+everity-secure-workload-flaw-gives-hackers-site-admin-privileges/",\n    "summary": "Cisco has released security 
+updates to address a maximum-severity vulnerability in Secure Workload that allows attackers to gain Site Admin 
+privileges"\n  },\n  {\n    "title": "Content Delivery Exploit Opens Websites to Brand Hijacking",\n    "source": 
+"Dark Reading",\n    "url": 
+"https://www.darkreading.com/cyber-risk/content-delivery-exploit-websites-brand-hijacking",\n    "summary": "The 
+Underminr domain-fronting attack allows threat actors to modify Web requests and leverage trusted websites to cloak 
+malicious activity."\n  },\n  {\n    "title": "ABB Terra AC Wallbox",\n    "source": "CISA Alerts",\n    "url": 
+"https://www.cisa.gov/news-events/ics-advisories/icsa-26-141-05",\n    "summary": "View CSAF\\nSummary\\nABB is aware 
+of vulnerabilities in the product versions listed as affected in the advisory. An attacker who successfully exploited 
+t"\n  },\n  {\n    "title": "Hitachi Energy GMS600",\n    "source": "CISA Alerts",\n    "url": 
+"https://www.cisa.gov/news-events/ics-advisories/icsa-26-141-01",\n    "summary": "View CSAF\\nSummary\\nHitachi 
+Energy is aware of the vulnerability, CVE-2022-4304 in the OSS component OpenSSL, that affects the GMS600 versions 
+that are ",\n    "cves_mentioned": [\n      "CVE-2022-4304"\n    ]\n  },\n  {\n    "title": "ABB B&R Automation 
+Studio",\n    "source": "CISA Alerts",\n    "url": "https://www.cisa.gov/news-events/ics-advisories/icsa-26-141-03",\n 
+   "summary": "View CSAF\\nSummary\\nABB became aware of vulnerability in the product versions listed as affected in 
+the advisory. An update is available that replaces a"\n  },\n  {\n    "title": "ABB B&R Automation Runtime",\n    
+"source": "CISA Alerts",\n    "url": "https://www.cisa.gov/news-events/ics-advisories/icsa-26-141-04",\n    "summary": 
+"View CSAF\\nSummary\\nAn update is available that resolves a vulnerability identified by B&amp;Rs internal security 
+analysis in the product versions liste"\n  },\n  {\n    "title": "ABB B&R PCs",\n    "source": "CISA Alerts",\n    
+"url": "https://www.cisa.gov/news-events/ics-advisories/icsa-26-141-02",\n    "summary": "View CSAF\\nSummary\\nABB 
+became aware of vulnerability in the product versions listed as affected in the advisory. An update is now available 
+that addres"\n  }\n]\n\nUse these OSINT articles to:\n- Provide additional context for CVEs or threat actors 
+mentioned\n- Identify emerging threats not yet in commercial feeds\n- If an article is particularly relevant to your 
+analysis, include it in osint_sources_used with its title and URL\n- You can reference specific articles in the 
+executive summary if they provide unique insights\n\n\nRAW DATA:\n{\n  "cve_data": [\n    {\n      "cve_id": 
+"CVE-2026-46419",\n      "description": "Yubico webauthn-server-core (aka java-webauthn-server) 2.8.0 before 2.8.2 
+incorrectly checks a function\'s return value in the second factor flow, leading to impersonation.",\n      
+"cvss_score": 7.5,\n      "severity": "HIGH",\n      "published_date": "2026-05-14T02:17:21.917",\n      "exploited": 
+false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": 
+"None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-46445",\n      "description": "SOGo 
+before 5.12.7, when PostgreSQL is used, allows SQL injection.",\n      "cvss_score": 7.1,\n      "severity": "HIGH",\n 
+     "published_date": "2026-05-14T04:17:03.193",\n      "exploited": false,\n      "source": "NVD",\n      
+"affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": 
+"N/A"\n    },\n    {\n      "cve_id": "CVE-2026-46446",\n      "description": "SOGo before 5.12.7, when PostgreSQL or 
+MariaDB is used, and cleartext passwords are stored, allows SQL injection. This is related to c_password = \'%@\' in 
+changePasswordForLogin.",\n      "cvss_score": 7.1,\n      "severity": "HIGH",\n      "published_date": 
+"2026-05-14T04:17:03.547",\n      "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      
+"in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": 
+"CVE-2025-14869",\n      "description": "GitLab has remediated an issue in GitLab CE/EE affecting all versions from 
+18.5 before 18.9.7, 18.10 before 18.10.6, and 18.11 before 18.11.3 that could have allowed an unauthenticated user to 
+cause denial of service by sending specially crafted payloads on certain API endpoints.",\n      "cvss_score": 7.5,\n  
+    "severity": "HIGH",\n      "published_date": "2026-05-14T06:16:20.757",\n      "exploited": false,\n      
+"source": "NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n 
+     "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2025-14870",\n      "description": "GitLab has remediated 
+an issue in GitLab CE/EE affecting all versions from 18.5 before 18.9.7, 18.10 before 18.10.6, and 18.11 before 
+18.11.3 that could have allowed an unauthenticated user to cause denial of service by sending specially crafted JSON 
+payloads due to insufficient input validation.",\n      "cvss_score": 7.5,\n      "severity": "HIGH",\n      
+"published_date": "2026-05-14T06:16:20.887",\n      "exploited": false,\n      "source": "NVD",\n      
+"affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": 
+"N/A"\n    },\n    {\n      "cve_id": "CVE-2026-1659",\n      "description": "GitLab has remediated an issue in GitLab 
+CE/EE affecting all versions from 9.0 before 18.9.7, 18.10 before 18.10.6, and 18.11 before 18.11.3 that could have 
+allowed an unauthenticated user to cause denial of service by sending specially crafted requests due to insufficient 
+input validation.",\n      "cvss_score": 7.5,\n      "severity": "HIGH",\n      "published_date": 
+"2026-05-14T06:16:21.667",\n      "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      
+"in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": 
+"CVE-2026-5396",\n      "description": "The Fluent Forms plugin for WordPress is vulnerable to Authorization Bypass 
+Through User-Controlled Key in all versions up to, and including, 6.1.21. This is due to the SubmissionPolicy class 
+authorizing submission-level actions (read, modify, delete, add notes) based on a user-supplied `form_id` query 
+parameter. This makes it possible for authenticated attackers, with Fluent Forms Manager access restricted to specific 
+forms, to read, modify status, add notes to, and permanently delete form submissions belonging to any other form by 
+spoofing the form_id parameter to a form they are authorized for.",\n      "cvss_score": 8.2,\n      "severity": 
+"HIGH",\n      "published_date": "2026-05-14T06:16:24.117",\n      "exploited": false,\n      "source": "NVD",\n      
+"affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": 
+"N/A"\n    },\n    {\n      "cve_id": "CVE-2026-6073",\n      "description": "GitLab has remediated an issue in GitLab 
+EE affecting all versions from 18.7 before 18.9.7, 18.10 before 18.10.6, and 18.11 before 18.11.3 that could have 
+allowed an authenticated user to execute arbitrary JavaScript in other users\' browsers due to improper input 
+sanitization.",\n      "cvss_score": 8.7,\n      "severity": "HIGH",\n      "published_date": 
+"2026-05-14T06:16:24.503",\n      "exploited": false,\n      "source": "NVD",\n      "affected_product": "GitLab EE 
+affecting all",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": "N/A"\n    },\n   
+ {\n      "cve_id": "CVE-2026-7377",\n      "description": "GitLab has remediated an issue in GitLab EE affecting all 
+versions from 18.7 before 18.9.7, 18.10 before 18.10.6, and 18.11 before 18.11.3 that, in customizable analytics 
+dashboards, could have allowed an authenticated user to execute arbitrary JavaScript in the context of other users\' 
+browsers due to improper input sanitization.",\n      "cvss_score": 8.7,\n      "severity": "HIGH",\n      
+"published_date": "2026-05-14T06:16:25.267",\n      "exploited": false,\n      "source": "NVD",\n      
+"affected_product": "GitLab EE affecting all",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n     
+ "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-7481",\n      "description": "GitLab has remediated an 
+issue in GitLab EE affecting all versions from 16.4 before 18.9.7, 18.10 before 18.10.6, and 18.11 before 18.11.3 that 
+could have allowed an authenticated user with developer-role permissions to execute arbitrary JavaScript in other 
+users\' browsers due to improper input sanitization.",\n      "cvss_score": 8.7,\n      "severity": "HIGH",\n      
+"published_date": "2026-05-14T06:16:25.660",\n      "exploited": false,\n      "source": "NVD",\n      
+"affected_product": "GitLab EE affecting all",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n     
+ "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-8181",\n      "description": "The Burst Statistics 
+\\u2013 Privacy-Friendly WordPress Analytics (Google Analytics Alternative) plugin for WordPress is vulnerable to 
+Authentication Bypass in versions 3.4.0 to 3.4.1.1. This is due to incorrect return-value handling in the 
+`is_mainwp_authenticated()` function when validating application passwords from the Authorization header. This makes 
+it possible for unauthenticated attackers, with knowledge of an administrator username, to impersonate that 
+administrator for the duration of the request by supplying any random Basic Authentication password achieving 
+privilege escalation.",\n      "cvss_score": 9.8,\n      "severity": "CRITICAL",\n      "published_date": 
+"2026-05-14T06:16:25.990",\n      "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      
+"in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": 
+"CVE-2026-3718",\n      "description": "The ManageWP Worker plugin for WordPress is vulnerable to Stored Cross-Site 
+Scripting via the \'MWP-Key-Name\' HTTP request header in all versions up to, and including, 4.9.31. This is due to 
+insufficient input sanitization and output escaping of attacker-controlled header values. This makes it possible for 
+unauthenticated attackers to inject arbitrary web scripts in pages that will execute whenever an administrator visits 
+the plugin\'s connection management page with debug parameters.",\n      "cvss_score": 7.2,\n      "severity": 
+"HIGH",\n      "published_date": "2026-05-14T07:16:19.703",\n      "exploited": false,\n      "source": "NVD",\n      
+"affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": 
+"N/A"\n    },\n    {\n      "cve_id": "CVE-2026-3892",\n      "description": "The Motors \\u2013 Car Dealership & 
+Classified Listings Plugin plugin for WordPress is vulnerable to arbitrary file deletion in all versions up to, and 
+including, 1.4.107. This is due to insufficient file path validation in the become-dealer logo upload flow. The plugin 
+allows any authenticated user to set an arbitrary filesystem path via the profile update handler. This makes it 
+possible for authenticated attackers, with subscriber level access and above, to delete arbitrary files on the 
+server.",\n      "cvss_score": 8.1,\n      "severity": "HIGH",\n      "published_date": "2026-05-14T07:16:19.837",\n   
+   "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      
+"exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-5395",\n      
+"description": "The Fluent Forms \\u2013 Customizable Contact Forms, Survey, Quiz, & Conversational Form Builder 
+plugin for WordPress is vulnerable to Insecure Direct Object Reference in all versions up to, and including, 6.2.0 via 
+the exportEntries function due to missing validation on a user controlled key. This makes it possible for 
+authenticated attackers, with Fluent Forms manager-level access and above, to bypass form-level access restrictions to 
+access submissions from forms they are not authorized to view, export data from arbitrary database tables, and 
+enumerate database table names via error message disclosure.",\n      "cvss_score": 8.2,\n      "severity": "HIGH",\n  
+    "published_date": "2026-05-14T07:16:20.247",\n      "exploited": false,\n      "source": "NVD",\n      
+"affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": 
+"N/A"\n    },\n    {\n      "cve_id": "CVE-2026-6271",\n      "description": "The Career Section plugin for WordPress 
+is vulnerable to Arbitrary File Upload in all versions up to, and including, 1.7 via the CV upload handler. This is 
+due to missing file type validation. This makes it possible for unauthenticated attackers to upload files that may be 
+executable, which makes remote code execution possible.",\n      "cvss_score": 9.8,\n      "severity": "CRITICAL",\n   
+   "published_date": "2026-05-14T07:16:20.650",\n      "exploited": false,\n      "source": "NVD",\n      
+"affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": 
+"N/A"\n    },\n    {\n      "cve_id": "CVE-2026-6506",\n      "description": "The InfusedWoo Pro plugin for WordPress 
+is vulnerable to privilege escalation in all versions up to, and including, 5.1.2. This is due to the 
+infusedwoo_gdpr_upddata() function missing authorization and capability checks, as well as lacking restrictions on 
+which user meta keys can be updated. This makes it possible for authenticated attackers, with subscriber-level access 
+and above, to update their own wp_capabilities user meta to grant themselves Administrator role privileges.",\n      
+"cvss_score": 8.8,\n      "severity": "HIGH",\n      "published_date": "2026-05-14T07:16:20.817",\n      "exploited": 
+false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": 
+"None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-6510",\n      "description": "The 
+InfusedWoo Pro plugin for WordPress is vulnerable to privilege escalation via missing authorization in all versions up 
+to, and including, 5.1.2. This is due to missing nonce verification and capability checks in the iwar_save_recipe() 
+AJAX handler. This makes it possible for unauthenticated attackers to create a malicious automation recipe that pairs 
+an HTTP post trigger with an auto-login action, allowing any unauthenticated visitor to visit a crafted URL and 
+receive authentication cookies for any targeted user account (e.g., administrator), achieving complete authentication 
+bypass and privilege escalation.",\n      "cvss_score": 9.8,\n      "severity": "CRITICAL",\n      "published_date": 
+"2026-05-14T07:16:21.127",\n      "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      
+"in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": 
+"CVE-2026-6512",\n      "description": "The InfusedWoo Pro plugin for WordPress is vulnerable to authorization bypass 
+in all versions up to, and including, 5.1.2. This is due to the plugin not properly verifying that a user is 
+authorized to perform an action. This makes it possible for unauthenticated attackers to permanently delete arbitrary 
+posts, pages, products, or orders, mass-delete all comments on any post, and change any post\'s status.",\n      
+"cvss_score": 9.1,\n      "severity": "CRITICAL",\n      "published_date": "2026-05-14T09:16:27.883",\n      
+"exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      
+"exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-6514",\n      
+"description": "The InfusedWoo Pro plugin for WordPress is vulnerable to Arbitrary File Read in all versions up to, 
+and including, 5.1.2 via the popup_submit. This makes it possible for unauthenticated attackers to make web requests 
+to arbitrary locations originating from the web application and can be used to query and modify information from 
+internal services.",\n      "cvss_score": 7.5,\n      "severity": "HIGH",\n      "published_date": 
+"2026-05-14T09:16:28.023",\n      "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      
+"in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": 
+"CVE-2025-11024",\n      "description": "Improper neutralization of special elements used in an SQL command (\'SQL 
+injection\') vulnerability in Akilli Commerce Software Technologies Ltd. Co. E-Commerce Website allows Blind SQL 
+Injection.\\n\\nThis issue affects E-Commerce Website: before 4.5.001.",\n      "cvss_score": 9.8,\n      "severity": 
+"CRITICAL",\n      "published_date": "2026-05-14T10:16:17.760",\n      "exploited": false,\n      "source": "NVD",\n   
+   "affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": 
+"N/A"\n    },\n    {\n      "cve_id": "CVE-2026-2347",\n      "description": "Authorization bypass through 
+User-Controlled key vulnerability in Akilli Commerce Software Technologies Ltd. Co. E-Commerce Website allows Session 
+Hijacking.\\n\\nThis issue affects E-Commerce Website: before 4.5.001.",\n      "cvss_score": 9.8,\n      "severity": 
+"CRITICAL",\n      "published_date": "2026-05-14T10:16:19.203",\n      "exploited": false,\n      "source": "NVD",\n   
+   "affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": 
+"N/A"\n    },\n    {\n      "cve_id": "CVE-2025-12008",\n      "description": "Authorization bypass through 
+User-Controlled key vulnerability in APPYAP Technology and Information Inc. Yaay Social Media App allows Accessing 
+Functionality Not Properly Constrained by ACLs.\\n\\nThis issue affects Yaay Social Media App: from 3.8.0 through 
+24102025.",\n      "cvss_score": 8.8,\n      "severity": "HIGH",\n      "published_date": "2026-05-14T13:16:16.133",\n 
+     "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      
+"exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-4029",\n      
+"description": "The Database Backup for WordPress plugin for WordPress is vulnerable to unauthorized database export 
+in all versions up to, and including, 2.5.2. This is due to the plugin not properly enforcing the return value of its 
+authorization check. This makes it possible for unauthenticated attackers to export database tables, leading to 
+Sensitive Information Exposure. Note: This vulnerability is only exploitable in WordPress Multisite environments where 
+the deprecated is_site_admin() function exists.",\n      "cvss_score": 7.5,\n      "severity": "HIGH",\n      
+"published_date": "2026-05-14T13:16:20.630",\n      "exploited": false,\n      "source": "NVD",\n      
+"affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": 
+"N/A"\n    },\n    {\n      "cve_id": "CVE-2026-4030",\n      "description": "The Database Backup for WordPress plugin 
+for WordPress is vulnerable to unauthorized arbitrary file read and deletion in all versions up to, and including, 
+2.5.2. This is due to the plugin not properly enforcing the return value of its authorization check combined with a 
+user-controlled backup directory parameter. This makes it possible for unauthenticated attackers to read and delete 
+arbitrary files on the server, leading to Sensitive Information Exposure and potential site takeover. Note: This 
+vulnerability is only exploitable in WordPress Multisite environments where the deprecated is_site_admin() function 
+exists.",\n      "cvss_score": 8.1,\n      "severity": "HIGH",\n      "published_date": "2026-05-14T13:16:20.767",\n   
+   "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      
+"exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-4031",\n      
+"description": "The Database Backup for WordPress plugin for WordPress is vulnerable to authorization bypass in all 
+versions up to, and including, 2.5.2. This is due to the plugin not restricting access to the wp_db_temp_dir 
+parameter, which controls where database backups are written. This makes it possible for unauthenticated attackers to 
+send a request to wp-cron.php with a poisoned wp_db_temp_dir value pointing to a publicly accessible directory (e.g., 
+wp-content/uploads/), and if a scheduled backup is due, intercept the backup file before it is cleaned up. The backup 
+file has a predictable name based on the database name, table prefix, date, and Swatch Internet Time, making 
+interception reliable. Successful exploitation leads to Sensitive Information Exposure including database credentials, 
+user password hashes, and personally identifiable information. This vulnerability requires that the site administrator 
+has configured scheduled backups.",\n      "cvss_score": 7.5,\n      "severity": "HIGH",\n      "published_date": 
+"2026-05-14T13:16:20.907",\n      "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      
+"in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": 
+"CVE-2025-15025",\n      "description": "Authorization bypass through User-Controlled key vulnerability in Yordam 
+Information Technology Consulting, Training and Electronic Systems Industry and Trade Inc. Library Automation System 
+allows Exploitation of Trusted Identifiers.\\n\\nThis issue affects Library Automation System: from v.21.6 before 
+v.22.1.",\n      "cvss_score": 8.8,\n      "severity": "HIGH",\n      "published_date": "2026-05-14T14:16:15.640",\n   
+   "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      
+"exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-6473",\n      
+"description": "Integer wraparound in multiple PostgreSQL server features allows an unprivileged database user to 
+cause the server to undersize an allocation and write out-of-bounds.  This may execute arbitrary code as the operating 
+system user running the database.  In applications that pass gigabyte-scale user inputs to the relevant database 
+functions, the application input provider may achieve a segmentation fault.  Versions before PostgreSQL 18.4, 17.10, 
+16.14, 15.18, and 14.23 are affected.",\n      "cvss_score": 8.8,\n      "severity": "HIGH",\n      "published_date": 
+"2026-05-14T14:16:24.883",\n      "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      
+"in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": 
+"CVE-2026-6475",\n      "description": "Symlink following in PostgreSQL pg_basebackup plain format and in pg_rewind 
+allows an origin superuser to overwrite local files, e.g. /var/lib/postgres/.bashrc, that hijack the operating system 
+account.  It will remain the case that starting the server after these commands implicitly trusts the origin 
+superuser, due to features like shared_preload_libraries.  Hence, the attack has practical implications only if one 
+takes relevant action between these commands and server start, like moving the files to a different VM or snapshotting 
+the VM.  Versions before PostgreSQL 18.4, 17.10, 16.14, 15.18, and 14.23 are affected.",\n      "cvss_score": 8.8,\n   
+   "severity": "HIGH",\n      "published_date": "2026-05-14T14:16:25.113",\n      "exploited": false,\n      "source": 
+"NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      
+"exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-6476",\n      "description": "SQL injection in PostgreSQL 
+pg_createsubscriber allows an attacker with pg_create_subscription rights to execute arbitrary SQL as a superuser.  
+The attack takes effect when pg_createsubscriber next runs.  Within major versions 17 and 18, minor versions before 
+PostgreSQL 18.4 and 17.10 are affected.  Versions before PostgreSQL 17 are unaffected.",\n      "cvss_score": 7.2,\n   
+   "severity": "HIGH",\n      "published_date": "2026-05-14T14:16:25.230",\n      "exploited": false,\n      "source": 
+"NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      
+"exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-6477",\n      "description": "Use of inherently dangerous 
+function PQfn(..., result_is_int=0, ...) in PostgreSQL libpq lo_export(), lo_read(), lo_lseek64(), and lo_tell64() 
+functions allows the server superuser to overwrite a client stack buffer with an arbitrarily-large response.  Like 
+gets(), PQfn(..., result_is_int=0, ...) stores arbitrary-length, server-determined data into a buffer of unspecified 
+size.  Because both the \\\\lo_export command in psql and pg_dump call lo_read(), the server superuser can overwrite 
+pg_dump or psql stack memory.  Versions before PostgreSQL 18.4, 17.10, 16.14, 15.18, and 14.23 are affected.",\n      
+"cvss_score": 8.8,\n      "severity": "HIGH",\n      "published_date": "2026-05-14T14:16:25.347",\n      "exploited": 
+false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": 
+"None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-6479",\n      "description": 
+"Uncontrolled recursion in PostgreSQL SSL and GSS negotiation allows an attacker able to connect to a PostgreSQL 
+AF_UNIX socket to achieve sustained denial of service.  If SSL and GSS are both disabled, an attacker can do the same 
+via access to a PostgreSQL TCP socket.  Versions before PostgreSQL 18.4, 17.10, 16.14, 15.18, and 14.23 are 
+affected.",\n      "cvss_score": 7.5,\n      "severity": "HIGH",\n      "published_date": "2026-05-14T14:16:25.583",\n 
+     "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      
+"exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-6637",\n      
+"description": "Stack buffer overflow in PostgreSQL module \\"refint\\" allows an unprivileged database user to 
+execute arbitrary code as the operating system user running the database.  A distinct attack is possible if the 
+application declares a user-controlled column as a \\"refint\\" cascade primary key and facilitates user-controlled 
+updates to that column.  In that case, a SQL injection allows a primary key update value provider to execute arbitrary 
+SQL as the database user performing the primary key update.  Versions before PostgreSQL 18.4, 17.10, 16.14, 15.18, and 
+14.23 are affected.",\n      "cvss_score": 8.8,\n      "severity": "HIGH",\n      "published_date": 
+"2026-05-14T14:16:25.820",\n      "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      
+"in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": 
+"CVE-2026-24712",\n      "description": "Northern.tech CFEngine Enterprise and Community before 3.21.8, 3.24.3, and 
+3.27.0 allows Command injection.",\n      "cvss_score": 7.3,\n      "severity": "HIGH",\n      "published_date": 
+"2026-05-14T15:16:44.977",\n      "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      
+"in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": 
+"CVE-2026-41935",\n      "description": "Vvveb before 1.0.8.3 contains an uncontrolled recursion vulnerability in the 
+admin controller dispatch cycle where Base::init() repeatedly invokes permission() on error handlers, causing infinite 
+recursion until PHP memory limits are exhausted. Attackers can send sustained requests to forbidden admin URLs from a 
+low-privilege account to exhaust PHP memory on all workers and cause denial of service to legitimate traffic.",\n      
+"cvss_score": 7.1,\n      "severity": "HIGH",\n      "published_date": "2026-05-14T15:16:46.020",\n      "exploited": 
+false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": 
+"None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-41937",\n      "description": "Vvveb 
+before 1.0.8.3 contains an unrestricted file upload vulnerability in the plugin upload endpoint that allows 
+super_admin users to execute arbitrary PHP code by uploading a malicious plugin ZIP file. Attackers can craft a ZIP 
+containing a plugin.php with a valid Slug header and a public/index.php file with arbitrary PHP code, which executes 
+as the web server user when accessed via unauthenticated HTTP requests to the plugin\'s public path.",\n      
+"cvss_score": 7.2,\n      "severity": "HIGH",\n      "published_date": "2026-05-14T15:16:46.190",\n      "exploited": 
+false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": 
+"None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": "CVE-2026-42186",\n      "description": 
+"OpenBao is an open source identity-based secrets management system. Prior to 2.5.3, when OpenBao\'s initial namespace 
+deletion fails, subsequent retries fail to properly remove all data before marking the namespace as deleted. This can 
+affect any outstanding leases as well as potentially leaving unrelated storage entries around. This vulnerability is 
+fixed in 2.5.3.",\n      "cvss_score": 7.5,\n      "severity": "HIGH",\n      "published_date": 
+"2026-05-14T15:16:46.337",\n      "exploited": false,\n      "source": "NVD",\n      "affected_product": "N/A",\n      
+"in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": "N/A"\n    },\n    {\n      "cve_id": 
+"CVE-2026-42457",\n      "description": "vCluster Platform provides a Kubernetes platform for managing virtual 
+clusters, multi-tenancy, and cluster sharing. Prior to 4.4.3, 4.5.5, 4.6.2, 4.7.1, and 4.8.0, there is a Stored XSS 
+attack vulnerability via the name field of a templateRef. This can lead to the execution of arbitrary external scripts 
+within the platform\'s browser context. In the worst case, a malicious user could potentially create a new 
+Global-Admin user, bypassing other security restrictions. The attacker needs the ability to create namespaces. This 
+vulnerability is fixed in 4.4.3, 4.5.5, 4.6.2, 4.7.1, and 4.8.0.",\n      "cvss_score": 9.0,\n      "severity": 
+"CRITICAL",\n      "published_date": "2026-05-14T15:16:46.500",\n      "exploited": false,\n      "source": "NVD",\n   
+   "affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      "exposure": 
+"N/A"\n    },\n    {\n      "cve_id": "CVE-2026-42559",\n      "description": "RMCP is an official Rust SDK for the 
+Model Context Protocol. Prior to version 1.4.0, the rmcp crate\'s Streamable HTTP server transport 
+(crates/rmcp/src/transport/streamable_http_server/) did not validate the incoming Host header. This allowed a 
+malicious public website, via a DNS rebinding attack, to send authenticated requests to an MCP server running on the 
+victim\'s loopback or private-network interface. This vulnerability is fixed in 1.4.0.",\n      "cvss_score": 8.8,\n   
+   "severity": "HIGH",\n      "published_date": "2026-05-14T15:16:46.750",\n      "exploited": false,\n      "source": 
+"NVD",\n      "affected_product": "N/A",\n      "in_cisa_kev": false,\n      "exploited_by": "None known",\n      
+"exposure": "N/A"\n    }\n  ],\n  "intel471_data": [\n    {\n      "source": "Intel471",\n      "threat_actor": 
+"Unknown",\n      "threat_type": "INFOREP",\n      "confidence": "Medium",\n      "summary": "Likely Indonesian actor 
+Kyzzo offers to sell database impacting Bangladesh Directorate General of Drug Administration",\n      "date": 
+"2026-05-21T11:41:19",\n      "tags": [\n        "Database Dumps",\n        "PII & Fullz",\n        "TTPs"\n      ],\n 
+     "motivation": [\n        "CC"\n      ],\n      "portal_url": 
+"https://titan.intel471.com/report/inforep/9a7b01e5af7e01f899ac5c9c8d2d294f",\n      "uid": 
+"d960febce8be0870e7cd8798dafef76b2f5c8c0530f7ab1e4491838b64b24462"\n    },\n    {\n      "source": "Intel471",\n      
+"threat_actor": "flowflow",\n      "threat_type": "INFOREP",\n      "confidence": "Cannot be judged",\n      
+"summary": "Possible Moroccan actor flowflow (aka Pikatcho, p1k4l4, Sniperpex, sniper pex, tikila, skart7, ericki, 
+Fyodorovich, radomi, berz0k, berzok, Klai, Nassim Asrir, nassimasrir, Nassim, 0Day Researcher - N00B) offers exploit 
+for alleged n-day vulnerability impacting multiple versions of Dell SonicWall Secure Mobile Access gateway product",\n 
+     "date": "2026-05-21T11:05:09",\n      "tags": [\n        "Exploit Kit",\n        "Exploit Kit - Usage",\n        
+"TTPs",\n        "Vulnerabilities & Exploits"\n      ],\n      "motivation": [\n        "CC"\n      ],\n      
+"portal_url": "https://titan.intel471.com/report/inforep/ff87652b98bbf0d5bda97cab49fec502",\n      "uid": 
+"b0dc951d06cb4dc766e3033bc885f8357e3cb5ce68e2b35fccb9535f7a5ac79a"\n    },\n    {\n      "source": "Intel471",\n      
+"threat_actor": "remcos",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n      "summary": 
+"FILE: {\'file\': {\'md5\': \'307a01d949332849c94b7d7bb5d4b853\', \'sha1\': 
+\'6d5025b311240673ea1b24a1315615fcf9d4ca",\n      "date": "2026-05-14T15:27:40.549000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "ffaa5558ef1337b764dd83f0fb4c18ee"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "remcos",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'1082c4e1111be1b125d8ea21c38ddb00\', \'sha1\': 
+\'870cbd43df0944fab94a0c47efdb3058724daa",\n      "date": "2026-05-14T15:27:40.570000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "89242e6e4a0a394abae2cfe95856f0fe"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "remcos",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'2731259f350c960ae1debd2c5ca28feb\', \'sha1\': 
+\'126792a6d4b4d953cc6eb84f7a61d379e86908",\n      "date": "2026-05-14T15:27:40.591000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "279790ecc8f286b449f9dfc35a519c48"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "remcos",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'7e537c1528ea4537a23ac66bd07558f3\', \'sha1\': 
+\'0b26c440311cb86dda11a6975e7e5b2e5c85cc",\n      "date": "2026-05-14T15:28:40.489000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "d0be2ce983ca669f63e088a58d2634a9"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "metasploit",\n      "threat_type": "Indicator (file)",\n      "confidence": 
+"high",\n      "summary": "FILE: {\'file\': {\'md5\': \'3687f993c52b219e1c84b76eea581b10\', \'sha1\': 
+\'da89fb5e20a6b804144a5dc4ee34b9278540f0",\n      "date": "2026-05-14T15:41:40.663000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "b3bfdb0e7afc4ff74982b2f203fae9f5"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "metasploit",\n      "threat_type": "Indicator (file)",\n      "confidence": 
+"high",\n      "summary": "FILE: {\'file\': {\'md5\': \'314d13ce9b444068feac69b38c445758\', \'sha1\': 
+\'8eabca8899f5778d8d8134e76faeffa418e477",\n      "date": "2026-05-14T15:41:40.675000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "397c179a71cb6acfd303aecadea38e67"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "cobaltstrike",\n      "threat_type": "Indicator (file)",\n      "confidence": 
+"high",\n      "summary": "FILE: {\'file\': {\'md5\': \'6da61fcd9ecdc11a634366c0e4439c2b\', \'sha1\': 
+\'d15b5a6d49e7669b8b59cefabe1fb0eb38659d",\n      "date": "2026-05-14T15:47:40.550000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "4e299c325cdc49bb21f636a5ebc950b4"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "tofsee",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'c0cbfd6c7a4445719fe2f1f02f55a654\', \'sha1\': 
+\'ccbefa8e4196248a7c62e36b4df18b397d4d97",\n      "date": "2026-05-14T15:59:40.561000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "176994c73294b95bbef01f998e76c1dc"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "tofsee",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'91ae41ddd567561a5d714988a88bbae5\', \'sha1\': 
+\'0819cf7dc7e997b1b4e9ef51a3dc27cfe63fa2",\n      "date": "2026-05-14T15:59:40.592000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "9b042c34d26b298acfc53f5759ef101d"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "tofsee",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'5db3208a3172822f8583ab71e7d599f2\', \'sha1\': 
+\'89a10385884add553c1eeb0b5bc9d19d2fa549",\n      "date": "2026-05-14T15:59:40.613000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "1a98af8b5e776103310c241b7b074cfd"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "tofsee",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'b1241aeb4a41b53401323684a18d19a8\', \'sha1\': 
+\'bc1760866d3d41f876dda9608f1bd861d88d84",\n      "date": "2026-05-14T15:59:40.632000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "3cbc52bd69739359ebbf3d17b72a1e12"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "tofsee",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'0e568ae7638c98d1e81982dadb83a53d\', \'sha1\': 
+\'0eeb73d458935ee50831a7ccf1899ee96ffed4",\n      "date": "2026-05-14T16:02:40.497000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "90c6086ce656b0172d5e1ea800edd5ac"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "tofsee",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'733a22518b5ac61a7c2cca43de5f78ca\', \'sha1\': 
+\'5fa6d7a3d18a3da5fa5786d7a370ce5dd6cf01",\n      "date": "2026-05-14T16:02:40.497000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "989f622b067b7d2d3dcfd6c1c80dc27e"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "tofsee",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'78e08a5b240b393f3c25bd1127ea4e0b\', \'sha1\': 
+\'20e37edcf75a3248e482d9939926fd140f8319",\n      "date": "2026-05-14T16:02:40.499000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "46e6093190bb014c2e64d51648119865"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "tofsee",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'44ac0b58d58f17c382d45f08ca8cd44c\', \'sha1\': 
+\'79d4e724ffae18e8d76afe31acb993c162fd2c",\n      "date": "2026-05-14T16:02:40.512000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "3a8bb17a047cd1b9b366480b391fef26"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "tofsee",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'afffd0540e925fab711e950a78243308\', \'sha1\': 
+\'429cb20becc77e0f45bedf8035107491a84e56",\n      "date": "2026-05-14T16:02:40.516000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "b2b0356004ffe28bf2263bb92bc2dfab"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "tofsee",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'3bbdc2e076dc5fe56b27c12df8edecfd\', \'sha1\': 
+\'ce11150d79ebeb764cd169d449561125a0a0d7",\n      "date": "2026-05-14T16:02:40.530000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "278c7e6f780cc52a002a242b2e75274f"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "tofsee",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'1b9dbb7804f2dc1b0c46b1032ea23db1\', \'sha1\': 
+\'c1ce88848c92150f2e370d2e4a3836eb98dc0b",\n      "date": "2026-05-14T16:03:40.482000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "a551f9b668bfefcd3f11551d8031c80d"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "tofsee",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'2781ea20a98dfa9c1f0a1dd023984684\', \'sha1\': 
+\'d99659267e6b66d886ba7475ac53bc3f9e51f8",\n      "date": "2026-05-14T16:03:40.483000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "8b162d81117d8e94fd2c1f9ee929a3f8"\n    },\n    {\n      "source": 
+"Intel471",\n      "threat_actor": "tofsee",\n      "threat_type": "Indicator (file)",\n      "confidence": "high",\n  
+    "summary": "FILE: {\'file\': {\'md5\': \'140e4e1d750bd6842966870e8dde5ac3\', \'sha1\': 
+\'7f935eeea5efb54c86eeacef59d1eed8707e19",\n      "date": "2026-05-14T16:03:40.485000",\n      "mitre_tactics": 
+"command_and_control",\n      "indicator_uid": "57209d75e8fc7ebc51734c7fec9bc130"\n    }\n  ],\n  "crowdstrike_data": 
+[\n    {\n      "actor_name": "HOOK SPIDER",\n      "country": "Unknown",\n      "motivations": [\n        
+"Criminal"\n      ],\n      "ttps": [],\n      "target_industries": [\n        "Entertainment",\n        
+"Utilities",\n        "Consumer Goods",\n        "Local Government",\n        "Pharmaceutical",\n        
+"Extractive",\n        "Government",\n        "Technology",\n        "Retail",\n        "Legal",\n        
+"Automotive",\n        "Maritime",\n        "Aviation",\n        "Academic",\n        "Telecommunications",\n        
+"Consulting and Professional Services",\n        "Industrials and Engineering",\n        "Real Estate",\n        
+"Transportation",\n        "NGO",\n        "Manufacturing",\n        "Logistics",\n        "Opportunistic",\n        
+"Hospitality",\n        "Travel",\n        "Financial Services",\n        "Agriculture",\n        "Media",\n        
+"Healthcare",\n        "Energy",\n        "Political Parties",\n        "Nonprofit",\n        "Food and Beverage",\n   
+     "Chemicals",\n        "Insurance"\n      ],\n      "last_activity": 1779284622,\n      "source": "CrowdStrike"\n  
+  },\n    {\n      "actor_name": "CHATTY SPIDER",\n      "country": "Russian Federation",\n      "motivations": [\n    
+    "Criminal"\n      ],\n      "ttps": [],\n      "target_industries": [\n        "Government",\n        
+"Technology",\n        "Legal",\n        "Automotive",\n        "Academic",\n        "Consulting and Professional 
+Services",\n        "Industrials and Engineering",\n        "Manufacturing",\n        "Hospitality",\n        
+"Financial Services",\n        "Media",\n        "Insurance"\n      ],\n      "last_activity": 1779269105,\n      
+"source": "CrowdStrike"\n    },\n    {\n      "actor_name": "CHEF SPIDER",\n      "country": "Unknown",\n      
+"motivations": [\n        "Criminal"\n      ],\n      "ttps": [],\n      "target_industries": [\n        
+"Technology",\n        "Retail",\n        "Hospitality",\n        "Media",\n        "Food and Beverage"\n      ],\n    
+  "last_activity": 1779214801,\n      "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "PUNK SPIDER",\n     
+ "country": "Unknown",\n      "motivations": [\n        "Criminal"\n      ],\n      "ttps": [],\n      
+"target_industries": [\n        "Entertainment",\n        "Utilities",\n        "Consumer Goods",\n        "Local 
+Government",\n        "Extractive",\n        "Government",\n        "Technology",\n        "Retail",\n        
+"Legal",\n        "Automotive",\n        "Maritime",\n        "Aviation",\n        "Academic",\n        
+"Telecommunications",\n        "Consulting and Professional Services",\n        "Industrials and Engineering",\n       
+ "Architectural and Engineering",\n        "Real Estate",\n        "Transportation",\n        "NGO",\n        
+"Manufacturing",\n        "Logistics",\n        "Hospitality",\n        "Travel",\n        "Financial Services",\n     
+   "Agriculture",\n        "Media",\n        "Healthcare",\n        "Energy",\n        "Sports Organizations",\n       
+ "Aerospace",\n        "Nonprofit",\n        "Food and Beverage",\n        "Chemicals"\n      ],\n      
+"last_activity": 1779199414,\n      "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "BITWISE SPIDER",\n    
+  "country": "Russian Federation",\n      "motivations": [\n        "Criminal"\n      ],\n      "ttps": [],\n      
+"target_industries": [\n        "Extractive",\n        "Government",\n        "Technology",\n        "Retail",\n       
+ "Legal",\n        "Automotive",\n        "Maritime",\n        "Entertainment",\n        "Utilities",\n        
+"Consumer Goods",\n        "Computer Gaming",\n        "Local Government",\n        "Pharmaceutical",\n        
+"Aviation",\n        "Academic",\n        "Telecommunications",\n        "Consulting and Professional Services",\n     
+   "Industrials and Engineering",\n        "Law Enforcement",\n        "Real Estate",\n        "Transportation",\n     
+   "Biomedical",\n        "NGO",\n        "Emergency Services",\n        "Manufacturing",\n        "Defense",\n        
+"Logistics",\n        "Opportunistic",\n        "Hospitality",\n        "Travel",\n        "Financial Services",\n     
+   "Agriculture",\n        "Media",\n        "Healthcare",\n        "Energy",\n        "Sports Organizations",\n       
+ "Political Parties",\n        "Aerospace",\n        "Nonprofit",\n        "Food and Beverage",\n        
+"Cryptocurrency",\n        "Oil and Gas",\n        "Chemicals",\n        "Insurance"\n      ],\n      "last_activity": 
+1779197393,\n      "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "NEMESIS KITTEN",\n      "country": 
+"Iran",\n      "motivations": [\n        "State-Sponsored"\n      ],\n      "ttps": [],\n      "target_industries": 
+[\n        "Entertainment",\n        "Local Government",\n        "Pharmaceutical",\n        "Government",\n        
+"Technology",\n        "Retail",\n        "Legal",\n        "Academic",\n        "Telecommunications",\n        
+"Industrials and Engineering",\n        "Transportation",\n        "Manufacturing",\n        "Financial Services",\n   
+     "Media",\n        "Healthcare",\n        "Energy",\n        "Aerospace",\n        "Vocational and Higher-Level 
+Education",\n        "Oil and Gas",\n        "Chemicals"\n      ],\n      "last_activity": 1779116198,\n      
+"source": "CrowdStrike"\n    },\n    {\n      "actor_name": "PLUMP SPIDER",\n      "country": "Brazil",\n      
+"motivations": [\n        "Criminal"\n      ],\n      "ttps": [],\n      "target_industries": [\n        
+"Technology",\n        "Retail",\n        "Automotive",\n        "Pharmaceutical",\n        "Telecommunications",\n    
+    "Manufacturing",\n        "Logistics",\n        "Financial Services",\n        "Agriculture",\n        
+"Healthcare",\n        "Energy",\n        "Insurance"\n      ],\n      "last_activity": 1779099759,\n      "source": 
+"CrowdStrike"\n    },\n    {\n      "actor_name": "TRAVELING SPIDER",\n      "country": "Russian Federation",\n      
+"motivations": [\n        "Criminal"\n      ],\n      "ttps": [],\n      "target_industries": [\n        
+"Extractive",\n        "Government",\n        "Technology",\n        "Retail",\n        "Legal",\n        
+"Automotive",\n        "Maritime",\n        "Entertainment",\n        "Utilities",\n        "Consumer Goods",\n        
+"Local Government",\n        "Pharmaceutical",\n        "Aviation",\n        "Academic",\n        
+"Telecommunications",\n        "Consulting and Professional Services",\n        "Industrials and Engineering",\n       
+ "Law Enforcement",\n        "Real Estate",\n        "Transportation",\n        "NGO",\n        "Emergency 
+Services",\n        "Manufacturing",\n        "Logistics",\n        "Hospitality",\n        "Financial Services",\n    
+    "Agriculture",\n        "Media",\n        "Healthcare",\n        "Energy",\n        "Aerospace",\n        "Food 
+and Beverage",\n        "Oil and Gas",\n        "Chemicals",\n        "Insurance"\n      ],\n      "last_activity": 
+1779097741,\n      "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "ROYAL SPIDER",\n      "country": 
+"Russian Federation",\n      "motivations": [\n        "Criminal"\n      ],\n      "ttps": [],\n      
+"target_industries": [\n        "Extractive",\n        "Government",\n        "Technology",\n        "Retail",\n       
+ "Legal",\n        "Automotive",\n        "Aviation",\n        "Academic",\n        "Telecommunications",\n        
+"Consulting and Professional Services",\n        "Industrials and Engineering",\n        "Real Estate",\n        
+"Transportation",\n        "Food and Beverage",\n        "Entertainment",\n        "Utilities",\n        "Consumer 
+Goods",\n        "Local Government",\n        "NGO",\n        "Manufacturing",\n        "Logistics",\n        
+"Hospitality",\n        "Financial Services",\n        "Agriculture",\n        "Media",\n        "Healthcare",\n       
+ "Energy",\n        "Aerospace",\n        "Nonprofit",\n        "Chemicals"\n      ],\n      "last_activity": 
+1779097620,\n      "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "VICE SPIDER",\n      "country": 
+"Unknown",\n      "motivations": [\n        "Criminal"\n      ],\n      "ttps": [],\n      "target_industries": [\n    
+    "Extractive",\n        "Government",\n        "Technology",\n        "Retail",\n        "Legal",\n        
+"Automotive",\n        "Entertainment",\n        "Utilities",\n        "Consumer Goods",\n        "Local 
+Government",\n        "Academic",\n        "Telecommunications",\n        "Consulting and Professional Services",\n    
+    "Industrials and Engineering",\n        "Law Enforcement",\n        "Real Estate",\n        "Transportation",\n    
+    "NGO",\n        "Emergency Services",\n        "Manufacturing",\n        "Logistics",\n        "Hospitality",\n    
+    "Financial Services",\n        "Agriculture",\n        "Media",\n        "Healthcare",\n        "Energy",\n        
+"Aerospace",\n        "Nonprofit",\n        "Food and Beverage",\n        "Chemicals"\n      ],\n      
+"last_activity": 1779094883,\n      "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "STARDUST CHOLLIMA",\n 
+     "country": "North Korea",\n      "motivations": [\n        "State-Sponsored",\n        "Criminal"\n      ],\n     
+ "ttps": [],\n      "target_industries": [\n        "Technology",\n        "Hospitality",\n        "Financial 
+Services",\n        "Cryptocurrency"\n      ],\n      "last_activity": 1778784316,\n      "source": "CrowdStrike"\n    
+},\n    {\n      "actor_name": "STATIC KITTEN",\n      "country": "Iran",\n      "motivations": [\n        
+"State-Sponsored"\n      ],\n      "ttps": [],\n      "target_industries": [\n        "Government",\n        
+"Technology",\n        "Local Government",\n        "Pharmaceutical",\n        "Aviation",\n        "Academic",\n      
+  "Telecommunications",\n        "Real Estate",\n        "NGO",\n        "National Government",\n        "Military",\n 
+       "Hospitality",\n        "Financial Services",\n        "Agriculture",\n        "Healthcare",\n        
+"Energy",\n        "Aerospace",\n        "Oil and Gas"\n      ],\n      "last_activity": 1778775211,\n      "source": 
+"CrowdStrike"\n    },\n    {\n      "actor_name": "GOLDEN CHOLLIMA",\n      "country": "North Korea",\n      
+"motivations": [\n        "State-Sponsored"\n      ],\n      "ttps": [],\n      "target_industries": [\n        
+"Technology",\n        "Telecommunications",\n        "Financial Services",\n        "Energy",\n        
+"Cryptocurrency"\n      ],\n      "last_activity": 1778697553,\n      "source": "CrowdStrike"\n    },\n    {\n      
+"actor_name": "HYDRO KITTEN",\n      "country": "Iran",\n      "motivations": [\n        "State-Sponsored"\n      ],\n 
+     "ttps": [],\n      "target_industries": [\n        "Government",\n        "Technology",\n        "Retail",\n      
+  "Maritime",\n        "Utilities",\n        "Local Government",\n        "Academic",\n        "Defense",\n        
+"Media",\n        "Healthcare",\n        "Energy",\n        "Food and Beverage",\n        "Oil and Gas"\n      ],\n    
+  "last_activity": 1778696391,\n      "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "FAMOUS CHOLLIMA",\n 
+     "country": "North Korea",\n      "motivations": [\n        "State-Sponsored"\n      ],\n      "ttps": [],\n      
+"target_industries": [\n        "Entertainment",\n        "Computer Gaming",\n        "Pharmaceutical",\n        
+"Government",\n        "Technology",\n        "Retail",\n        "Maritime",\n        "Aviation",\n        
+"Academic",\n        "Telecommunications",\n        "Consulting and Professional Services",\n        "Software",\n     
+   "Real Estate",\n        "Transportation",\n        "Manufacturing",\n        "Defense",\n        "Logistics",\n     
+   "Opportunistic",\n        "Hospitality",\n        "Financial Services",\n        "Media",\n        "Healthcare",\n  
+      "Aerospace",\n        "Food and Beverage",\n        "Cryptocurrency",\n        "Social Media",\n        
+"Insurance"\n      ],\n      "last_activity": 1778692947,\n      "source": "CrowdStrike"\n    },\n    {\n      
+"actor_name": "NITRO SPIDER",\n      "country": "Unknown",\n      "motivations": [\n        "Criminal"\n      ],\n     
+ "ttps": [],\n      "target_industries": [\n        "Entertainment",\n        "Utilities",\n        "Consumer 
+Goods",\n        "Computer Gaming",\n        "Local Government",\n        "Extractive",\n        "Government",\n       
+ "Technology",\n        "Retail",\n        "Automotive",\n        "Academic",\n        "Telecommunications",\n        
+"Industrials and Engineering",\n        "Manufacturing",\n        "Logistics",\n        "Hospitality",\n        
+"Financial Services",\n        "Media",\n        "Healthcare",\n        "Energy",\n        "Chemicals"\n      ],\n     
+ "last_activity": 1778692115,\n      "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "MONARCH SPIDER",\n   
+   "country": "Unknown",\n      "motivations": [\n        "Criminal"\n      ],\n      "ttps": [],\n      
+"target_industries": [],\n      "last_activity": 1778671374,\n      "source": "CrowdStrike"\n    },\n    {\n      
+"actor_name": "DONUT SPIDER",\n      "country": "Unknown",\n      "motivations": [\n        "Criminal"\n      ],\n     
+ "ttps": [],\n      "target_industries": [\n        "Extractive",\n        "Government",\n        "Technology",\n      
+  "Retail",\n        "Legal",\n        "Computer Gaming",\n        "Telecommunications",\n        "Consulting and 
+Professional Services",\n        "Industrials and Engineering",\n        "Law Enforcement",\n        "Real Estate",\n  
+      "Manufacturing",\n        "Defense",\n        "Hospitality",\n        "Travel",\n        "Financial Services",\n 
+       "Healthcare",\n        "Energy",\n        "Food and Beverage"\n      ],\n      "last_activity": 1778671239,\n   
+   "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "COOKIE SPIDER",\n      "country": "Unknown",\n      
+"motivations": [\n        "Criminal"\n      ],\n      "ttps": [],\n      "target_industries": [],\n      
+"last_activity": 1778671232,\n      "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "ROBOT SPIDER",\n      
+"country": "Brazil",\n      "motivations": [\n        "Criminal"\n      ],\n      "ttps": [],\n      
+"target_industries": [],\n      "last_activity": 1778670956,\n      "source": "CrowdStrike"\n    },\n    {\n      
+"actor_name": "ARCANE KITTEN",\n      "country": "Iran",\n      "motivations": [\n        "State-Sponsored"\n      
+],\n      "ttps": [],\n      "target_industries": [\n        "Government",\n        "Technology",\n        
+"Telecommunications",\n        "NGO",\n        "Manufacturing",\n        "Financial Services",\n        "Energy"\n     
+ ],\n      "last_activity": 1778670479,\n      "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "APOTHECARY 
+SPIDER",\n      "country": "Unknown",\n      "motivations": [\n        "Criminal"\n      ],\n      "ttps": [],\n      
+"target_industries": [],\n      "last_activity": 1778669665,\n      "source": "CrowdStrike"\n    },\n    {\n      
+"actor_name": "CASCADE PANDA",\n      "country": "China",\n      "motivations": [\n        "State-Sponsored"\n      
+],\n      "ttps": [],\n      "target_industries": [\n        "Pharmaceutical",\n        "Real Estate",\n        
+"NGO",\n        "Manufacturing",\n        "Logistics",\n        "Hospitality",\n        "Financial Services",\n        
+"Media",\n        "Healthcare",\n        "Chemicals"\n      ],\n      "last_activity": 1778669025,\n      "source": 
+"CrowdStrike"\n    },\n    {\n      "actor_name": "OVERCAST PANDA",\n      "country": "China",\n      "motivations": 
+[\n        "State-Sponsored"\n      ],\n      "ttps": [],\n      "target_industries": [\n        "Utilities",\n        
+"Technology",\n        "Legal",\n        "NGO",\n        "Logistics",\n        "Media",\n        "Energy"\n      ],\n  
+    "last_activity": 1778668842,\n      "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "RENAISSANCE 
+SPIDER",\n      "country": "Russian Federation",\n      "motivations": [\n        "State-Sponsored",\n        
+"Criminal",\n        "Hacktivism"\n      ],\n      "ttps": [],\n      "target_industries": [\n        "Local 
+Government",\n        "Government",\n        "Technology",\n        "Retail",\n        "Legal",\n        "Academic",\n 
+       "National Government",\n        "Manufacturing",\n        "Military",\n        "Logistics",\n        "Financial 
+Services",\n        "Agriculture",\n        "Media",\n        "Energy",\n        "Insurance"\n      ],\n      
+"last_activity": 1778666734,\n      "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "RICE SPIDER",\n      
+"country": "Unknown",\n      "motivations": [\n        "Criminal"\n      ],\n      "ttps": [],\n      
+"target_industries": [],\n      "last_activity": 1778666247,\n      "source": "CrowdStrike"\n    },\n    {\n      
+"actor_name": "PULSAR KITTEN",\n      "country": "Iran",\n      "motivations": [\n        "State-Sponsored"\n      
+],\n      "ttps": [],\n      "target_industries": [\n        "Government",\n        "Technology",\n        
+"Aviation",\n        "Academic",\n        "Telecommunications",\n        "Consulting and Professional Services",\n     
+   "Defense",\n        "Logistics",\n        "Healthcare",\n        "Energy",\n        "Aerospace"\n      ],\n      
+"last_activity": 1778665612,\n      "source": "CrowdStrike"\n    },\n    {\n      "actor_name": "MERCHANT SPIDER",\n   
+   "country": "Unknown",\n      "motivations": [\n        "Criminal"\n      ],\n      "ttps": [],\n      
+"target_industries": [\n        "Government",\n        "Technology",\n        "Retail",\n        "Automotive",\n       
+ "Consumer Goods",\n        "Pharmaceutical",\n        "Aviation",\n        "Academic",\n        
+"Telecommunications",\n        "Consulting and Professional Services",\n        "Industrials and Engineering",\n       
+ "Real Estate",\n        "Transportation",\n        "NGO",\n        "Manufacturing",\n        "Opportunistic",\n       
+ "Hospitality",\n        "Financial Services",\n        "Media",\n        "Healthcare",\n        "Energy",\n        
+"Food and Beverage",\n        "Insurance"\n      ],\n      "last_activity": 1778665026,\n      "source": 
+"CrowdStrike"\n    },\n    {\n      "actor_name": "MASKED SPIDER",\n      "country": "Unknown",\n      "motivations": 
+[\n        "Criminal"\n      ],\n      "ttps": [],\n      "target_industries": [\n        "Entertainment",\n        
+"Consumer Goods",\n        "Local Government",\n        "Extractive",\n        "Government",\n        "Technology",\n  
+      "Retail",\n        "Legal",\n        "Automotive",\n        "Maritime",\n        "Aviation",\n        
+"Academic",\n        "Telecommunications",\n        "Consulting and Professional Services",\n        "Industrials and 
+Engineering",\n        "Real Estate",\n        "Transportation",\n        "NGO",\n        "Manufacturing",\n        
+"Defense",\n        "Logistics",\n        "Hospitality",\n        "Travel",\n        "Financial Services",\n        
+"Agriculture",\n        "Media",\n        "Healthcare",\n        "Energy",\n        "Aerospace",\n        
+"Nonprofit",\n        "Food and Beverage",\n        "Chemicals"\n      ],\n      "last_activity": 1778664861,\n      
+"source": "CrowdStrike"\n    },\n    {\n      "actor_name": "VANGUARD PANDA",\n      "country": "China",\n      
+"motivations": [\n        "State-Sponsored"\n      ],\n      "ttps": [],\n      "target_industries": [\n        
+"Utilities",\n        "Government",\n        "Technology",\n        "Maritime",\n        "Aviation",\n        
+"Academic",\n        "Telecommunications",\n        "Transportation",\n        "Manufacturing",\n        "Military",\n 
+       "Defense",\n        "Logistics",\n        "Energy",\n        "Oil and Gas"\n      ],\n      "last_activity": 
+1778659334,\n      "source": "CrowdStrike"\n    }\n  ],\n  "threatq_data": [],\n  "rapid7_data": []\n}\n\nPlease 
+provide your analysis in the following JSON format:\n{\n  "executive_summary": "2-3 paragraph summary highlighting the 
+most critical threats. CRITICAL RULES: (1) ONLY mention CVE IDs that appear in the cve_analysis array below - do NOT 
+invent or reference external CVEs. (2) If referencing OSINT intelligence, add inline citations like [1], [2] matching 
+the osint_sources_used array. (3) If mentioning industry threats NOT detected in our environment, explicitly state 
+\'not currently detected\' or \'industry threat to monitor\'. (4) DO NOT reference source names like \'Rapid7\', 
+\'OSINT\', \'Microsoft Threat Intelligence\' - just state facts with citations.",\n  "top_threats": [\n    {\n      
+"threat": "Description of threat",\n      "priority": "P1/P2/P3",\n      "justification": "Why this is prioritized 
+this way"\n    }\n  ],\n  "cve_analysis": [\n    {\n      "cve_id": "CVE-XXXX-XXXX",\n      "severity": 
+"Critical/High/Medium/Low",\n      "description": "Brief technical description of the vulnerability",\n      "impact": 
+"Potential impact on genomics/biotech/manufacturing operations",\n      "affected_product": "Vendor Product Name 
+(e.g., \'WordPress Plugin: contact-form-7\', \'Microsoft Exchange Server\', \'Fortinet FortiOS\')",\n      "exposure": 
+"REQUIRED: Asset count from exposure map (e.g., \'12 systems\', \'3 systems\', \'1 system\')",\n      
+"targeted_by_actors": "OPTIONAL: List specific threat actors exploiting this CVE if mentioned in Intel471 or 
+CrowdStrike data (e.g., \'APT28\', \'Lazarus Group\', \'FIN7\'). Leave blank if no actor targeting is known.",\n      
+"weeks_detected": 1\n    }\n  ],\n  "apt_activity": [\n    {\n      "actor": "Threat actor name",\n      "country": 
+"Country of origin",\n      "motivation": "Primary motivation",\n      "ttps": ["TTP1", "TTP2"],\n      "relevance": 
+"Why this matters to genomics/biotech/manufacturing",\n      "what_to_monitor": "Specific indicators and detection 
+recommendations (e.g., \'Monitor for PowerShell activity; Watch for connections to Asia-Pacific regions; Scan for 
+credential harvesting\')",\n      "intel471_activity": "If Intel471 provided underground activity for this actor, 
+include it here (e.g., \'Intel471: Actor selling access to biotech networks on underground forum\')"\n    }\n  ],\n  
+"recommendations": [\n    "Specific, actionable recommendation 1 (DO NOT say \'Refer to Rapid7\' or \'Refer to OSINT 
+sources\' - be specific about what to do)",\n    "Specific, actionable recommendation 2",\n    "Specific, actionable 
+recommendation 3",\n    "Specific, actionable recommendation 4",\n    "Specific, actionable recommendation 5"\n  ],\n  
+"osint_sources_used": [\n    {\n      "title": "Short reference (2-4 words, e.g., \'GitHub Breach\', \'OT Robot 
+Flaw\')",\n      "url": "https://example.com/article",\n      "relevance": "Brief note on why this source was relevant 
+(1 sentence)",\n      "citation_number": 1\n    }\n  ]\n}\n\nIMPORTANT: Do NOT include a "statistics" field - 
+statistics are calculated deterministically from the CVE data after your analysis.\n\nOSINT Citation Rules:\n- Use 
+SHORT reference titles (2-4 words max), not full article titles\n- Example: "GitHub Breach" not "GitHub Confirms 
+Breach, 4K Internal Repos Stolen"\n- When you reference OSINT in the executive_summary, add [1], [2] inline 
+citations\n- Assign citation_number sequentially starting from 1\n- Only mention specific OSINT articles by name if 
+you\'re citing them (list them in osint_sources_used)\n- The Resources section will automatically list all data 
+sources - you don\'t need to reference them\n\nCRITICAL - AVOID VAGUE SOURCE REFERENCES:\n- DO NOT write "Refer to 
+Rapid7 for remediation guidance" or "Refer to OSINT sources"\n- DO NOT write "as highlighted by OSINT and Microsoft 
+Threat Intelligence" in the executive summary\n- Be specific: Instead of "Refer to X", say exactly what to do (e.g., 
+"Patch systems immediately", "Review firewall rules", "Enable MFA")\n\nIMPORTANT CVE Analysis Guidelines:\n- Include 
+ALL CVEs from the exposure map above - they are all detected in the environment\n- Focus on accurate severity 
+assessment and impact analysis\n- The report will automatically group similar technologies (e.g., WordPress plugins) 
+for readability\n- Priority scoring is no longer used - focus on clear severity and impact descriptions\n- Do NOT 
+filter CVEs - include everything from the exposure map\n\nExposure Field Guidelines:\n- Use the EXACT exposure string 
+from the exposure map (e.g., "1 system", "7 systems")\n- DO NOT modify or reformat these values - copy them exactly as 
+shown\n- All CVEs in your analysis must have exposure data\n\nWeeks Detected Guidelines:\n- Set weeks_detected to 1 
+for all CVEs by default (new this week)\n- If a CVE appears to be older or recurring based on publish date or context, 
+use a higher value\n- The report will highlight CVEs with weeks_detected >= 3 as persistent issues\n\nRespond ONLY 
+with valid JSON. Do not include any markdown formatting or code blocks.\n\nDo not use Hyphens.'}], 'model': 
+'gpt-4.1-cti', 'response_format': {'type': 'json_object'}, 'stream': False, 'temperature': 0.3}}
+DEBUG - openai._base_client - Sending HTTP Request: POST https://ids-secops-openai-prd-eastus2.openai.azure.com/openai/
+deployments/gpt-4.1-cti/chat/completions?api-version=2024-10-21
+DEBUG - httpcore.connection - connect_tcp.started host='ids-secops-openai-prd-eastus2.openai.azure.com' port=443 
+local_address=None timeout=5.0 socket_options=None
+DEBUG - httpcore.connection - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 
+0x0000016BDBD87380>
+DEBUG - httpcore.connection - start_tls.started ssl_context=<ssl.SSLContext object at 0x0000016BDBEF0190> 
+server_hostname='ids-secops-openai-prd-eastus2.openai.azure.com' timeout=5.0
+DEBUG - httpcore.connection - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 
+0x0000016BDAC02490>
+DEBUG - httpcore.http11 - send_request_headers.started request=<Request [b'POST']>
+DEBUG - httpcore.http11 - send_request_headers.complete
+DEBUG - httpcore.http11 - send_request_body.started request=<Request [b'POST']>
+DEBUG - httpcore.http11 - send_request_body.complete
+DEBUG - httpcore.http11 - receive_response_headers.started request=<Request [b'POST']>
+DEBUG - httpcore.http11 - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', 
+[(b'Content-Length', b'16290'), (b'Content-Type', b'application/json'), (b'azureai-fe-is-streaming', b'False'), 
+(b'azureml-model-session', b'd20260430021243-941dc187'), (b'skip-error-remapping', b'true'), (b'x-accel-buffering', 
+b'no'), (b'x-ms-is-spilled-over', b'false'), (b'x-ms-rai-invoked', b'true'), (b'x-ratelimit-abusepenalty-active', 
+b'False'), (b'x-ratelimit-key', b'gpt-4.1-cti'), (b'x-ratelimit-limit-requests', b'250'), 
+(b'x-ratelimit-limit-tokens', b'250000'), (b'x-ratelimit-remaining-requests', b'249'), 
+(b'x-ratelimit-remaining-tokens', b'230805'), (b'x-ratelimit-renewalperiod-requests', b'60'), 
+(b'x-ratelimit-renewalperiod-tokens', b'60'), (b'x-ratelimit-reset-requests', b'0'), (b'x-ratelimit-reset-tokens', 
+b'4'), (b'x-request-id', b'b832fca5-5d76-4bef-90c4-cad4269d4a44'), (b'apim-request-id', 
+b'731a7e48-4e2d-4dde-b999-57f92f71091f'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; 
+preload'), (b'x-ms-deployment-name', b'gpt-4.1-cti'), (b'x-content-type-options', b'nosniff'), (b'x-ms-region', b'East 
+US 2'), (b'Date', b'Thu, 21 May 2026 19:21:01 GMT')])
+DEBUG - httpcore.http11 - receive_response_body.started request=<Request [b'POST']>
+DEBUG - httpcore.http11 - receive_response_body.complete
+DEBUG - httpcore.http11 - response_closed.started
+DEBUG - httpcore.http11 - response_closed.complete
+DEBUG - openai._base_client - HTTP Response: POST https://ids-secops-openai-prd-eastus2.openai.azure.com/openai/deploym
+ents/gpt-4.1-cti/chat/completions?api-version=2024-10-21 "200 OK" Headers({'content-length': '16290', 'content-type': 
+'application/json', 'azureai-fe-is-streaming': 'False', 'azureml-model-session': 'd20260430021243-941dc187', 
+'skip-error-remapping': 'true', 'x-accel-buffering': 'no', 'x-ms-is-spilled-over': 'false', 'x-ms-rai-invoked': 
+'true', 'x-ratelimit-abusepenalty-active': 'False', 'x-ratelimit-key': 'gpt-4.1-cti', 'x-ratelimit-limit-requests': 
+'250', 'x-ratelimit-limit-tokens': '250000', 'x-ratelimit-remaining-requests': '249', 'x-ratelimit-remaining-tokens': 
+'230805', 'x-ratelimit-renewalperiod-requests': '60', 'x-ratelimit-renewalperiod-tokens': '60', 
+'x-ratelimit-reset-requests': '0', 'x-ratelimit-reset-tokens': '4', 'x-request-id': 
+'b832fca5-5d76-4bef-90c4-cad4269d4a44', 'apim-request-id': '731a7e48-4e2d-4dde-b999-57f92f71091f', 
+'strict-transport-security': 'max-age=31536000; includeSubDomains; preload', 'x-ms-deployment-name': 'gpt-4.1-cti', 
+'x-content-type-options': 'nosniff', 'x-ms-region': 'East US 2', 'date': 'Thu, 21 May 2026 19:21:01 GMT'})
+DEBUG - openai._base_client - request_id: b832fca5-5d76-4bef-90c4-cad4269d4a44
+INFO - semantic_kernel.connectors.ai.open_ai.services.open_ai_handler - OpenAI usage: 
+CompletionUsage(completion_tokens=2987, prompt_tokens=19195, total_tokens=22182, 
+completion_tokens_details=CompletionTokensDetails(accepted_prediction_tokens=0, audio_tokens=0, reasoning_tokens=0, 
+rejected_prediction_tokens=0), prompt_tokens_details=PromptTokensDetails(audio_tokens=0, cached_tokens=0), 
+latency_checkpoint={'engine_tbt_ms': 8, 'engine_ttft_ms': 1036, 'engine_ttlt_ms': 26312, 'pre_inference_ms': 327, 
+'service_tbt_ms': 8, 'service_ttft_ms': 1456, 'service_ttlt_ms': 26735, 'total_duration_ms': 26416, 
+'user_visible_ttft_ms': 1128})
+INFO - src.agents.threat_analyst - Received response from Azure OpenAI
+INFO - src.agents.threat_analyst - Successfully parsed analysis results
+INFO - src.agents.threat_analyst - Filled 15 gaps in AI analysis from Rapid7/NVD backup data
+[] Analysis complete
+
+
+ Gate Framework Validation
+WARNING - gates.orchestrator - Gate 1 HALT: 2 Tier 1 sources returned gaps or errors
+WARNING - gates.pipeline_hook - Gate framework HALT at Gate 1: 2 Tier 1 sources returned gaps or errors
+
+-- Gate Framework Summary ------------------------------
+Gate 1   (Tier 1 Source Inventory       ): HALT
+Gate 1A  (Statistics Validation         ): NOT RUN
+Gate 1B  (OSINT Article Triage          ): NOT RUN
+Gate 2   (IOC Extraction                ): NOT RUN
+Gate 3   (Actor Linkage                 ): NOT RUN
+Gate 4   (Structured Assembly           ): NOT RUN
+Gate 5   (Report Draft                  ): NOT RUN
+Gate 1C  (Technology Coherence          ): NOT RUN
+Gate 6   (Adversarial Review            ): NOT RUN
+
+x Gate 1 HALT: 2 Tier 1 sources returned gaps or errors
+
