@@ -187,39 +187,41 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     # Determine result
     if issues:
         return GateResult(
-            gate_number="1C",
+            gate_id="1C",
             status="HALT",
-            message=f"Technology coherence issues: {len(issues)} technology mentions without detection evidence",
-            details={
+            payload={
                 "issues": issues,
                 "warnings": warnings,
                 "detected_technologies_sample": detected_sample,
                 "total_cve_count": len(cve_analysis),
                 "unique_products_detected": len(detected_products_full),
                 "mentioned_products": sorted(list(mentioned_products))
-            }
+            },
+            halt_reason=f"Technology coherence issues: {len(issues)} technology mentions without detection evidence",
+            awaiting_clearance=True
         )
     elif warnings:
         return GateResult(
-            gate_number="1C",
-            status="WARN",
-            message=f"Technology coherence validated with {len(warnings)} informational warnings",
-            details={
+            gate_id="1C",
+            status="COMPLETE",
+            payload={
                 "warnings": warnings,
                 "detected_technologies_sample": detected_sample,
                 "total_cve_count": len(cve_analysis),
                 "unique_products_detected": len(detected_products_full)
-            }
+            },
+            awaiting_clearance=False
         )
     else:
         return GateResult(
-            gate_number="1C",
-            status="PASS",
-            message=f"Technology coherence validated: All {len(mentioned_products)} narrative mentions match detected technologies",
-            details={
+            gate_id="1C",
+            status="COMPLETE",
+            payload={
                 "detected_technologies_sample": detected_sample,
                 "total_cve_count": len(cve_analysis),
                 "unique_products_detected": len(detected_products_full),
-                "mentioned_products": sorted(list(mentioned_products))
-            }
+                "mentioned_products": sorted(list(mentioned_products)),
+                "message": f"Technology coherence validated: All {len(mentioned_products)} narrative mentions match detected technologies"
+            },
+            awaiting_clearance=False
         )
