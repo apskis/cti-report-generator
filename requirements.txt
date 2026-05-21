@@ -23,6 +23,10 @@ colorama>=0.4.6,<1.0.0
 feedparser>=6.0.0,<7.0.0
 pyyaml>=6.0,<7.0
 
+# Rapid7 Bulk Export - Parquet file parsing
+pyarrow>=14.0.0,<15.0.0
+pandas>=2.0.0,<3.0.0
+
 # Uncomment to enable Azure Monitor OpenTelemetry
 # Ref: aka.ms/functions-azure-monitor-python
 # azure-monitor-opentelemetry>=1.2.0

@@ -15,6 +15,7 @@ from src.collectors.crowdstrike_collector import CrowdStrikeCollector
 from src.collectors.threatq_collector import ThreatQCollector
 from src.collectors.rapid7_collector import Rapid7Collector
 from src.collectors.rapid7_scan_collector import Rapid7ScanCollector
+from src.collectors.rapid7_bulk_export_collector import Rapid7BulkExportCollector
 from src.collectors.osint_collector import OSINTCollector
 from src.core.config import get_enabled_collectors
 from src.core.models import CollectorResult
@@ -30,6 +31,7 @@ COLLECTOR_REGISTRY: Dict[str, Type[BaseCollector]] = {
     "threatq": ThreatQCollector,
     "rapid7": Rapid7Collector,
     "rapid7-scans": Rapid7ScanCollector,
+    "rapid7-bulk-export": Rapid7BulkExportCollector,
     "osint": OSINTCollector,
 }
 
