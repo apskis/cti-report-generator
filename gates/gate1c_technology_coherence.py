@@ -186,29 +186,34 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     
     # Determine result
     if issues:
+        # Return COMPLETE with issues in payload (don't block automated runs)
+        # Gate 6 will pick up these issues in adversarial review
         return GateResult(
             gate_id="1C",
-            status="HALT",
+            status="COMPLETE",
             payload={
+                "validation_status": "issues_found",
                 "issues": issues,
                 "warnings": warnings,
                 "detected_technologies_sample": detected_sample,
                 "total_cve_count": len(cve_analysis),
                 "unique_products_detected": len(detected_products_full),
-                "mentioned_products": sorted(list(mentioned_products))
+                "mentioned_products": sorted(list(mentioned_products)),
+                "message": f"⚠️ Technology coherence issues: {len(issues)} technology mentions without detection evidence"
             },
-            halt_reason=f"Technology coherence issues: {len(issues)} technology mentions without detection evidence",
-            awaiting_clearance=True
+            awaiting_clearance=False  # Don't block - let it proceed to Gate 6
         )
     elif warnings:
         return GateResult(
             gate_id="1C",
             status="COMPLETE",
             payload={
+                "validation_status": "warnings",
                 "warnings": warnings,
                 "detected_technologies_sample": detected_sample,
                 "total_cve_count": len(cve_analysis),
-                "unique_products_detected": len(detected_products_full)
+                "unique_products_detected": len(detected_products_full),
+                "message": f"✓ Technology coherence validated with {len(warnings)} informational warnings"
             },
             awaiting_clearance=False
         )
@@ -217,11 +222,12 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
             gate_id="1C",
             status="COMPLETE",
             payload={
+                "validation_status": "passed",
                 "detected_technologies_sample": detected_sample,
                 "total_cve_count": len(cve_analysis),
                 "unique_products_detected": len(detected_products_full),
                 "mentioned_products": sorted(list(mentioned_products)),
-                "message": f"Technology coherence validated: All {len(mentioned_products)} narrative mentions match detected technologies"
+                "message": f"✓ Technology coherence validated: All {len(mentioned_products)} narrative mentions match detected technologies"
             },
             awaiting_clearance=False
         )
