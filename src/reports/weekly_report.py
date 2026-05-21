@@ -533,16 +533,10 @@ class WeeklyReportGenerator(BaseReportGenerator):
         for cve in cve_analysis:
             product = cve.get("affected_product", "").strip()
             product_lower = product.lower()
-            
-            # Group WordPress plugins
-            if "wordpress plugin" in product_lower or "wp plugin" in product_lower:
-                groups["WordPress Plugins"].append(cve)
-            # Group WordPress themes
-            elif "wordpress theme" in product_lower or "wp theme" in product_lower:
-                groups["WordPress Themes"].append(cve)
-            # Group WordPress core
-            elif product_lower in ("wordpress", "wordpress core"):
-                groups["WordPress Core"].append(cve)
+
+            # Group WordPress products (plugins, themes, core all together)
+            if "wordpress" in product_lower or "wp plugin" in product_lower or "wp theme" in product_lower:
+                groups["WordPress Products"].append(cve)
             # Group by vendor for other common products
             elif product.startswith("Microsoft "):
                 groups["Microsoft Products"].append(cve)
