@@ -7,6 +7,83 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Rapid7 Bulk Export API Collector**: Comprehensive vulnerability data via GraphQL
+  - Uses Rapid7 Bulk Export API to retrieve ALL vulnerabilities (not limited like Integration API v4)
+  - GraphQL-based export system with Parquet file downloads
+  - Provides complete CVE-to-asset exposure mapping from your environment
+  - Automatic local file caching for instant testing (no manual cache management)
+  - Falls back to live API if cache unavailable (always works)
+  - 20-minute timeout for large environments
+- **Local File Cache System**: Automatic caching for rapid testing/development
+  - First run fetches from API and caches automatically (~20 min)
+  - Subsequent runs use cache instantly (~2 min)
+  - 24-hour cache TTL with automatic expiration
+  - Zero manual cache management - fully automatic
+  - Located in `.cache/rapid7_local_cache.json` (git-ignored)
+- **Azure Timer Function**: Background sync for instant production reports (optional)
+  - Timer trigger runs every 6 hours automatically
+  - Fetches Rapid7 data in background and caches to Blob Storage
+  - Makes weekly reports instant (no 20-min wait)
+  - Optional optimization - reports work without it via API fallback
+- **Gate Framework Integration**: Multi-stage validation pipeline
+  - Gate 1: Tier 1 Source Inventory validation
+  - Gate 1A: Statistics validation (weekly/quarterly specific)
+  - Gate 1B: OSINT article triage
+  - Gate 2: IOC extraction
+  - Gate 3: Actor linkage
+  - Gate 4: Structured assembly
+  - Gate 5: Report draft generation
+  - Gate 1C: Technology coherence validation
+  - Gate 6: Adversarial review
+  - Configurable via `config/features.yaml`
+  - Interactive mode for manual review at each gate
+- **WordPress Vulnerability Grouping**: Consolidated grouping in CVE table
+  - Changed from 3 separate groups (Plugins, Themes, Core) to single "WordPress Products"
+  - Prevents WordPress from appearing more prominent than other vendors
+- **Environmental Context Warnings**: AI prompt improvements for accuracy
+  - Instructions to state when technology not detected in environment
+  - Prevents false assumptions about technology stack
+  - References OSINT threats as "industry threats to monitor"
+- **Threat Actor Targeting Field**: New CVE analysis field
+  - `targeted_by_actors` field for specific actor attribution
+  - Links CVEs to APT groups when Intel471/CrowdStrike data available
+- **Technology Coherence Gate**: Validates executive summary accuracy
+  - Dynamically learns technologies from Rapid7 CVE data
+  - Validates technology mentions in executive summary match detected products
+  - No hardcoded technology lists - adapts to your environment
+
+### Changed
+- **Collector Configuration**: Disabled ThreatQ by default (missing credentials)
+- **Rapid7 Collectors**: Disabled limited rapid7 and rapid7-scans collectors
+  - Enabled rapid7-bulk-export as recommended comprehensive source
+- **Function Timeout**: Increased to 30 minutes for large Rapid7 exports
+- **Gate Framework**: Can be enabled/disabled via config (enabled by default for testing)
+- **Rapid7 Collector Priority**: Local cache → Azure Blob cache → Live API
+  - Checks local cache first (instant testing)
+  - Falls back to Azure Blob cache from timer function
+  - Always falls back to live API if caches unavailable
+
+### Fixed
+- Gate 1C positioning: Now runs after Gate 5 (report draft) to access report data
+- Gate framework status codes: Uses COMPLETE instead of PASS/WARN
+- Rapid7 region endpoint: Corrected to use Bulk Export API path
+- Key Vault credentials: Added rapid7-bulk-export and rapid7-scans to collector_secrets mapping
+
+### Documentation
+- Created `docs/RAPID7_BACKGROUND_SYNC.md` - Complete timer function architecture
+- Created `docs/RAPID7_DEPLOYMENT_CHECKLIST.md` - Step-by-step deployment guide
+- Created `docs/RAPID7_FALLBACK_BEHAVIOR.md` - Fallback scenarios and decision guide
+- Created `docs/LOCAL_CACHE_TESTING.md` - Local cache usage guide
+- Created `docs/GATE_FRAMEWORK_TROUBLESHOOTING.md` - Gate integration guide
+- Updated README.md with timer function deployment instructions
+
+### Technical Notes
+- Rapid7 Bulk Export uses organization API key (not on-prem Console API)
+- Parquet parsing requires pyarrow and pandas dependencies
+- Local cache stored in `.cache/` (git-ignored)
+- Timer function optional - reports always work via API fallback
+
+### Added
 - **Collectors YAML Configuration**: New `config/collectors.yaml` for managing enabled collectors
   - Single source of truth for which API collectors are active
   - Enable/disable any collector by setting `enabled: true/false`

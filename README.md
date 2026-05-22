@@ -9,15 +9,14 @@ An Azure Functions-based Cyber Threat Intelligence (CTI) reporting system that a
   - Intel471 Titan API (underground threat intelligence)
   - CrowdStrike Falcon Intelligence (threat actors, detections)
   - ThreatQ (IOC management)
-  - Rapid7 InsightVM (vulnerability enrichment)
-  - Rapid7 InsightVM Scans (environmental CVE exposure with asset counts)
-  - **Rapid7 Bulk Export API** (comprehensive vulnerability data via GraphQL with automatic 6-hour sync)
+  - **Rapid7 Bulk Export API** (comprehensive vulnerability data via GraphQL)
   - OSINT (curated public news and research feeds you control)
 
 - **AI-powered analysis** using Azure OpenAI and Semantic Kernel
 - **Automatic AI gap-filling** from Rapid7/NVD backup when AI output is incomplete
-- **Background data sync** with Azure Timer Functions for instant report generation
-- **Intelligent caching** using Azure Blob Storage (6-hour TTL)
+- **Local file caching** for instant testing - automatic, zero configuration
+- **Background data sync** with Azure Timer Functions for instant production reports (optional)
+- **Gate Framework** - multi-stage validation pipeline (configurable)
 - **VPN connectivity check** before analysis with interactive continue/stop prompt
 - **Automated Word document generation** with executive summaries and recommendations
 - **Azure Blob Storage** integration for report hosting with SAS URLs
@@ -50,8 +49,7 @@ cti-report-generator/
 │   │   ├── intel471_collector.py
 │   │   ├── crowdstrike_collector.py
 │   │   ├── threatq_collector.py
-│   │   ├── rapid7_collector.py
-│   │   ├── rapid7_scan_collector.py
+│   │   ├── rapid7_bulk_export_collector.py  # Comprehensive GraphQL API
 │   │   ├── osint_collector.py      # Curated OSINT RSS feeds
 │   │   └── registry.py             # Collector registry
 │   ├── agents/
@@ -61,15 +59,25 @@ cti-report-generator/
 │   │   ├── weekly_report.py        # Weekly report generator
 │   │   ├── quarterly_report.py     # Quarterly strategic report
 │   │   └── blob_storage.py         # Azure Blob upload
+│   ├── functions/
+│   │   └── rapid7_sync_function.py # Background timer for data sync (optional)
+│   ├── utils/
+│   │   └── cache_manager.py        # Blob Storage cache manager
 │   ├── core/
 │   │   ├── config.py               # Application configuration
 │   │   ├── models.py               # Data type definitions
 │   │   └── keyvault.py             # Key Vault access
 │   └── enrichment/
 │       └── cve_enricher.py         # CISA KEV + product enrichment
+├── gates/                           # Gate Framework validation
+│   ├── orchestrator.py
+│   ├── gate1_*.py                  # Various validation gates
+│   └── ...
 ├── tests/                           # Unit tests
+├── .cache/                          # Local file cache (auto-created, git-ignored)
 ├── function_app.py                  # Azure Function entry point
 ├── test_local.py                    # Local testing CLI
+├── cache_rapid7_local.py            # Local cache management (optional manual use)
 ├── requirements.txt
 └── local.settings.json.template
 ```
@@ -204,7 +212,7 @@ python test_local.py weekly --local --mock --output ./test_reports
 
 #### REAL Data - Save Locally (Requires Key Vault access)
 
-Pull actual data from Intel471, CrowdStrike, NVD, etc., run AI analysis, save to disk:
+Pull actual data from Intel471, CrowdStrike, NVD, Rapid7, etc., run AI analysis, save to disk:
 
 ```bash
 # Weekly report with real API data
@@ -213,6 +221,11 @@ python test_local.py weekly --local --real
 # Quarterly report with real API data
 python test_local.py quarterly --local --real
 ```
+
+**First run:** Fetches from Rapid7 API and caches automatically (~20 min)  
+**Subsequent runs:** Uses local cache instantly (~2 min)  
+**Cache location:** `.cache/rapid7_local_cache.json` (auto-created, git-ignored)  
+**Cache TTL:** 24 hours (refreshes automatically when expired)
 
 #### REAL Data - Azure Upload (Full production pipeline)
 
