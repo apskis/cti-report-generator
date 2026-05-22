@@ -20,7 +20,7 @@ features:
   # Default: false (disabled by default, enable when ready for production use)
   
   gate_framework:
-    enabled: true
+    enabled: false
     
     # Interactive mode - Pause after each gate for manual review
     # When true:

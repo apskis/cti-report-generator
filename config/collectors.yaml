@@ -45,7 +45,7 @@ collectors:
 
   - name: threatq
     description: "ThreatQ - IOC management and threat intelligence sharing"
-    enabled: true
+    enabled: false  # Disabled - missing credentials
 
   # ── Open Source Intelligence ────────────────────────────────────────
 
