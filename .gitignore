@@ -52,5 +52,8 @@ __azurite_db*__.json
 # Deployment artifacts
 deploy.zip
 
+# Local cache for testing
+.cache/
+
 # Cursor IDE
 .cursor/

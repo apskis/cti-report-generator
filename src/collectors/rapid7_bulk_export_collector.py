@@ -68,8 +68,27 @@ class Rapid7BulkExportCollector(BaseCollector):
                 record_count=0
             )
         
-        # Try to load from cache first (optional optimization)
-        # If cache fails or doesn't exist, we'll fall back to live API
+        # Priority 1: Try local file cache (for testing/development)
+        try:
+            from cache_rapid7_local import local_cache
+            cached_data = local_cache.get_cache(max_age_hours=24)
+            
+            if cached_data:
+                record_count = len(cached_data.get("cve_exposure_map", {}))
+                logger.info(f"✓ Using LOCAL file cache: {record_count} CVEs (for testing)")
+                logger.info(f"  Cache is for development - reports complete instantly")
+                return CollectorResult(
+                    source=self.source_name,
+                    success=True,
+                    data=[cached_data],
+                    record_count=record_count
+                )
+        except ImportError:
+            logger.debug("Local cache module not available")
+        except Exception as e:
+            logger.debug(f"Local cache check failed: {e}")
+        
+        # Priority 2: Try Azure Blob cache (from timer function)
         if storage_account_name and storage_account_key:
             try:
                 from src.utils.cache_manager import CacheManager
@@ -147,6 +166,14 @@ class Rapid7BulkExportCollector(BaseCollector):
                 cve_exposure_map = await self._download_and_parse_exports(client, download_urls, headers)
                 
                 if cve_exposure_map:
+                    # Save to local cache for future testing
+                    try:
+                        from cache_rapid7_local import local_cache
+                        local_cache.set_cache(cve_exposure_map)
+                        logger.info("✓ Saved to local cache for faster future testing")
+                    except Exception as e:
+                        logger.debug(f"Could not save to local cache: {e}")
+                    
                     return CollectorResult(
                         source=self.source_name,
                         success=True,
