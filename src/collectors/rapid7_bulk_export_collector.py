@@ -68,7 +68,8 @@ class Rapid7BulkExportCollector(BaseCollector):
                 record_count=0
             )
         
-        # Try to load from cache first
+        # Try to load from cache first (optional optimization)
+        # If cache fails or doesn't exist, we'll fall back to live API
         if storage_account_name and storage_account_key:
             try:
                 from src.utils.cache_manager import CacheManager
@@ -79,7 +80,8 @@ class Rapid7BulkExportCollector(BaseCollector):
                 
                 if cached_data:
                     record_count = len(cached_data.get("cve_exposure_map", {}))
-                    logger.info(f"Using cached Rapid7 data: {record_count} CVEs")
+                    logger.info(f"✓ Using cached Rapid7 data: {record_count} CVEs (from timer function)")
+                    logger.info(f"  Cache is fresh and reports will complete instantly")
                     return CollectorResult(
                         source=self.source_name,
                         success=True,
@@ -87,12 +89,19 @@ class Rapid7BulkExportCollector(BaseCollector):
                         record_count=record_count
                     )
                 else:
-                    logger.info("No fresh cache found, will fetch from Rapid7 API")
+                    logger.info("No fresh cache found (timer function hasn't run or cache expired)")
+                    logger.info("Falling back to live Rapid7 API (this is normal)")
             except Exception as e:
-                logger.warning(f"Cache check failed, will fetch from API: {e}")
+                logger.warning(f"Cache unavailable (timer function may not be deployed): {e}")
+                logger.info("Falling back to live Rapid7 API (this is the backup method)")
+        else:
+            logger.info("Cache not configured, using live Rapid7 API")
 
+        # FALLBACK: Fetch from Rapid7 API directly
+        # This always works, even if timer function isn't deployed
         logger.info(f"Fetching vulnerability data via Rapid7 Bulk Export API (region: {region})")
         logger.info("Note: This may take 10-20 minutes for large environments")
+        logger.info("TIP: Deploy timer function to make this instant (see docs/RAPID7_DEPLOYMENT_CHECKLIST.md)")
 
         try:
             # Build GraphQL endpoint URL for Bulk Export API
@@ -223,7 +232,7 @@ class Rapid7BulkExportCollector(BaseCollector):
         graphql_url: str,
         headers: Dict[str, str],
         export_id: str,
-        max_attempts: int = 60,
+        max_attempts: int = 120,
         poll_interval: int = 10
     ) -> List[Dict[str, str]]:
         """
@@ -231,7 +240,7 @@ class Rapid7BulkExportCollector(BaseCollector):
         
         Args:
             export_id: ID of the export to poll
-            max_attempts: Maximum number of poll attempts (default 60 = 10 minutes)
+            max_attempts: Maximum number of poll attempts (default 120 = 20 minutes)
             poll_interval: Seconds between polls (default 10)
             
         Returns:
