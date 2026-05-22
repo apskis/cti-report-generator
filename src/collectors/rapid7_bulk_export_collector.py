@@ -75,14 +75,17 @@ class Rapid7BulkExportCollector(BaseCollector):
             
             if cached_data:
                 record_count = len(cached_data.get("cve_exposure_map", {}))
-                logger.info(f"✓ Using LOCAL file cache: {record_count} CVEs (for testing)")
-                logger.info(f"  Cache is for development - reports complete instantly")
+                logger.info(f"✓ Using LOCAL cache: {record_count} CVEs (instant testing mode)")
+                logger.info(f"  No API fetch needed - data is < 24 hours old")
                 return CollectorResult(
                     source=self.source_name,
                     success=True,
                     data=[cached_data],
                     record_count=record_count
                 )
+            else:
+                logger.info("No local cache found - will fetch from API and cache automatically")
+                logger.info("FIRST RUN: This will take 10-20 minutes, but next run will be INSTANT")
         except ImportError:
             logger.debug("Local cache module not available")
         except Exception as e:
@@ -166,13 +169,16 @@ class Rapid7BulkExportCollector(BaseCollector):
                 cve_exposure_map = await self._download_and_parse_exports(client, download_urls, headers)
                 
                 if cve_exposure_map:
-                    # Save to local cache for future testing
+                    # Automatically save to local cache for future testing
+                    # This makes the NEXT run instant - no manual cache management needed!
                     try:
                         from cache_rapid7_local import local_cache
-                        local_cache.set_cache(cve_exposure_map)
-                        logger.info("✓ Saved to local cache for faster future testing")
+                        if local_cache.set_cache(cve_exposure_map):
+                            logger.info("✓ Cached data locally - next run will be INSTANT!")
+                        else:
+                            logger.debug("Could not save to local cache")
                     except Exception as e:
-                        logger.debug(f"Could not save to local cache: {e}")
+                        logger.debug(f"Local cache save failed: {e}")
                     
                     return CollectorResult(
                         source=self.source_name,
