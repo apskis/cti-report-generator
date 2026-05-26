@@ -31,7 +31,13 @@ from .models import GateInput, GateResult
 logger = logging.getLogger(__name__)
 
 
-_GATE_SEQUENCE: list[str] = ["1", "1A", "1B", "2", "3", "4", "5", "1C", "1D", "6"]
+# Gate sequences per report type
+# Weekly Tactical: Fast operational intelligence with CVE focus
+# Quarterly Geopolitical: Strategic threat landscape with source attribution
+_GATE_SEQUENCES = {
+    "weekly": ["1", "1A", "1B", "2", "3", "4", "5", "1C", "6"],  # Tactical - CVE focused, no source attribution audit
+    "quarterly": ["1", "1A", "1B", "2", "3", "4", "5", "1C", "1D", "6"],  # Strategic - includes source attribution
+}
 
 _GATE_RUNNERS = {
     "1": gate1_tier1_inventory.run,
@@ -47,9 +53,15 @@ _GATE_RUNNERS = {
 }
 
 
-def _previous_gate(gate_id: str) -> str | None:
-    idx = _GATE_SEQUENCE.index(gate_id)
-    return _GATE_SEQUENCE[idx - 1] if idx > 0 else None
+def _get_gate_sequence(report_type: str) -> list[str]:
+    """Get the gate sequence for a specific report type."""
+    return _GATE_SEQUENCES.get(report_type.lower(), _GATE_SEQUENCES["weekly"])
+
+
+def _previous_gate(gate_id: str, report_type: str) -> str | None:
+    sequence = _get_gate_sequence(report_type)
+    idx = sequence.index(gate_id)
+    return sequence[idx - 1] if idx > 0 else None
 
 
 class GateOrchestrator:
@@ -163,7 +175,8 @@ class GateOrchestrator:
         period_end: str,
     ) -> GateResult:
         """Run all gates non-interactively. Gates auto-clear on COMPLETE; HALT/ESCAPE raises."""
-        for gate_id in _GATE_SEQUENCE:
+        sequence = _get_gate_sequence(self.report_type)
+        for gate_id in sequence:
             result = self.run_gate(
                 gate_id,
                 tier1_data=tier1_data,

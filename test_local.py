@@ -169,7 +169,14 @@ def _print_gate_summary(session: dict, gate_info: dict) -> None:
         "6": "Adversarial Review",
     }
     
-    for gate_id in ["1", "1A", "1B", "2", "3", "4", "5", "1C", "1D", "6"]:
+    # Gate sequences per report type
+    gate_sequences = {
+        "weekly": ["1", "1A", "1B", "2", "3", "4", "5", "1C", "6"],
+        "quarterly": ["1", "1A", "1B", "2", "3", "4", "5", "1C", "1D", "6"],
+    }
+    sequence = gate_sequences.get(report_type.lower(), gate_sequences["weekly"])
+    
+    for gate_id in sequence:
         if gate_id in session:
             result = session[gate_id]
             status_display = result.status
