@@ -27,6 +27,9 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
     """
     Validate source attribution and audit trail.
     
+    NOTE: This gate only applies to QUARTERLY/GEOPOLITICAL reports.
+    Weekly reports are tactical and don't require the same audit trail depth.
+    
     Args:
         input: Gate input with prior results
         llm_client: LLM client (unused - deterministic validation)
@@ -36,6 +39,16 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
         GateResult with validation findings
     """
     logger.info(f"Running Gate 1D: Source Attribution Validation ({report_type})")
+    
+    # Skip for weekly reports - only apply to quarterly/geopolitical
+    if report_type.upper() == "WEEKLY":
+        logger.info("Gate 1D: Skipping for weekly report (only applies to quarterly/geopolitical)")
+        return GateResult(
+            gate_id="1D",
+            status="COMPLETE",
+            halt_reason=None,
+            payload={"skipped": True, "reason": "Not applicable to weekly reports"}
+        )
     
     # Get report from Gate 5
     g5 = input.prior_results.get("5")
