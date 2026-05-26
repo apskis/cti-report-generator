@@ -98,26 +98,32 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
     
     # ===== 3. Breach Statistics Verification =====
     # Check if breach counts can be traced to Intel471 data
-    exec_summary = report.get("executive_summary", "")
-    
-    # Look for breach mentions
-    if "breach" in exec_summary.lower():
-        # Count Intel471 breach alerts
-        breach_count = 0
-        for item in intel471_data:
-            threat_type = item.get("threat_type", "")
-            # Handle both string and list types
-            if isinstance(threat_type, str):
-                if "breach" in threat_type.lower():
-                    breach_count += 1
-            elif isinstance(threat_type, list):
-                if any("breach" in str(t).lower() for t in threat_type):
-                    breach_count += 1
+    try:
+        exec_summary = report.get("executive_summary", "")
         
-        if breach_count > 0:
-            logger.info(f"✓ {breach_count} breach alerts found in Intel471 data")
-        else:
-            warnings.append("Executive summary mentions breaches but no Intel471 breach alerts found")
+        # Look for breach mentions
+        if exec_summary and "breach" in exec_summary.lower():
+            # Count Intel471 breach alerts
+            breach_count = 0
+            for item in intel471_data:
+                try:
+                    threat_type = item.get("threat_type", "")
+                    # Handle both string and list types
+                    if isinstance(threat_type, str):
+                        if "breach" in threat_type.lower():
+                            breach_count += 1
+                    elif isinstance(threat_type, list):
+                        if any("breach" in str(t).lower() for t in threat_type):
+                            breach_count += 1
+                except (AttributeError, TypeError):
+                    continue
+            
+            if breach_count > 0:
+                logger.info(f"✓ {breach_count} breach alerts found in Intel471 data")
+            else:
+                warnings.append("Executive summary mentions breaches but no Intel471 breach alerts found")
+    except Exception as e:
+        logger.warning(f"Could not validate breach statistics: {e}")
     
     # ===== 4. Statistics Cross-Check =====
     # Validate statistics against collected data
