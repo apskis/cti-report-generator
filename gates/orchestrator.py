@@ -16,6 +16,7 @@ from . import (
     gate1a_statistics,
     gate1b_osint_triage,
     gate1c_technology_coherence,
+    gate1d_source_attribution,
     gate2_ioc_extraction,
     gate3_actor_linkage,
     gate4_assembly,
@@ -30,13 +31,14 @@ from .models import GateInput, GateResult
 logger = logging.getLogger(__name__)
 
 
-_GATE_SEQUENCE: list[str] = ["1", "1A", "1B", "2", "3", "4", "5", "1C", "6"]
+_GATE_SEQUENCE: list[str] = ["1", "1A", "1B", "2", "3", "4", "5", "1C", "1D", "6"]
 
 _GATE_RUNNERS = {
     "1": gate1_tier1_inventory.run,
     "1A": gate1a_statistics.run,
     "1B": gate1b_osint_triage.run,
     "1C": gate1c_technology_coherence.run,
+    "1D": gate1d_source_attribution.run,
     "2": gate2_ioc_extraction.run,
     "3": gate3_actor_linkage.run,
     "4": gate4_assembly.run,

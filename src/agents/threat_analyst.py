@@ -551,7 +551,8 @@ Please provide your analysis in the following JSON format:
       "ttps": ["TTP1", "TTP2"],
       "relevance": "Why this matters to genomics/biotech/manufacturing",
       "what_to_monitor": "Specific indicators and detection recommendations (e.g., 'Monitor for PowerShell activity; Watch for connections to Asia-Pacific regions; Scan for credential harvesting')",
-      "intel471_activity": "If Intel471 provided underground activity for this actor, include it here (e.g., 'Intel471: Actor selling access to biotech networks on underground forum')"
+      "intel471_activity": "If Intel471 provided underground activity for this actor, include it here with REPORT UID (e.g., 'Intel471 Report abc123: Actor selling access to biotech networks on underground forum')",
+      "intel471_report_uid": "REQUIRED if intel471_activity is provided: The exact UID from Intel471 data (e.g., 'abc123-def456-ghi789')"
     }}
   ],
   "recommendations": [
