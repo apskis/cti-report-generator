@@ -165,10 +165,11 @@ def _print_gate_summary(session: dict, gate_info: dict) -> None:
         "4": "Structured Assembly",
         "5": "Report Draft",
         "1C": "Technology Coherence",
+        "1D": "Source Attribution",
         "6": "Adversarial Review",
     }
     
-    for gate_id in ["1", "1A", "1B", "2", "3", "4", "5", "1C", "6"]:
+    for gate_id in ["1", "1A", "1B", "2", "3", "4", "5", "1C", "1D", "6"]:
         if gate_id in session:
             result = session[gate_id]
             status_display = result.status
@@ -493,6 +494,7 @@ async def generate_report_local(
                 "4": "Structured Assembly",
                 "5": "Report Draft",
                 "1C": "Technology Coherence",
+                "1D": "Source Attribution",
                 "6": "Adversarial Review",
             }
             gate_name = gate_names.get(gate_id, f"Gate {gate_id}")
