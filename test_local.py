@@ -142,12 +142,13 @@ def _gate_framework_enabled() -> bool:
     return get_feature_config().gate_framework_enabled
 
 
-def _print_gate_summary(session: dict, gate_info: dict) -> None:
+def _print_gate_summary(session: dict, gate_info: dict, report_type: str) -> None:
     """Print a summary of gate framework execution.
     
     Args:
         session: Orchestrator session dict mapping gate_id -> GateResult
         gate_info: Info dict returned by run_gate_framework_over_collected_data
+        report_type: Report type (weekly/quarterly)
     """
     print()
     try:
@@ -488,7 +489,7 @@ async def generate_report_local(
         def interactive_callback(gate_id, result, session):
             """Called after each gate in interactive mode."""
             # Print gate result
-            _print_gate_summary(session, {})
+            _print_gate_summary(session, {}, report_type)
             
             # Prompt user
             print()
@@ -530,7 +531,7 @@ async def generate_report_local(
         
         # Print final gate summary (only in non-interactive or after completion)
         if not interactive_mode or publish_ok or not gate_info.get("user_abort"):
-            _print_gate_summary(session, gate_info)
+            _print_gate_summary(session, gate_info, report_type)
         
         # Handle blocking conditions
         if not publish_ok:
