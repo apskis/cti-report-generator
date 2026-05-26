@@ -101,7 +101,7 @@ class GateOrchestrator:
         if gate_id not in _GATE_RUNNERS:
             raise ValueError(f"Unknown gate id: {gate_id}")
 
-        prev = _previous_gate(gate_id)
+        prev = _previous_gate(gate_id, self.report_type)
         if prev is not None and prev not in self.cleared_gates:
             raise RuntimeError(
                 f"Cannot run Gate {gate_id}: previous gate {prev} has not been cleared. "
