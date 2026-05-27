@@ -1036,7 +1036,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         self.doc.add_paragraph()
 
     def _add_resources_section(self, analysis_result: Dict[str, Any]) -> None:
-        """Add Resources section listing OSINT sources used in analysis."""
+        """Add Resources section listing threat intelligence sources that actually provided data."""
         logger.info("Adding Resources section")
 
         h = self.doc.add_heading("Resources & Intelligence Sources", level=1)
@@ -1051,14 +1051,33 @@ class WeeklyReportGenerator(BaseReportGenerator):
         intro_run.font.italic = True
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
 
-        # Primary sources (threat intelligence only - no Rapid7)
-        primary_sources = [
-            "NIST National Vulnerability Database (NVD)",
-            "CISA Known Exploited Vulnerabilities (KEV) Catalog",
-            "CrowdStrike Falcon Intelligence",
-            "Intel471 Titan threat intelligence platform",
-            "ThreatQ threat intelligence management platform",
-        ]
+        # Primary sources - only list those that provided data this week
+        # Check analysis_result for which sources actually returned data
+        primary_sources = []
+        
+        # Always include NVD (CVE database)
+        primary_sources.append("NIST National Vulnerability Database (NVD)")
+        
+        # Always include CISA KEV (for exploitation context)
+        primary_sources.append("CISA Known Exploited Vulnerabilities (KEV) Catalog")
+        
+        # Only include Intel471 if data was used
+        intel471_data = analysis_result.get("apt_activity", [])
+        has_intel471 = any(apt.get("intel471_activity") or apt.get("intel471_report_uid") 
+                          for apt in intel471_data if isinstance(apt, dict))
+        if has_intel471:
+            primary_sources.append("Intel471 Titan threat intelligence platform")
+        
+        # Only include CrowdStrike if data was used  
+        crowdstrike_data = analysis_result.get("apt_activity", [])
+        has_crowdstrike = any(apt.get("crowdstrike_activity") 
+                             for apt in crowdstrike_data if isinstance(apt, dict))
+        if has_crowdstrike or len(crowdstrike_data) > 0:
+            primary_sources.append("CrowdStrike Falcon Intelligence")
+        
+        # Only include ThreatQ if indicators were used (usually disabled)
+        # ThreatQ data would show up in analysis if it was collected
+        # For now, we don't include it since it's typically disabled
 
         for source in primary_sources:
             para = self.doc.add_paragraph(source, style="List Bullet")

@@ -1,0 +1,13 @@
+Fix Resources section and add disabled source validation
+
+1. Resources section now dynamically includes only sources that provided data:
+   - Always: NVD, CISA KEV
+   - Conditional: Intel471 (if intel471_activity present), CrowdStrike (if data used)
+   - Never: ThreatQ (disabled), Rapid7 (removed)
+
+2. Gate 6 validation added:
+   - _scan_disabled_sources_cited(): Warns if sources with 0 records appear in report
+   - Checks Gate 1 results for sources with GAP/DISABLED status
+   - Track B warning if disabled source listed in resources
+
+Fixes issue where ThreatQ was listed despite being disabled and returning 0 records.
