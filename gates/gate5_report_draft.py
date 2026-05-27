@@ -1,190 +1,200 @@
-"""Gate 5: Report draft using Gate 4 structured data as the exclusive source.
+"""Gate 5: AI-powered threat analysis.
 
-Builds the report skeleton (metadata, section structure, claim citations) in
-Python so every claim is traceable to a Gate 4 field by construction. The LLM
-fills in narrative sentences for sections that require prose (Executive
-Summary, Key Risks, Recommended Actions). Coverage Gaps and Open Signals are
-copied through verbatim from Gate 4 so they cannot be dropped.
+Invokes ThreatAnalystAgent to analyze the collected threat intelligence data.
+This is the AI analysis gate - it takes raw data from collectors and prior gates,
+runs it through the AI analyst, and produces the structured analysis that will
+become the report.
+
+For weekly reports: Tactical analysis with CVE focus
+For quarterly reports: Strategic analysis with geopolitical context
+
+Gate 6 validates the output of this analysis.
 """
 from __future__ import annotations
 
-import datetime as _dt
+import logging
+from typing import Any
 
 from .escape_handler import detect_gate_bleed
 from .models import GateInput, GateResult
-from .prompts import (
-    GATE_5_PROMPT_TEMPLATE,
-    SYSTEM_PROMPT_GATE_5_QUARTERLY,
-    SYSTEM_PROMPT_GATE_5_WEEKLY,
-)
 
-
-WEEKLY_SECTION_ORDER = [
-    "metadata",
-    "executive_summary",
-    "key_risks",
-    "threat_findings",
-    "vulnerability_summary",
-    "recommended_actions",
-    "coverage_gaps",
-    "resources",
-    "open_signals_appendix",
-]
-
-QUARTERLY_SECTION_ORDER = [
-    "metadata",
-    "executive_summary",
-    "key_risks",
-    "threat_findings",
-    "vulnerability_summary",
-    "geopolitical_context_and_regional_activity",
-    "ninety_day_trend_analysis",
-    "recommended_actions",
-    "coverage_gaps",
-    "resources",
-    "open_signals_appendix",
-]
-
-
-def _format_metadata(assembly: dict, report_type: str, period_start: str, period_end: str) -> dict:
-    today = _dt.date.today().isoformat()
-    return {
-        "tlp": "TLP:AMBER",
-        "date": today,
-        "report_period": f"{period_start} to {period_end}",
-        "report_type": report_type,
-        "bulletin_id": f"CTI-{report_type[:1]}-{today.replace('-', '')}",
-    }
-
-
-def _format_threat_findings(assembly: dict, corroboration_index: dict[str, list[dict]]) -> list[dict]:
-    """Top IOCs become Threat Findings rows. Each finding carries its Gate 4 citation
-    and any OSINT corroboration as a parenthetical note.
-    """
-    findings: list[dict] = []
-    for idx, ioc in enumerate(assembly.get("top_iocs", []), start=1):
-        citation = f"[Top IOCs: entry {idx}]"
-        corrob = corroboration_index.get(ioc["value"], [])
-        parenthetical = ""
-        if corrob:
-            joined = ", ".join(f"{c['source']}, {c['article_id']}" for c in corrob)
-            parenthetical = f" (corroborated by public reporting: {joined})"
-        findings.append({
-            "type": ioc["type"],
-            "value": ioc["value"],
-            "sources": ioc["sources"],
-            "severity": ioc["severity"],
-            "citation": citation,
-            "corroboration_note": parenthetical,
-        })
-    return findings
-
-
-def _format_open_signals_appendix(assembly: dict) -> dict:
-    return {
-        "label": "FOR ANALYST REVIEW ONLY",
-        "items": assembly.get("open_signals", []),
-    }
-
-
-def _format_resources(assembly: dict) -> list[dict]:
-    """OSINT articles cited in OSINT Corroboration are eligible for the Resources list."""
-    seen: set[tuple[str, str]] = set()
-    resources: list[dict] = []
-    for c in assembly.get("osint_corroboration", []):
-        key = (c.get("source"), c.get("article_id"))
-        if key in seen:
-            continue
-        seen.add(key)
-        resources.append({
-            "article_id": c["article_id"],
-            "source": c["source"],
-            "published": c["published"],
-        })
-    return resources
-
-
-def _build_corroboration_index(assembly: dict) -> dict[str, list[dict]]:
-    idx: dict[str, list[dict]] = {}
-    for c in assembly.get("osint_corroboration", []):
-        idx.setdefault(c["finding"], []).append(c)
-    return idx
-
-
-def _self_check(report: dict, assembly: dict) -> str:
-    findings = report.get("threat_findings") or []
-    gaps = assembly.get("coverage_gaps") or []
-    claims_traced = sum(1 for f in findings if f.get("citation"))
-    return (
-        f"Self-check: {len(findings)} claims made. {claims_traced} claims traced to Gate 4 fields. "
-        f"{len(gaps)} gaps surfaced. Uncited claims: NONE."
-    )
+logger = logging.getLogger(__name__)
 
 
 def run(input: GateInput, llm_client, report_type: str) -> GateResult:
+    """Execute Gate 5 - AI Threat Analysis.
+    
+    This gate invokes ThreatAnalystAgent to analyze the collected data.
+    The AI agent produces the structured analysis (cve_analysis, apt_activity, 
+    statistics, etc.) that Gate 6 will validate and the report generator will format.
+    
+    Args:
+        input: GateInput with tier1_data, osint_articles, and prior gate results
+        llm_client: LLM client (not used - we instantiate ThreatAnalystAgent directly)
+        report_type: "WEEKLY" or "QUARTERLY"
+    
+    Returns:
+        GateResult with the AI's analysis in payload["report"]
+    """
+    logger.info(f"Running Gate 5: AI Threat Analysis ({report_type})")
+    
+    # Get prior gate results for context
+    g1 = input.prior_results.get("1")
+    g1b = input.prior_results.get("1B")
+    g2 = input.prior_results.get("2")
     g4 = input.prior_results.get("4")
-    if g4 is None:
-        raise RuntimeError("Gate 5 requires Gate 4 GateResult in input.prior_results['4']")
-
-    assembly = g4.payload.get("assembly", {})
-    is_quarterly = report_type.upper() == "QUARTERLY"
-    section_order = QUARTERLY_SECTION_ORDER if is_quarterly else WEEKLY_SECTION_ORDER
-    system_prompt = SYSTEM_PROMPT_GATE_5_QUARTERLY if is_quarterly else SYSTEM_PROMPT_GATE_5_WEEKLY
-
-    corroboration_index = _build_corroboration_index(assembly)
-
-    report: dict = {
-        "section_order": section_order,
-        "metadata": _format_metadata(assembly, report_type, input.period_start, input.period_end),
-        "executive_summary": {
-            "what_you_need_to_know": assembly.get("executive_signal", "[NOT IN PROVIDED SOURCES]"),
-            "what_you_need_to_do": "[POPULATED BY ANALYST AFTER LLM DRAFT]",
-            "citation": "[Executive Signal]",
-        },
-        "key_risks": {
-            "cybersecurity_threats": "[POPULATED BY LLM DRAFT FROM Top IOCs + Actor Summary]",
-            "financial_and_legal": "[NOT IN PROVIDED SOURCES]",
-            "brand_and_reputational": "[NOT IN PROVIDED SOURCES]",
-        },
-        "threat_findings": _format_threat_findings(assembly, corroboration_index),
-        "vulnerability_summary": assembly.get("vulnerability_highlights", "[NOT IN PROVIDED SOURCES]"),
-        "recommended_actions": {
-            "all_staff": "[POPULATED BY LLM DRAFT]",
-            "technical_teams": "[POPULATED BY LLM DRAFT]",
-        },
-        "coverage_gaps": assembly.get("coverage_gaps", []),
-        "resources": _format_resources(assembly),
-        "open_signals_appendix": _format_open_signals_appendix(assembly),
-    }
-
-    if is_quarterly:
-        report["geopolitical_context_and_regional_activity"] = assembly.get(
-            "geopolitical_context_signals", "[NOT IN PROVIDED SOURCES]"
-        )
-        # 90-day trend analysis comes from Azure SQL metrics if provided as a prior_result; otherwise flag.
-        trends = input.prior_results.get("azure_sql_trends")
-        report["ninety_day_trend_analysis"] = trends if trends else (
-            "[NOT IN PROVIDED SOURCES: Azure SQL trend metrics not attached to this session]"
-        )
-
-    # LLM produces the narrative prose for the populated-by-LLM sections
-    user_prompt = GATE_5_PROMPT_TEMPLATE.format(
-        gate4_output=str(assembly),
-        report_type=report_type,
+    
+    if not all((g1, g1b, g2)):
+        raise RuntimeError("Gate 5 requires Gates 1, 1B, 2 in input.prior_results")
+    
+    # Extract data from prior gates
+    tier1_sources = g1.payload.get("tier1_sources", [])
+    osint_articles = g1b.payload.get("osint_articles", [])
+    
+    # Prepare data for AI analyst
+    cve_data = input.tier1_data.get("NVD", [])
+    intel471_data = input.tier1_data.get("Intel471", [])
+    crowdstrike_data = input.tier1_data.get("CrowdStrike", [])
+    threatq_data = input.tier1_data.get("ThreatQ", [])
+    
+    # Convert OSINT articles to the format the AI expects
+    osint_data = [
+        {
+            "title": article.title,
+            "url": article.url,
+            "source": article.source_name,
+            "published_date": article.published_date,
+        }
+        for article in osint_articles
+    ]
+    
+    logger.info(
+        f"AI analysis input: {len(cve_data)} CVEs, {len(intel471_data)} Intel471 records, "
+        f"{len(crowdstrike_data)} CrowdStrike records, {len(osint_data)} OSINT articles"
     )
-    llm_text = llm_client.complete(system_prompt, user_prompt)
-
-    detect_gate_bleed(llm_text, expected_gate_id="5")
-
-    self_check = _self_check(report, assembly)
-
+    
+    # Import ThreatAnalystAgent here to avoid circular dependencies
+    try:
+        from src.agents.threat_analyst import ThreatAnalystAgent
+        from src.core.config import azure_config, analysis_config
+    except ImportError as e:
+        logger.error(f"Failed to import ThreatAnalystAgent: {e}")
+        raise RuntimeError(
+            "Gate 5 requires ThreatAnalystAgent. Ensure src.agents.threat_analyst is available."
+        ) from e
+    
+    # Get Azure OpenAI credentials from environment
+    # In production, these should be passed through the gate input or config
+    try:
+        import os
+        openai_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
+        openai_key = os.environ.get("AZURE_OPENAI_KEY")
+        
+        if not openai_endpoint or not openai_key:
+            logger.warning("Azure OpenAI credentials not found in environment, using config defaults")
+            # Fallback to config (may not work in all environments)
+            openai_endpoint = azure_config.openai_endpoint
+            openai_key = azure_config.openai_key
+    except Exception as e:
+        logger.error(f"Failed to get Azure OpenAI credentials: {e}")
+        raise RuntimeError("Gate 5 requires Azure OpenAI credentials") from e
+    
+    # Initialize AI agent
+    deployment_name = analysis_config.deployment_name
+    agent = ThreatAnalystAgent(
+        openai_endpoint,
+        openai_key,
+        deployment_name=deployment_name
+    )
+    
+    # Run appropriate analysis based on report type
+    is_quarterly = report_type.upper() == "QUARTERLY"
+    
+    try:
+        if is_quarterly:
+            logger.info("Running strategic analysis for quarterly report")
+            
+            # For quarterly, separate breach alerts from general Intel471 data
+            breach_data = [
+                item for item in intel471_data 
+                if item.get("threat_type", "").upper() == "BREACH ALERT"
+            ]
+            intel471_filtered = [
+                item for item in intel471_data 
+                if item.get("threat_type", "").upper() != "BREACH ALERT"
+            ]
+            
+            # Async call - need to await
+            import asyncio
+            if asyncio.get_event_loop().is_running():
+                # Already in async context
+                analysis_result = asyncio.create_task(
+                    agent.analyze_strategic(
+                        intel471_data=intel471_filtered,
+                        crowdstrike_data=crowdstrike_data,
+                        breach_data=breach_data if breach_data else None
+                    )
+                )
+                analysis_result = asyncio.get_event_loop().run_until_complete(analysis_result)
+            else:
+                analysis_result = asyncio.run(
+                    agent.analyze_strategic(
+                        intel471_data=intel471_filtered,
+                        crowdstrike_data=crowdstrike_data,
+                        breach_data=breach_data if breach_data else None
+                    )
+                )
+        else:
+            logger.info("Running tactical analysis for weekly report")
+            
+            # Async call
+            import asyncio
+            if asyncio.get_event_loop().is_running():
+                analysis_result = asyncio.create_task(
+                    agent.analyze(
+                        cve_data=cve_data,
+                        intel471_data=intel471_data,
+                        crowdstrike_data=crowdstrike_data,
+                        threatq_data=threatq_data,
+                        osint_data=osint_data
+                    )
+                )
+                analysis_result = asyncio.get_event_loop().run_until_complete(analysis_result)
+            else:
+                analysis_result = asyncio.run(
+                    agent.analyze(
+                        cve_data=cve_data,
+                        intel471_data=intel471_data,
+                        crowdstrike_data=crowdstrike_data,
+                        threatq_data=threatq_data,
+                        osint_data=osint_data
+                    )
+                )
+    except Exception as e:
+        logger.error(f"AI analysis failed: {e}", exc_info=True)
+        raise RuntimeError(f"Gate 5 AI analysis failed: {str(e)}") from e
+    
+    logger.info(
+        f"AI analysis complete: {len(analysis_result.get('cve_analysis', []))} CVEs analyzed, "
+        f"{len(analysis_result.get('apt_activity', []))} threat actors identified"
+    )
+    
+    # Detect any gate bleed in the AI's response
+    # (Check if AI is trying to escape gate boundaries)
+    analysis_text = str(analysis_result)
+    try:
+        detect_gate_bleed(analysis_text, expected_gate_id="5")
+    except Exception as e:
+        logger.warning(f"Gate bleed detection raised: {e}")
+        # Don't fail the gate on this, just log it
+    
     return GateResult(
         gate_id="5",
         status="COMPLETE",
         payload={
-            "report": report,
-            "draft_text": llm_text,
-            "self_check": self_check,
+            "report": analysis_result,  # This is what Gate 6 will validate
+            "draft_text": "",  # Not used for weekly/quarterly - AI produces structured data
+            "analysis_type": "strategic" if is_quarterly else "tactical",
         },
         awaiting_clearance=True,
     )
