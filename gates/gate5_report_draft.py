@@ -158,7 +158,7 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
             import asyncio
             if asyncio.get_event_loop().is_running():
                 analysis_result = asyncio.create_task(
-                    agent.analyze(
+                    agent.analyze_threats(
                         cve_data=cve_data,
                         intel471_data=intel471_data,
                         crowdstrike_data=crowdstrike_data,
@@ -169,7 +169,7 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
                 analysis_result = asyncio.get_event_loop().run_until_complete(analysis_result)
             else:
                 analysis_result = asyncio.run(
-                    agent.analyze(
+                    agent.analyze_threats(
                         cve_data=cve_data,
                         intel471_data=intel471_data,
                         crowdstrike_data=crowdstrike_data,
