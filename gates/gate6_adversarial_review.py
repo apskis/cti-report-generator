@@ -452,7 +452,10 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     track_a.extend(_scan_open_signal_leakage(report))
     track_a.extend(_scan_osint_only_citations(report))
     track_a.extend(_scan_uncited_findings(report))
-    track_a.extend(f"Coverage Gap omitted from report: {g}" for g in _scan_gap_omissions(report, gate4_gaps))
+    
+    # Coverage gap validation: Only for quarterly reports (weekly reports don't document gaps)
+    if report_type.upper() == "QUARTERLY":
+        track_a.extend(f"Coverage Gap omitted from report: {g}" for g in _scan_gap_omissions(report, gate4_gaps))
     
     # NEW: Narrative cohesion checks (Track A - blocking)
     track_a.extend(_scan_narrative_cohesion(report, gate2_iocs))
