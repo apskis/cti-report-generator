@@ -506,12 +506,13 @@ You are analyzing threat intelligence for a biotechnology/genomics/manufacturing
 This is a THREAT INTELLIGENCE report, NOT a vulnerability management report.
 
 KEY PRINCIPLES:
-- Focus on NEW exploitation activity from the past 7 days
-- Report on exploited vulnerabilities from Intel471, CrowdStrike, CISA KEV, and OSINT
-- DO NOT require Rapid7 exposure data - we are reporting on intelligence-sourced threats
-- Only include CVEs with exploitation evidence from the 7-day collection window
-- Provide context about threat actors, campaigns, and peer incidents observed THIS WEEK
-- This report helps leadership understand current threats, not historical or patching status
+- Focus on threat intelligence collected in the past 7 days
+- Report on currently exploited vulnerabilities and active threat actors
+- Include CVEs in CISA KEV catalog (shows ongoing exploitation relevance)
+- Include CVEs mentioned in Intel471/CrowdStrike/OSINT data from this week
+- DO NOT require Rapid7 exposure data - this is threat intelligence, not vulnerability management
+- Provide context about threat actors active this week and recent peer incidents
+- This report helps leadership understand current threats in the wild
 
 DATA SUMMARY (7-DAY COLLECTION WINDOW):
 - CVEs: {len(cve_data)} records (from NVD - published in past 7 days)
@@ -581,14 +582,16 @@ Please provide your analysis in the following JSON format:
 }}
 
 FILTERING RULES FOR CVE_ANALYSIS:
-- ONLY include CVEs with exploitation evidence FROM THE PAST 7 DAYS:
-  * Added to CISA KEV catalog in the past 7 days
-  * Mentioned in Intel471 underground/breach reports from the past 7 days
-  * Targeted by threat actors in CrowdStrike data from the past 7 days
-  * Reported as actively exploited in OSINT articles from the past 7 days
-- DO NOT include CVEs just because they're recent, high severity, or historically exploited
-- Focus on NEW exploitation activity observed in the 7-day collection window
-- Limit to top 20 most critical exploited CVEs from this period
+- Include CVEs that have current exploitation relevance:
+  * Currently in CISA KEV catalog (regardless of when added)
+  * Mentioned in Intel471 reports collected in the past 7 days
+  * Associated with threat actors active in CrowdStrike data from the past 7 days
+  * Discussed as actively exploited in OSINT articles from the past 7 days
+  * High severity (Critical/High) with public exploit code available
+- Prioritize CVEs with multiple exploitation indicators (KEV + actor targeting, KEV + OSINT, etc.)
+- Focus on CVEs that pose current risk, even if exploitation evidence is not brand new
+- Limit to top 15-20 most critical CVEs based on severity, exploitation status, and threat actor interest
+- Include CVEs published in the past 7 days if they show early exploitation signals
 
 IMPORTANT: Do NOT include a "statistics" field - statistics are calculated deterministically from the CVE data after your analysis.
 
