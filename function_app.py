@@ -177,6 +177,10 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
                 data_by_source=data_by_source,
                 osint_articles=osint_data,
                 period_days=7,
+                credentials={
+                    'openai_endpoint': credentials['openai_endpoint'],
+                    'openai_key': credentials['openai_key'],
+                },
             )
             if not publish_ok:
                 return func.HttpResponse(
@@ -329,6 +333,10 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
                 data_by_source=data_by_source,
                 osint_articles=data_by_source.get("OSINT", []),
                 period_days=90,
+                credentials={
+                    'openai_endpoint': credentials['openai_endpoint'],
+                    'openai_key': credentials['openai_key'],
+                },
             )
             if not publish_ok:
                 return func.HttpResponse(

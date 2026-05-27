@@ -27,6 +27,7 @@ def run_gate_framework_over_collected_data(
     period_days: int,
     interactive_mode: bool = False,
     interactive_callback=None,
+    credentials: dict = None,  # NEW: Pass credentials for Gate 5
 ) -> tuple[bool, dict, dict[str, GateResult]]:
     """Run the gate framework over collected data.
 
@@ -38,6 +39,7 @@ def run_gate_framework_over_collected_data(
         interactive_mode: If True, pause after each gate for manual review
         interactive_callback: Function called after each gate for user approval
                              Should return True to continue, False to abort
+        credentials: Dictionary with openai_endpoint and openai_key for Gate 5
 
     Returns:
         (publish_ok, info, session) where:
@@ -60,6 +62,12 @@ def run_gate_framework_over_collected_data(
         llm_client=StructuralLLMClient(),
         report_type=report_type.upper(),
     )
+    
+    # Store credentials in session so Gate 5 can access them
+    if credentials:
+        orchestrator.session["credentials"] = type('obj', (object,), {
+            'payload': {'credentials': credentials}
+        })()
 
     if interactive_mode:
         # Interactive mode: run gates one by one with manual clearance

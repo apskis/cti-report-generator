@@ -76,28 +76,35 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     # Import ThreatAnalystAgent here to avoid circular dependencies
     try:
         from src.agents.threat_analyst import ThreatAnalystAgent
-        from src.core.config import azure_config, analysis_config
+        from src.core.config import analysis_config
     except ImportError as e:
         logger.error(f"Failed to import ThreatAnalystAgent: {e}")
         raise RuntimeError(
             "Gate 5 requires ThreatAnalystAgent. Ensure src.agents.threat_analyst is available."
         ) from e
     
-    # Get Azure OpenAI credentials from environment
-    # In production, these should be passed through the gate input or config
-    try:
+    # Get Azure OpenAI credentials from gate input or environment
+    # The credentials should be passed through the orchestrator from the caller
+    openai_endpoint = None
+    openai_key = None
+    
+    # Try to get from prior_results (passed by function_app.py)
+    credentials = input.prior_results.get("credentials", {})
+    if credentials:
+        openai_endpoint = credentials.get("openai_endpoint")
+        openai_key = credentials.get("openai_key")
+    
+    # Fallback to environment variables
+    if not openai_endpoint or not openai_key:
         import os
         openai_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
         openai_key = os.environ.get("AZURE_OPENAI_KEY")
-        
-        if not openai_endpoint or not openai_key:
-            logger.warning("Azure OpenAI credentials not found in environment, using config defaults")
-            # Fallback to config (may not work in all environments)
-            openai_endpoint = azure_config.openai_endpoint
-            openai_key = azure_config.openai_key
-    except Exception as e:
-        logger.error(f"Failed to get Azure OpenAI credentials: {e}")
-        raise RuntimeError("Gate 5 requires Azure OpenAI credentials") from e
+    
+    if not openai_endpoint or not openai_key:
+        raise RuntimeError(
+            "Gate 5 requires Azure OpenAI credentials. "
+            "Pass them via prior_results['credentials'] or set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY environment variables."
+        )
     
     # Initialize AI agent
     deployment_name = analysis_config.deployment_name
