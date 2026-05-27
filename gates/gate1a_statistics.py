@@ -59,10 +59,10 @@ def _validate_weekly_statistics(gate_input: GateInput) -> GateResult:
     Validate weekly tactical report statistics.
     
     Checks:
+    - 7-day lookback window is correctly applied to all data sources
     - Total CVEs > 0 if Tier 1 sources had data
-    - New + Persistent counts are logical
+    - Data timestamps fall within expected collection window
     - Exploitation flags match data
-    - Weeks_detected values are reasonable
     - APT counts match activity data
     """
     validations = []
@@ -78,6 +78,93 @@ def _validate_weekly_statistics(gate_input: GateInput) -> GateResult:
         )
     
     tier1_sources = gate1_result.payload.get("tier1_sources", [])
+    
+    # NEW Validation: Check 7-day lookback window
+    from datetime import datetime, timedelta
+    
+    period_start = datetime.fromisoformat(gate_input.period_start)
+    period_end = datetime.fromisoformat(gate_input.period_end)
+    expected_days = (period_end - period_start).days
+    
+    if expected_days != 7:
+        warnings.append(
+            f"Expected 7-day lookback window, but got {expected_days} days "
+            f"({gate_input.period_start} to {gate_input.period_end})"
+        )
+    
+    validations.append({
+        "check": "seven_day_lookback_window",
+        "passed": expected_days == 7,
+        "details": f"Collection window: {expected_days} days ({gate_input.period_start} to {gate_input.period_end})"
+    })
+    
+    # NEW Validation: Verify data timestamps fall within window
+    data_timestamp_issues = []
+    
+    # Check NVD CVE publish dates
+    nvd_data = gate_input.tier1_data.get("NVD", [])
+    if isinstance(nvd_data, list) and nvd_data:
+        for cve in nvd_data[:5]:  # Sample first 5
+            if isinstance(cve, dict) and "published_date" in cve:
+                try:
+                    pub_date = datetime.fromisoformat(cve["published_date"].replace("Z", "+00:00"))
+                    if pub_date < period_start or pub_date > period_end:
+                        data_timestamp_issues.append(
+                            f"NVD CVE {cve.get('cve_id', 'Unknown')} published {pub_date.date()} outside window"
+                        )
+                except:
+                    pass
+    
+    # Check Intel471 report dates
+    intel471_data = gate_input.tier1_data.get("Intel471", [])
+    if isinstance(intel471_data, list) and intel471_data:
+        for report in intel471_data[:5]:  # Sample first 5
+            if isinstance(report, dict) and "date" in report:
+                try:
+                    report_date_str = report["date"]
+                    if isinstance(report_date_str, str):
+                        # Handle both datetime strings and timestamp floats
+                        if "T" in report_date_str:
+                            report_date = datetime.fromisoformat(report_date_str.replace("Z", "+00:00"))
+                        else:
+                            report_date = datetime.fromisoformat(report_date_str)
+                        
+                        if report_date < period_start or report_date > period_end:
+                            data_timestamp_issues.append(
+                                f"Intel471 report {report.get('uid', 'Unknown')[:16]} dated {report_date.date()} outside window"
+                            )
+                except:
+                    pass
+    
+    # Check CrowdStrike last_activity timestamps
+    crowdstrike_data = gate_input.tier1_data.get("CrowdStrike", [])
+    if isinstance(crowdstrike_data, list) and crowdstrike_data:
+        for actor in crowdstrike_data[:5]:  # Sample first 5
+            if isinstance(actor, dict) and "last_activity" in actor:
+                try:
+                    # CrowdStrike uses Unix timestamp
+                    activity_timestamp = actor["last_activity"]
+                    if isinstance(activity_timestamp, (int, float)):
+                        activity_date = datetime.fromtimestamp(activity_timestamp)
+                        
+                        if activity_date < period_start or activity_date > period_end:
+                            data_timestamp_issues.append(
+                                f"CrowdStrike actor {actor.get('actor_name', 'Unknown')} activity {activity_date.date()} outside window"
+                            )
+                except:
+                    pass
+    
+    if data_timestamp_issues:
+        warnings.append(
+            f"Found {len(data_timestamp_issues)} data records with timestamps outside 7-day window. "
+            f"First few: {'; '.join(data_timestamp_issues[:3])}"
+        )
+    
+    validations.append({
+        "check": "data_timestamps_within_window",
+        "passed": len(data_timestamp_issues) == 0,
+        "details": f"Checked sample records from NVD, Intel471, CrowdStrike. Issues found: {len(data_timestamp_issues)}"
+    })
     
     # Check if we have any Tier 1 data
     has_tier1_data = any(
@@ -169,6 +256,9 @@ def _validate_weekly_statistics(gate_input: GateInput) -> GateResult:
             "total_checks": len(validations),
             "passed": sum(1 for v in validations if v["passed"]),
             "failed": sum(1 for v in validations if not v["passed"]),
+            "lookback_window_days": expected_days,
+            "period_start": gate_input.period_start,
+            "period_end": gate_input.period_end,
             "tier1_records": total_tier1_records,
             "cves_extracted": cve_count,
             "actors_identified": actor_count,
