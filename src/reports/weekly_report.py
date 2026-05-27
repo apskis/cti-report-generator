@@ -86,6 +86,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._add_week_at_glance(analysis_result)
             self._add_vulnerability_exposure(analysis_result)
             self._add_sector_threat_activity(analysis_result)
+            self._add_industry_incidents(analysis_result)
             self._add_recommended_actions(analysis_result)
             self._add_resources_section(analysis_result)
             self._add_ai_disclaimer()
@@ -413,13 +414,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
         )
         
         # Metric 4: Peer Incidents (from OSINT - company breaches)
-        # This will come from OSINT parsing in industry_incidents
-        # For now, estimate from OSINT sources used
         osint_sources = analysis_result.get("osint_sources_used", [])
-        peer_incidents_count = sum(
-            1 for src in osint_sources 
-            if any(keyword in src.get("title", "").lower() for keyword in ["breach", "ransomware", "hack", "attack"])
-        )
+        breach_incidents = self._extract_breach_incidents(osint_sources)
+        peer_incidents_count = len(breach_incidents)
         
         return {
             "threat_actors": threat_actors_count,
@@ -819,6 +816,191 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self.doc.add_paragraph("No threat actor activity data available.")
 
         self.doc.add_paragraph()
+
+    def _add_industry_incidents(self, analysis_result: Dict[str, Any]) -> None:
+        """Add Industry Incidents section - company breaches from OSINT sources."""
+        logger.info("Adding Industry Incidents section")
+
+        h = self.doc.add_heading("Industry Incidents", level=1)
+        self._style_heading_1(h)
+
+        # Intro text
+        intro = self.doc.add_paragraph()
+        intro_run = intro.add_run(
+            "Notable security incidents affecting organizations in similar sectors or technology stacks, "
+            "observed from public breach disclosures and security news sources."
+        )
+        intro_run.font.size = FontSizes.BODY_SMALL
+        intro_run.font.italic = True
+        intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+
+        self.doc.add_paragraph()
+
+        # Extract breach incidents from OSINT sources
+        osint_sources = analysis_result.get("osint_sources_used", [])
+        breach_incidents = self._extract_breach_incidents(osint_sources)
+
+        if breach_incidents:
+            # Create table: Company | Incident Type | Date | Source
+            table = self.doc.add_table(rows=1, cols=4)
+
+            # Header row: orange background, white text
+            headers = ["Organization", "Incident Type", "Date", "Source"]
+            header_cells = table.rows[0].cells
+            for i, header in enumerate(headers):
+                header_cells[i].text = header
+                para = header_cells[i].paragraphs[0]
+                para.runs[0].font.bold = True
+                para.runs[0].font.size = FontSizes.SUBTITLE
+                para.runs[0].font.color.rgb = BrandColors.WHITE
+                self._set_cell_shading(header_cells[i], BrandColors.TABLE_HEADER_BG)
+                self._set_cell_borders(header_cells[i], "CCCCCC")
+
+            # Data rows
+            for incident in breach_incidents:
+                row = table.add_row()
+                cells = row.cells
+
+                # Column 0: Organization name
+                cells[0].text = incident.get("organization", "Unknown")
+                
+                # Column 1: Incident type
+                cells[1].text = incident.get("incident_type", "Breach")
+                
+                # Column 2: Date
+                cells[2].text = incident.get("date", "Unknown")
+                
+                # Column 3: Source (shortened URL or publication name)
+                cells[3].text = incident.get("source", "OSINT")
+
+                # Styling for all columns
+                for idx in range(4):
+                    self._set_cell_borders(cells[idx], "CCCCCC")
+                    for para in cells[idx].paragraphs:
+                        for run in para.runs:
+                            run.font.size = FontSizes.SUBTITLE
+                            run.font.color.rgb = BrandColors.TEXT_DARK
+
+            # Set column widths
+            table.columns[0].width = Inches(2.0)  # Organization
+            table.columns[1].width = Inches(1.5)  # Incident Type
+            table.columns[2].width = Inches(1.0)  # Date
+            table.columns[3].width = Inches(1.7)  # Source
+
+            # Caption
+            caption = self.doc.add_paragraph()
+            caption.space_before = Pt(4)
+            caption.space_after = Pt(8)
+            caption_text = (
+                f"Table: {len(breach_incidents)} peer incidents from OSINT sources. "
+                "Incidents may indicate threat actor targeting patterns or emerging attack vectors."
+            )
+            caption_run = caption.add_run(caption_text)
+            caption_run.font.size = Pt(7)
+            caption_run.font.italic = True
+            caption_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+            caption_run.font.name = "Arial"
+            caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        else:
+            self.doc.add_paragraph("No significant industry incidents observed this week.")
+
+        self.doc.add_paragraph()
+
+    def _extract_breach_incidents(self, osint_sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Extract breach incidents from OSINT sources."""
+        incidents = []
+        
+        # Keywords that indicate breach/incident articles
+        breach_keywords = [
+            "breach", "ransomware", "hack", "attack", "compromise", 
+            "data leak", "cyberattack", "cyber attack", "incident"
+        ]
+        
+        for source in osint_sources:
+            title = source.get("title", "").lower()
+            url = source.get("url", "")
+            date = source.get("date", source.get("published", "Unknown"))
+            
+            # Check if this is a breach-related article
+            if any(keyword in title for keyword in breach_keywords):
+                # Try to extract organization name from title
+                org_name = self._extract_organization_from_title(source.get("title", ""))
+                
+                # Determine incident type
+                incident_type = "Breach"
+                if "ransomware" in title:
+                    incident_type = "Ransomware"
+                elif "ddos" in title or "denial of service" in title:
+                    incident_type = "DDoS"
+                elif "data leak" in title:
+                    incident_type = "Data Leak"
+                elif "supply chain" in title:
+                    incident_type = "Supply Chain"
+                
+                # Extract source domain from URL
+                source_name = "OSINT"
+                if url:
+                    try:
+                        from urllib.parse import urlparse
+                        domain = urlparse(url).netloc
+                        # Remove www. prefix
+                        if domain.startswith("www."):
+                            domain = domain[4:]
+                        source_name = domain[:25]  # Truncate long domains
+                    except:
+                        source_name = "OSINT"
+                
+                # Format date if it's a datetime
+                if hasattr(date, 'strftime'):
+                    date = date.strftime('%Y-%m-%d')
+                elif isinstance(date, str) and len(date) > 10:
+                    date = date[:10]  # Truncate to YYYY-MM-DD
+                
+                incidents.append({
+                    "organization": org_name,
+                    "incident_type": incident_type,
+                    "date": date,
+                    "source": source_name,
+                    "url": url
+                })
+        
+        # Limit to top 15 most recent
+        return incidents[:15]
+    
+    def _extract_organization_from_title(self, title: str) -> str:
+        """Extract organization name from article title."""
+        # Common patterns in breach headlines:
+        # "Company X suffers data breach"
+        # "Ransomware attack hits Organization Y"
+        # "Hackers breach Company Z"
+        
+        # Remove common prefixes/suffixes
+        title = title.replace("'s ", " ").replace("'s ", " ")
+        
+        # Split on common verbs/keywords
+        split_words = [
+            " suffers ", " confirms ", " discloses ", " reports ",
+            " hit by ", " targeted by ", " attacked by ", " breached by ",
+            " says ", " warns ", " announces "
+        ]
+        
+        for word in split_words:
+            if word in title.lower():
+                # Take the part before the verb
+                org_part = title.lower().split(word)[0]
+                # Take last few words as org name
+                words = org_part.strip().split()
+                if len(words) >= 2:
+                    # Take last 2-3 words as organization name
+                    org_name = " ".join(words[-3:]) if len(words) >= 3 else " ".join(words[-2:])
+                    return org_name.title()[:40]  # Capitalize and truncate
+        
+        # If no pattern match, take first N words
+        words = title.split()
+        if len(words) >= 2:
+            return " ".join(words[:3]).title()[:40]
+        
+        return "Unknown Organization"
 
     def _add_recommended_actions(self, analysis_result: Dict[str, Any]) -> None:
         """Add recommended actions section."""
