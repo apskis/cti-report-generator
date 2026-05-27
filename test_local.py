@@ -499,6 +499,8 @@ async def generate_report_local(
 
     # Determine data source
     data_by_source = None  # Will hold raw collected data for gate framework
+    credentials = None  # Will hold Azure credentials for gate framework
+    
     if use_mock:
         print_section("📋 Using Mock Data")
         if report_type == "weekly":
@@ -509,6 +511,12 @@ async def generate_report_local(
         data_by_source = {}
     elif use_real or use_azure:
         analysis, data_by_source = await collect_and_analyze(report_type)
+        
+        # Get credentials for gate framework (Gate 5 needs Azure OpenAI)
+        from src.core.keyvault import get_all_api_keys
+        from src.core.config import azure_config
+        vault_url = azure_config.get_key_vault_url()
+        credentials = get_all_api_keys(vault_url)
     else:
         print_section("📋 Using Mock Data (default)")
         if report_type == "weekly":
@@ -575,6 +583,10 @@ async def generate_report_local(
             period_days=period_days,
             interactive_mode=interactive_mode,
             interactive_callback=interactive_callback if interactive_mode else None,
+            credentials={
+                'openai_endpoint': credentials['openai_endpoint'],
+                'openai_key': credentials['openai_key'],
+            } if credentials else None,
         )
         
         # Print final gate summary (only in non-interactive or after completion)
