@@ -671,159 +671,80 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._set_cell_borders(cell, "CCCCCC")
             self._set_cell_margins_tight(cell, 2)
 
-        # Add individual CVEs first (most critical/unique)
-        for cve in individual_cves:
+        # Add exploited CVEs (no grouping - straight list from threat intelligence)
+        for cve in exploited_cves:
             row = table.add_row()
             cells = row.cells
 
-            # Check if this CVE is actively exploited
-            is_exploited, _ = self._is_actively_exploited(cve)
-
-            # Column 0: CVE ID (bold if exploited)
+            # Column 0: CVE ID (bold)
             cells[0].text = ""
             cve_para = cells[0].paragraphs[0]
             cve_run = cve_para.add_run(cve.get("cve_id", "N/A"))
             cve_run.font.size = FontSizes.SUBTITLE
             cve_run.font.color.rgb = BrandColors.TEXT_DARK
-            if is_exploited:
-                cve_run.font.bold = True
+            cve_run.font.bold = True
             
-            # Column 1: Product
-            cells[1].text = cve.get("affected_product", cve.get("product", "N/A"))
+            # Column 1: Affected Product
+            cells[1].text = cve.get("affected_product", cve.get("product", "N/A"))[:60]
             
-            # Column 2: Exposure
-            cells[2].text = self._format_exposure_cell(cve)
+            # Column 2: Exploitation Evidence (source of exploitation intel)
+            evidence = self._format_exploitation_evidence(cve)
+            cells[2].text = evidence
 
-            # Parse weeks for display and 3+ weeks highlighting
-            weeks = cve.get("weeks_detected", cve.get("wks", 1))
-            if isinstance(weeks, str):
-                if weeks.strip().lower() == "new":
-                    weeks_num = 0
-                    weeks_display = "New"
-                else:
-                    try:
-                        weeks_num = int(weeks)
-                        weeks_display = str(weeks_num)
-                    except (ValueError, TypeError):
-                        weeks_num = 0
-                        weeks_display = "New"
-            else:
-                weeks_num = int(weeks) if weeks is not None else 0
-                weeks_display = "New" if weeks_num == 0 or weeks_num == 1 else str(weeks_num)
-            cells[3].text = weeks_display
-
-            # Styling for columns 0, 1, 2
-            for idx in (0, 1, 2):
-                # Bright red background for exploited CVEs
-                if is_exploited:
-                    self._set_cell_shading(cells[idx], "FF6B6B")  # Bright red
-                else:
-                    self._clear_cell_shading(cells[idx])  # White/no fill
+            # Styling for all columns
+            for idx in range(3):
+                self._set_cell_shading(cells[idx], "FF6B6B")  # Bright red for all exploited CVEs
                 self._set_cell_borders(cells[idx], "CCCCCC")
                 for para in cells[idx].paragraphs:
                     for run in para.runs:
                         run.font.size = FontSizes.SUBTITLE
                         run.font.color.rgb = BrandColors.TEXT_DARK
-                        if is_exploited and idx == 0:  # Bold CVE ID if exploited
+                        if idx == 0:  # Bold CVE ID
                             run.font.bold = True
 
-            # Wks column: weeks highlighting takes precedence, but add red bg if exploited and <3 weeks
-            if is_exploited:
-                self._set_cell_shading(cells[3], "FF6B6B")  # Bright red
-            elif weeks_num >= 4:
-                self._set_cell_shading(cells[3], BrandColors.WKS_OVERDUE_BG)
-            elif weeks_num >= 3:
-                self._set_cell_shading(cells[3], BrandColors.WKS_3PLUS_BG)
-            else:
-                self._clear_cell_shading(cells[3])  # White/no fill
-            self._set_cell_borders(cells[3], "CCCCCC")
-            for para in cells[3].paragraphs:
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                for run in para.runs:
-                    run.font.size = FontSizes.SUBTITLE
-                    run.font.color.rgb = BrandColors.TEXT_DARK
+        # Set column widths (CVE ID narrower, Product wider, Evidence medium)
+        table.columns[0].width = Inches(1.2)
+        table.columns[1].width = Inches(3.0)
+        table.columns[2].width = Inches(2.0)
 
-        # Add grouped technology summaries
-        for group_item in grouped_items:
-            row = table.add_row()
-            cells = row.cells
-
-            # Check if any CVE in this group is actively exploited
-            group_has_exploited = any(
-                self._is_actively_exploited(cve)[0] 
-                for cve in group_item.get("cves", [])
-            )
-
-            # Column 0: Group name with count (and exploitation count if any)
-            exploited_in_group = sum(1 for cve in group_item.get("cves", []) if self._is_actively_exploited(cve)[0])
-            if exploited_in_group > 0:
-                cells[0].text = f"{group_item['group_name']}\n({group_item['cve_count']} CVEs, {exploited_in_group} exploited)"
-            else:
-                cells[0].text = f"{group_item['group_name']}\n({group_item['cve_count']} CVEs)"
-            
-            # Column 1: Product
-            cells[1].text = f"Multiple products ({group_item['cve_count']} vulnerabilities)"
-            
-            # Column 2: Exposure
-            cells[2].text = group_item.get("exposure", "Multiple")
-            
-            # Column 3: Weeks
-            weeks_num = group_item.get("weeks_detected", 1)
-            weeks_display = "New" if weeks_num <= 1 else str(weeks_num)
-            cells[3].text = weeks_display
-
-            # Styling for grouped items - bright red if any exploited, else white/no fill
-            bg_color = "FF6B6B" if group_has_exploited else None
-            for idx in range(0, 3):
-                if bg_color:
-                    self._set_cell_shading(cells[idx], bg_color)
-                else:
-                    self._clear_cell_shading(cells[idx])
-                self._set_cell_borders(cells[idx], "CCCCCC")
-                for para in cells[idx].paragraphs:
-                    for run in para.runs:
-                        run.font.size = FontSizes.SUBTITLE
-                        run.font.color.rgb = BrandColors.TEXT_DARK
-                        if idx == 0:  # Make group name bold
-                            run.font.bold = True
-
-            # Wks styling for grouped items
-            if weeks_num >= 4:
-                self._set_cell_shading(cells[3], BrandColors.WKS_OVERDUE_BG)
-            elif weeks_num >= 3:
-                self._set_cell_shading(cells[3], BrandColors.WKS_3PLUS_BG)
-            elif group_has_exploited:
-                self._set_cell_shading(cells[3], "FF6B6B")  # Match red if exploited
-            else:
-                self._clear_cell_shading(cells[3])
-            self._set_cell_borders(cells[3], "CCCCCC")
-            cells[3].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-            for run in cells[3].paragraphs[0].runs:
-                run.font.size = FontSizes.SUBTITLE
-                run.font.color.rgb = BrandColors.TEXT_DARK
-
-        # Caption below table
+        # Caption
         caption = self.doc.add_paragraph()
-        total_cves = len(all_cves)
-        grouped_cves = sum(item['cve_count'] for item in grouped_items)
-        individual_shown = len(individual_cves)
-        
+        caption.space_before = Pt(4)
+        caption.space_after = Pt(8)
         caption_text = (
-            f"Wks = consecutive weeks detected. Items at 3+ weeks (yellow) require escalation, 4+ weeks (red) are overdue. "
-            f"Bright red background indicates active exploitation (CISA KEV, ransomware, or threat actors). "
-            f"Table shows {individual_shown} individual CVEs (top by exposure/severity) and "
-            f"{len(grouped_items)} technology groups covering {grouped_cves} CVEs. "
-            f"Total: {total_cves} CVEs detected. "
-            "Source: Rapid7 InsightVM, CISA KEV, Intel471, CrowdStrike."
+            f"Table: {len(exploited_cves)} exploited CVEs from threat intelligence sources "
+            f"(Intel471, CrowdStrike, CISA KEV, OSINT). Red background indicates confirmed exploitation."
         )
         caption_run = caption.add_run(caption_text)
-        caption_run.font.size = table_caption_7pt
+        caption_run.font.size = Pt(7)
         caption_run.font.italic = True
         caption_run.font.color.rgb = BrandColors.GRAY_MEDIUM
         caption_run.font.name = "Arial"
         caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
         self.doc.add_paragraph()
+    
+    def _format_exploitation_evidence(self, cve: Dict[str, Any]) -> str:
+        """Format exploitation evidence column based on threat intelligence sources."""
+        evidence_parts = []
+        
+        if cve.get("in_cisa_kev"):
+            evidence_parts.append("CISA KEV")
+        
+        targeted_by = str(cve.get("targeted_by_actors", "")).strip()
+        if targeted_by and targeted_by.lower() not in ("", "none", "unknown", "n/a"):
+            evidence_parts.append(f"Actor: {targeted_by[:30]}")
+        
+        exploited_by = str(cve.get("exploited_by", "")).upper()
+        if "RANSOMWARE" in exploited_by:
+            evidence_parts.append("Ransomware")
+        elif "ACTIVE EXPLOITATION" in exploited_by:
+            evidence_parts.append("Active exploit")
+        
+        if not evidence_parts:
+            evidence_parts.append("Exploitation confirmed")
+        
+        return "; ".join(evidence_parts[:2])  # Max 2 sources to keep readable
 
     def _add_sector_threat_activity(self, analysis_result: Dict[str, Any]) -> None:
         """Add sector threat activity section with threat actor table."""
