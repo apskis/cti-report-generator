@@ -220,7 +220,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         subtitle.paragraph_format.space_before = Pt(10)
         subtitle.paragraph_format.space_after = Pt(4)
         sub_run = subtitle.add_run(
-            f"Vulnerability and threat actor metrics from automated collection "
+            f"Threat intelligence metrics from Intel471, CrowdStrike, and OSINT "
             f"({self.period_start.strftime('%B %d')} to {self.period_end.strftime('%B %d, %Y')})."
         )
         sub_run.font.size = Pt(9)
@@ -232,30 +232,26 @@ class WeeklyReportGenerator(BaseReportGenerator):
         stats = self._calculate_statistics(analysis_result)
         logger.info(f"Calculated stats: {stats}")
 
-        # All six metrics in 2x3 grid (row1 then row2)
+        # Four threat intelligence metrics in 2x2 grid
+        # Row 1: Threat Actors, Active Campaigns
+        # Row 2: Exploited CVEs, Peer Incidents
         metrics_row1 = [
-            (str(stats.get("new_this_week", stats.get("total_cves", 0))),
-             "New This Week",
-             "First appearance in Rapid7 scans"),
-            (str(stats.get("persistent_count", stats.get("critical_count", 0))),
-             "Persistent (3+ Wks)",
-             "Unresolved from prior reports"),
-            (str(stats.get("resolved_count", 0)),
-             "Resolved",
-             "Remediated since last week"),
+            (str(stats.get("threat_actors", 0)),
+             "Threat Actors",
+             "APT groups active this week"),
+            (str(stats.get("active_campaigns", 0)),
+             "Active Campaigns",
+             "Operations from underground intel"),
         ]
         metrics_row2 = [
-            (str(stats.get("total_exposed", stats.get("total_cves", 0))),
-             "Total Exposed",
-             "CVEs on assets"),
-            (str(stats.get("exploited_count", stats.get("actively_exploited", 0))),
-             "Actively Exploited",
-             "Confirmed threat actor use"),
-            (str(stats.get("apt_groups", 0)),
-             "Actor Groups",
-             "Targeting biotech sector"),
+            (str(stats.get("exploited_cves", 0)),
+             "Exploited CVEs",
+             "Known exploitation activity"),
+            (str(stats.get("peer_incidents", 0)),
+             "Peer Incidents",
+             "Company breaches observed"),
         ]
-        # Two separate tables: 3 boxes, then space, then 3 boxes (per design reference)
+        # Two separate tables: 2 boxes, then space, then 2 boxes (2x2 grid)
         self._create_metric_cards(metrics_row1)
         spacer = self.doc.add_paragraph()
         spacer.paragraph_format.space_before = Pt(0)
@@ -283,18 +279,18 @@ class WeeklyReportGenerator(BaseReportGenerator):
             # Clear and build content
             cell.paragraphs[0].clear()
 
-            # 1. Colored number: Red (high-risk/Total Exposed), Orange (ongoing), Green (Resolved); 22pt
+            # 1. Colored number: Red (threats/exploits), Orange (campaigns), Green (N/A for now); 22pt
             num_para = cell.paragraphs[0]
             num_run = num_para.add_run(number)
             num_run.font.size = Pt(22)
             num_run.font.bold = True
             num_run.font.name = "Arial"
-            if title == "Resolved":
-                num_run.font.color.rgb = BrandColors.GREEN_RESOLVED  # Positive / remediated
-            elif title in ("Actively Exploited", "Actor Groups", "Total Exposed"):
-                num_run.font.color.rgb = BrandColors.RED_HIGH_RISK  # High-risk / alert / exposure
+            if title in ("Threat Actors", "Exploited CVEs", "Peer Incidents"):
+                num_run.font.color.rgb = BrandColors.RED_HIGH_RISK  # High-risk / alert
+            elif title == "Active Campaigns":
+                num_run.font.color.rgb = BrandColors.ORANGE_DESIGN  # Ongoing operations
             else:
-                num_run.font.color.rgb = BrandColors.ORANGE_DESIGN  # New This Week, Persistent (ongoing)
+                num_run.font.color.rgb = BrandColors.ORANGE_DESIGN  # Default
             num_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             num_para.paragraph_format.space_after = Pt(2)
 
@@ -384,80 +380,55 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
     def _calculate_statistics(self, analysis_result: Dict[str, Any]) -> Dict[str, int]:
         """
-        Calculate deterministic statistics from actual CVE data.
-        Don't trust AI-generated stats - compute from real data.
+        Calculate threat intelligence statistics from actual data.
+        
+        Weekly Tactical Report metrics (no environment/Rapid7 data):
+        - Threat Actors: Unique APT actors tracked this week
+        - Active Campaigns: Campaign names from Intel471 tags
+        - Exploited CVEs: CVEs with exploitation evidence
+        - Peer Incidents: Company breaches from OSINT
         """
         cve_analysis = analysis_result.get("cve_analysis", [])
         apt_activity = analysis_result.get("apt_activity", [])
         
-        # Count CVEs by weeks detected
-        new_this_week = sum(1 for cve in cve_analysis if cve.get("weeks_detected", 1) <= 1)
-        persistent_count = sum(1 for cve in cve_analysis if cve.get("weeks_detected", 1) >= 3)
+        # Metric 1: Threat Actors (unique actor names)
+        threat_actors_count = len(apt_activity)
         
-        # Log new CVEs for debugging
-        if new_this_week > 0:
-            new_cves = [f"{cve.get('cve_id', '?')} (weeks={cve.get('weeks_detected', 1)})" 
-                       for cve in cve_analysis if cve.get("weeks_detected", 1) <= 1]
-            logger.info(f"New CVEs this week ({new_this_week}): {new_cves[:10]}")  # Show first 10
+        # Metric 2: Active Campaigns (from Intel471 tags or campaign references)
+        # TODO: Extract from Intel471 raw data tags
+        # For now, count campaigns mentioned in APT activity
+        campaigns = set()
+        for actor in apt_activity:
+            intel471_activity = actor.get("intel471_activity", "")
+            # Look for campaign keywords
+            if "campaign" in intel471_activity.lower():
+                # Simplistic extraction - will improve with actual tag parsing
+                campaigns.add(actor.get("actor", ""))
+        active_campaigns_count = len(campaigns) if campaigns else 0
         
-        # Log persistent CVEs for debugging
-        if persistent_count > 0:
-            persistent_cves = [f"{cve.get('cve_id', '?')} (weeks={cve.get('weeks_detected', 1)})" 
-                             for cve in cve_analysis if cve.get("weeks_detected", 1) >= 3]
-            logger.info(f"Persistent CVEs (3+ weeks, {persistent_count}): {persistent_cves[:10]}")  # Show first 10
+        # Metric 3: Exploited CVEs (CVEs with exploitation evidence)
+        exploited_cves_count = sum(
+            1 for cve in cve_analysis 
+            if cve.get("actively_exploited") or cve.get("targeted_by_actors")
+        )
         
-        # Total exposed is just total CVEs (all are detected in environment)
-        total_exposed = len(cve_analysis)
-        
-        # Count CVEs by severity (from AI, but we validate it exists)
-        critical_count = sum(1 for cve in cve_analysis if str(cve.get("severity", "")).upper() in ("CRITICAL",))
-        high_count = sum(1 for cve in cve_analysis if str(cve.get("severity", "")).upper() in ("HIGH", "SEVERE"))
-        
-        # Exploited count - check for CISA KEV, EPSS high scores, or exploited flag
-        exploited_count = 0
-        exploited_cves = []
-        for cve in cve_analysis:
-            # Check for targeted_by_actors first (from AI analysis)
-            targeted_by = str(cve.get("targeted_by_actors", "")).strip()
-            if targeted_by and targeted_by.lower() not in ("", "none", "unknown", "n/a"):
-                exploited_count += 1
-                exploited_cves.append(f"{cve.get('cve_id', '?')} (Targeted by: {targeted_by[:30]})")
-                continue
-            
-            exploited_by = str(cve.get("exploited_by", "")).upper()
-            # Check for CISA KEV, active exploitation, ransomware, or threat actors
-            if (cve.get("exploited", False) or 
-                "CISA KEV" in exploited_by or 
-                "RANSOMWARE" in exploited_by or
-                "ACTIVE EXPLOITATION" in exploited_by or
-                any(actor in exploited_by for actor in ["APT", "LAZARUS", "PANDA", "BEAR", "GROUP"])):
-                exploited_count += 1
-                exploited_cves.append(f"{cve.get('cve_id', '?')} ({exploited_by[:30]})")
-        
-        logger.info(f"Actively exploited: {exploited_count} of {total_exposed} CVEs")
-        if exploited_count > 0:
-            logger.info(f"Exploited CVEs: {exploited_cves[:5]}")  # Show first 5
-        
-        # APT groups from threat activity
-        apt_groups = len(apt_activity)
-        
-        # Resolved count - compare with previous week's data (if available)
-        resolved_count = self._calculate_resolved_count(cve_analysis)
+        # Metric 4: Peer Incidents (from OSINT - company breaches)
+        # This will come from OSINT parsing in industry_incidents
+        # For now, estimate from OSINT sources used
+        osint_sources = analysis_result.get("osint_sources_used", [])
+        peer_incidents_count = sum(
+            1 for src in osint_sources 
+            if any(keyword in src.get("title", "").lower() for keyword in ["breach", "ransomware", "hack", "attack"])
+        )
         
         return {
-            "total_cves": total_exposed,
-            "new_this_week": new_this_week,
-            "persistent_count": persistent_count,
-            "resolved_count": resolved_count,
-            "total_exposed": total_exposed,
-            "exploited_count": exploited_count,
-            "actively_exploited": exploited_count,
-            "apt_groups": apt_groups,
-            "critical_count": critical_count,
-            "high_count": high_count,
-            "p1_count": 0,  # No longer using priority
-            "p2_count": 0,
-            "p3_count": 0
+            "threat_actors": threat_actors_count,
+            "active_campaigns": active_campaigns_count,
+            "exploited_cves": exploited_cves_count,
+            "peer_incidents": peer_incidents_count,
+            # Legacy fallbacks for backwards compatibility
+            "total_cves": len(cve_analysis),
+            "critical_count": sum(1 for cve in cve_analysis if cve.get("severity", "").upper() == "CRITICAL"),
         }
     
     def _calculate_resolved_count(self, current_cves: List[Dict[str, Any]]) -> int:
@@ -643,23 +614,31 @@ class WeeklyReportGenerator(BaseReportGenerator):
         return (False, "")
 
     def _add_vulnerability_exposure(self, analysis_result: Dict[str, Any]) -> None:
-        """Add Vulnerability Exposure section with grouped and individual CVEs."""
-        logger.info("Adding Vulnerability Exposure section")
+        """Add Exploited Vulnerabilities section - intelligence-sourced CVEs only (no environment data)."""
+        logger.info("Adding Exploited Vulnerabilities section")
 
-        h = self.doc.add_heading("Vulnerability Exposure", level=1)
+        h = self.doc.add_heading("Exploited Vulnerabilities", level=1)
         self._style_heading_1(h)
 
         cve_analysis = analysis_result.get("cve_analysis", [])
         
         if not cve_analysis:
-            self.doc.add_paragraph("No actively exploited vulnerabilities detected in the environment this week.")
+            self.doc.add_paragraph("No exploited vulnerabilities identified from threat intelligence this week.")
             self.doc.add_paragraph()
             return
         
-        # Group CVEs by technology
-        grouped_items, individual_cves, all_cves = self._group_cves_by_technology(cve_analysis)
+        # Filter to only exploited CVEs (from threat intelligence sources)
+        exploited_cves = [
+            cve for cve in cve_analysis
+            if cve.get("actively_exploited") or cve.get("targeted_by_actors") or cve.get("in_cisa_kev")
+        ]
+        
+        if not exploited_cves:
+            self.doc.add_paragraph("No exploited vulnerabilities identified from threat intelligence this week.")
+            self.doc.add_paragraph()
+            return
 
-        logger.info(f"Grouped: {len(grouped_items)} technology groups, {len(individual_cves)} individual CVEs")
+        logger.info(f"Exploited CVEs: {len(exploited_cves)}")
 
         # Add legend for exploitation indicator
         legend = self.doc.add_paragraph()
@@ -667,14 +646,14 @@ class WeeklyReportGenerator(BaseReportGenerator):
         legend.space_after = Pt(6)
         
         # Add explanation text
-        text_run = legend.add_run("Bright red background indicates active exploitation (CISA KEV, ransomware, or threat actors)")
+        text_run = legend.add_run("CVEs with confirmed exploitation from threat intelligence (CISA KEV, threat actors, ransomware)")
         text_run.font.size = Pt(8)
         text_run.font.color.rgb = BrandColors.TEXT_DARK
         text_run.font.italic = True
 
-        # Create table
-        table = self.doc.add_table(rows=1, cols=4)
-        headers = ["Item", "Affected Product/Technology", "Exposure", "Wks"]
+        # Create table (removed "Wks" and "Exposure" columns - no environment data)
+        table = self.doc.add_table(rows=1, cols=3)
+        headers = ["CVE ID", "Affected Product", "Exploitation Evidence"]
         header_cells = table.rows[0].cells
         table_caption_7pt = Pt(7)
 
