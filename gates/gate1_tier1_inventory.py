@@ -1,9 +1,13 @@
 """Gate 1: Tier 1 source inventory and data scope confirmation.
 
-Builds a typed inventory of the 5 Tier 1 paid APIs from collector results and
+Builds a typed inventory of the 4 Tier 1 paid APIs from collector results and
 calls the LLM for the analyst-facing inventory table. No analysis, no
 extraction, no narrative. Runs the 2-or-more Tier 1 gaps halt check before
 returning.
+
+NOTE: Rapid7 removed from Tier 1 sources - reports now focus on threat intelligence
+only (Intel471, CrowdStrike, NVD, ThreatQ, OSINT) without environment/vulnerability
+management data.
 """
 from __future__ import annotations
 
@@ -15,7 +19,7 @@ from .models import GateInput, GateResult, SourceRecord
 from .prompts import GATE_1_PROMPT_TEMPLATE, SYSTEM_PROMPT_GATE_1
 
 
-TIER1_SOURCES = ["ThreatQ", "NVD", "Intel471", "Rapid7", "CrowdStrike"]
+TIER1_SOURCES = ["ThreatQ", "NVD", "Intel471", "CrowdStrike"]
 
 
 def _build_source_record(
