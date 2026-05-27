@@ -122,32 +122,76 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     is_quarterly = report_type.upper() == "QUARTERLY"
     
     try:
-        if is_quarterly:
-            logger.info("Running strategic analysis for quarterly report")
+        import asyncio
+        
+        # Check if we're in an async context
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in async context - need to use nest_asyncio or run_in_executor
+            # Simpler: just use asyncio.run_coroutine_threadsafe
+            import concurrent.futures
+            import threading
             
-            # For quarterly, separate breach alerts from general Intel471 data
-            breach_data = [
-                item for item in intel471_data 
-                if item.get("threat_type", "").upper() == "BREACH ALERT"
-            ]
-            intel471_filtered = [
-                item for item in intel471_data 
-                if item.get("threat_type", "").upper() != "BREACH ALERT"
-            ]
-            
-            # Async call - need to await
-            import asyncio
-            if asyncio.get_event_loop().is_running():
-                # Already in async context
-                analysis_result = asyncio.create_task(
-                    agent.analyze_strategic(
-                        intel471_data=intel471_filtered,
-                        crowdstrike_data=crowdstrike_data,
-                        breach_data=breach_data if breach_data else None
+            if is_quarterly:
+                logger.info("Running strategic analysis for quarterly report")
+                
+                breach_data = [
+                    item for item in intel471_data 
+                    if item.get("threat_type", "").upper() == "BREACH ALERT"
+                ]
+                intel471_filtered = [
+                    item for item in intel471_data 
+                    if item.get("threat_type", "").upper() != "BREACH ALERT"
+                ]
+                
+                # Run in a new thread with its own event loop
+                def run_async():
+                    return asyncio.run(
+                        agent.analyze_strategic(
+                            intel471_data=intel471_filtered,
+                            crowdstrike_data=crowdstrike_data,
+                            breach_data=breach_data if breach_data else None
+                        )
                     )
-                )
-                analysis_result = asyncio.get_event_loop().run_until_complete(analysis_result)
+                
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(run_async)
+                    analysis_result = future.result()
             else:
+                logger.info("Running tactical analysis for weekly report")
+                
+                # Run in a new thread with its own event loop
+                def run_async():
+                    return asyncio.run(
+                        agent.analyze_threats(
+                            cve_data=cve_data,
+                            intel471_data=intel471_data,
+                            crowdstrike_data=crowdstrike_data,
+                            threatq_data=threatq_data,
+                            rapid7_data=rapid7_data,
+                            rapid7_scans_data=rapid7_scans_data,
+                            osint_data=osint_data
+                        )
+                    )
+                
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(run_async)
+                    analysis_result = future.result()
+                    
+        except RuntimeError:
+            # No running loop - we can safely use asyncio.run
+            if is_quarterly:
+                logger.info("Running strategic analysis for quarterly report")
+                
+                breach_data = [
+                    item for item in intel471_data 
+                    if item.get("threat_type", "").upper() == "BREACH ALERT"
+                ]
+                intel471_filtered = [
+                    item for item in intel471_data 
+                    if item.get("threat_type", "").upper() != "BREACH ALERT"
+                ]
+                
                 analysis_result = asyncio.run(
                     agent.analyze_strategic(
                         intel471_data=intel471_filtered,
@@ -155,25 +199,9 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
                         breach_data=breach_data if breach_data else None
                     )
                 )
-        else:
-            logger.info("Running tactical analysis for weekly report")
-            
-            # Async call
-            import asyncio
-            if asyncio.get_event_loop().is_running():
-                analysis_result = asyncio.create_task(
-                    agent.analyze_threats(
-                        cve_data=cve_data,
-                        intel471_data=intel471_data,
-                        crowdstrike_data=crowdstrike_data,
-                        threatq_data=threatq_data,
-                        rapid7_data=rapid7_data,
-                        rapid7_scans_data=rapid7_scans_data,
-                        osint_data=osint_data
-                    )
-                )
-                analysis_result = asyncio.get_event_loop().run_until_complete(analysis_result)
             else:
+                logger.info("Running tactical analysis for weekly report")
+                
                 analysis_result = asyncio.run(
                     agent.analyze_threats(
                         cve_data=cve_data,
