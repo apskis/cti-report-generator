@@ -1,6 +1,9 @@
 # Gate Framework Audit - Weekly Tactical Report Compatibility
 
 ## Executive Summary
+**CRITICAL FIX COMPLETED (Commit 7424b01):**
+Gate 5 was generating a parallel report that was never used. The AI analyst's output (which became the actual .docx) was never validated by Gate 6. Gate 5 has been completely rewritten to invoke ThreatAnalystAgent directly, so Gate 6 now validates the actual report that gets published.
+
 Audited all 8 gates in the weekly report sequence (1 → 1A → 1B → 2 → 3 → 4 → 5 → 6) for compatibility with the current weekly tactical report structure.
 
 ## Audit Results
@@ -41,14 +44,17 @@ Audited all 8 gates in the weekly report sequence (1 → 1A → 1B → 2 → 3 �
    - Generic data assembly
    - Status: GOOD
 
-### ⚠️ ARCHITECTURAL NOTE - Not an Issue
+### ✅ FIXED - Critical Architectural Issue
 
-7. **Gate 5 (Report Draft)** ℹ️
-   - **Purpose**: Validation checkpoint, NOT report generation
-   - **Reality**: Weekly reports use ThreatAnalystAgent → WeeklyReportGenerator
-   - **Gate 5's role**: Structural validation only (not used for .docx)
-   - **Why this is OK**: Gate 5 validates gate-framework-style output for quarterly reports
-   - **Status**: Not applicable to weekly reports, gates are for validation pipeline only
+7. **Gate 5 (Report Draft → AI Analysis)** ✅ (COMPLETELY REWRITTEN in commit 7424b01)
+   - **OLD Problem**: Generated parallel report structure that was never used
+   - **OLD Problem**: AI analyst output was never validated by Gate 6
+   - **NEW Solution**: Now directly invokes ThreatAnalystAgent
+   - **Weekly**: Calls `agent.analyze()` for tactical analysis
+   - **Quarterly**: Calls `agent.analyze_strategic()` for strategic analysis
+   - **Returns**: AI's structured output in `payload["report"]`
+   - **Impact**: Gate 6 now validates the ACTUAL report that gets published
+   - Status: FIXED - This is what should have been built from the start
 
 ### ✅ ENHANCED - Just Updated
 
@@ -71,16 +77,30 @@ Audited all 8 gates in the weekly report sequence (1 → 1A → 1B → 2 → 3 �
 
 ## Key Findings
 
-### Architecture Understanding
-The gate framework has two modes:
-1. **Quarterly Reports**: Full gate pipeline including Gate 5 draft generation
-2. **Weekly Reports**: Gates 1-4 for data validation, **AI Analyst** generates report, Gate 6 validates output
+### Architecture - NOW CORRECT
 
-Weekly report flow:
+The gate framework flow is now unified for both weekly and quarterly:
+
+**CORRECTED Flow (Both Weekly & Quarterly)**:
 ```
-Collectors → Gate 1-4 (validate data) → ThreatAnalystAgent (analyze) 
-→ WeeklyReportGenerator (format .docx) → Gate 6 (validate report)
+Collectors → Gates 1-4 (validate raw data) 
+          → Gate 5 (calls ThreatAnalystAgent, generates analysis)
+          → Gate 6 (validates AI's analysis)
+          → ReportGenerator (formats into .docx)
 ```
+
+**Gate 5's ACTUAL Purpose**:
+- Invokes ThreatAnalystAgent to analyze collected data
+- Weekly: Tactical analysis (CVE-focused)
+- Quarterly: Strategic analysis (geopolitical context)
+- Produces the structured analysis that Gate 6 validates
+- Output becomes the source data for the .docx report
+
+**Gate 6's ACTUAL Purpose**:
+- Validates the AI analyst's output (not a parallel draft)
+- Checks report structure matches report type
+- Enforces quality standards (Track A blocking, Track B warnings)
+- Final checkpoint before .docx generation
 
 ### All Issues Addressed
 
@@ -94,12 +114,13 @@ The user's concerns are now fully covered:
 
 ## Conclusion
 
-**All gates are compatible with weekly tactical reports.**
+**All gates are now correctly structured and compatible with weekly tactical reports.**
 
-The confusion arose from Gate 5's dual role:
-- Quarterly: Generates draft report from Gate 4 structured data
-- Weekly: Bypassed - ThreatAnalystAgent generates report directly
+The critical architectural issue has been fixed:
+- Gate 5 was generating unused parallel reports → Now calls ThreatAnalystAgent directly
+- Gate 6 was validating the wrong output → Now validates actual AI analysis
+- Weekly and quarterly reports now use the same gate pipeline (just different analysis modes)
 
-Gate 6 is the critical validation point for weekly reports, and it now comprehensively validates the AI analyst's output structure (cve_analysis, apt_activity, statistics, industry_incidents).
+Gate 6 comprehensively validates the AI analyst's output structure (cve_analysis, apt_activity, statistics, industry_incidents for weekly; strategic analysis structure for quarterly).
 
-No further changes needed.
+**The gate framework is now a true validation pipeline that validates the actual reports that get published.**
