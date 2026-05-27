@@ -80,6 +80,28 @@ def _scan_gap_omissions(report: dict, gate4_gaps: list[str]) -> list[str]:
     return [g for g in gate4_gaps if g not in surfaced]
 
 
+def _scan_osint_overuse(report: dict, gate1b_article_count: int) -> list[str]:
+    """
+    Track B warning: Check if too many OSINT sources are being cited.
+    
+    We collect ~30 OSINT articles but should only cite the ones actually used.
+    If more than 15 are cited, likely the AI is being too inclusive.
+    """
+    violations: list[str] = []
+    
+    # Check in resources section
+    resources = report.get("resources", [])
+    osint_resource_count = sum(1 for r in resources if isinstance(r, dict) and "osint" in str(r).lower())
+    
+    if osint_resource_count > 15:
+        violations.append(
+            f"OSINT overuse: {osint_resource_count} OSINT sources cited out of {gate1b_article_count} collected. "
+            f"Should be selective (aim for 5-10 max). Only cite articles actually used in analysis."
+        )
+    
+    return violations
+
+
 def _scan_narrative_cohesion(report: dict, gate2_iocs: list) -> list[str]:
     """
     Check for narrative cohesion issues between executive summary and detailed sections.
@@ -213,6 +235,7 @@ def _parse_llm_findings(llm_text: str) -> tuple[list[str], list[str]]:
 
 
 def run(input: GateInput, llm_client, report_type: str) -> GateResult:
+    g1b = input.prior_results.get("1B")
     g2 = input.prior_results.get("2")
     g4 = input.prior_results.get("4")
     g5 = input.prior_results.get("5")
@@ -223,6 +246,7 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     draft_text = g5.payload.get("draft_text", "")
     gate4_gaps = (g4.payload.get("assembly", {}).get("coverage_gaps") or []) if g4 else []
     gate2_iocs = (g2.payload.get("iocs") or []) if g2 else []
+    gate1b_article_count = len((g1b.payload.get("osint_articles") or [])) if g1b else 30
 
     track_a: list[str] = []
     track_b: list[str] = []
@@ -246,6 +270,9 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     
     # NEW: OSINT citation checks (Track B - quality)
     track_b.extend(_scan_osint_citations(report))
+    
+    # NEW: OSINT overuse check (Track B - quality)
+    track_b.extend(_scan_osint_overuse(report, gate1b_article_count))
 
     # LLM adversary pass
     user_prompt = GATE_6_PROMPT_TEMPLATE.format(gate5_output=draft_text or str(report))
