@@ -574,7 +574,7 @@ Please provide your analysis in the following JSON format:
   ],
   "industry_incidents": [
     {{
-      "organization": "Company name extracted from OSINT",
+      "organization": "VICTIM company name (NOT the attacker). Extract the organization that was breached/attacked, e.g., 'Acme Healthcare', 'XYZ Manufacturing'",
       "incident_type": "Ransomware/Breach/Data Leak/DDoS/Supply Chain",
       "date": "YYYY-MM-DD from article publish date",
       "source": "Publication name (e.g., 'BleepingComputer')",
