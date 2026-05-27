@@ -63,11 +63,10 @@ def run_gate_framework_over_collected_data(
         report_type=report_type.upper(),
     )
     
-    # Store credentials in session so Gate 5 can access them
+    # Store credentials directly in session (not as GateResult, just raw dict)
+    # Gate 5 will access via input.prior_results.get("credentials")
     if credentials:
-        orchestrator.session["credentials"] = type('obj', (object,), {
-            'payload': {'credentials': credentials}
-        })()
+        orchestrator.session["credentials"] = credentials
 
     if interactive_mode:
         # Interactive mode: run gates one by one with manual clearance

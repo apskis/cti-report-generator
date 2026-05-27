@@ -88,9 +88,9 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     openai_endpoint = None
     openai_key = None
     
-    # Try to get from prior_results (passed by function_app.py)
-    credentials = input.prior_results.get("credentials", {})
-    if credentials:
+    # Try to get from prior_results (passed by pipeline_hook.py)
+    credentials = input.prior_results.get("credentials")
+    if isinstance(credentials, dict):
         openai_endpoint = credentials.get("openai_endpoint")
         openai_key = credentials.get("openai_key")
     
