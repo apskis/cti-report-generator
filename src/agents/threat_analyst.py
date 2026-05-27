@@ -501,20 +501,23 @@ Use these OSINT articles to:
 
         return f"""Analyze this threat intelligence data and provide a comprehensive report.
 
-ENVIRONMENTAL CONTEXT:
-You are analyzing threats for a biotechnology/genomics/manufacturing organization. When mentioning vulnerabilities or threats:
-- If a product/technology (e.g., "WordPress", "FortiOS", "Exchange Server") appears in the CVE data with non-zero exposure counts from Rapid7, then it IS confirmed in the environment
-- If a product is mentioned in OSINT or threat feeds but has NO corresponding CVE detections in Rapid7, you should state it as an "industry threat to monitor" or "not currently detected in our environment"
-- DO NOT assume a technology is in the environment just because it's commonly used - rely on the Rapid7 exposure data
+REPORT FOCUS - THREAT INTELLIGENCE (NO ENVIRONMENT DATA):
+You are analyzing threat intelligence for a biotechnology/genomics/manufacturing organization.
+This is a THREAT INTELLIGENCE report, NOT a vulnerability management report.
+
+KEY PRINCIPLES:
+- Focus on exploited vulnerabilities from Intel471, CrowdStrike, CISA KEV, and OSINT
+- DO NOT require Rapid7 exposure data - we are reporting on intelligence-sourced threats
+- Include CVEs that are actively exploited in the wild (regardless of whether we detect them internally)
+- Provide context about threat actors, campaigns, and peer incidents
+- This report helps leadership understand the threat landscape, not manage internal patches
 
 DATA SUMMARY:
-- CVEs: {len(cve_data)} records
-- Intel471 Threats: {len(intel471_data)} records
-- CrowdStrike APT Activity: {len(crowdstrike_data)} records
+- CVEs: {len(cve_data)} records (from NVD)
+- Intel471 Threats: {len(intel471_data)} records (underground intelligence, breach reports)
+- CrowdStrike APT Activity: {len(crowdstrike_data)} records (threat actor tracking)
 - ThreatQ Indicators: {len(threatq_data)} records
-- Rapid7 Vulnerabilities: {len(rapid7_data)} records
-- OSINT Articles: {len(osint_data)} records
-{exposure_correlation_note}
+- OSINT Articles: {len(osint_data)} records (public breach news, security research)
 {intel471_context}
 {osint_context}
 
@@ -523,12 +526,12 @@ RAW DATA:
 
 Please provide your analysis in the following JSON format:
 {{
-  "executive_summary": "2-3 paragraph summary highlighting the most critical threats. CRITICAL RULES: (1) ONLY mention CVE IDs that appear in the cve_analysis array below - do NOT invent or reference external CVEs. (2) If referencing OSINT intelligence, add inline citations like [1], [2] matching the osint_sources_used array. (3) If mentioning industry threats NOT detected in our environment, explicitly state 'not currently detected' or 'industry threat to monitor'. (4) DO NOT reference source names like 'Rapid7', 'OSINT', 'Microsoft Threat Intelligence' - just state facts with citations.",
+  "executive_summary": "2-3 paragraph summary highlighting the most critical threats from intelligence sources. Focus on: (1) Threat actors targeting our sector, (2) Exploited vulnerabilities from CISA KEV / threat intelligence, (3) Industry peer incidents. If referencing OSINT intelligence, add inline citations like [1], [2] matching the osint_sources_used array. DO NOT reference source names directly - use citations.",
   "top_threats": [
     {{
-      "threat": "Description of threat",
+      "threat": "Description of threat (from intelligence sources)",
       "priority": "P1/P2/P3",
-      "justification": "Why this is prioritized this way"
+      "justification": "Why this is prioritized (threat actor activity, exploitation evidence, peer incidents)"
     }}
   ],
   "cve_analysis": [
@@ -538,9 +541,10 @@ Please provide your analysis in the following JSON format:
       "description": "Brief technical description of the vulnerability",
       "impact": "Potential impact on genomics/biotech/manufacturing operations",
       "affected_product": "Vendor Product Name (e.g., 'WordPress Plugin: contact-form-7', 'Microsoft Exchange Server', 'Fortinet FortiOS')",
-      "exposure": "REQUIRED: Asset count from exposure map (e.g., '12 systems', '3 systems', '1 system')",
-      "targeted_by_actors": "OPTIONAL: List specific threat actors exploiting this CVE if mentioned in Intel471 or CrowdStrike data (e.g., 'APT28', 'Lazarus Group', 'FIN7'). Leave blank if no actor targeting is known.",
-      "weeks_detected": 1
+      "actively_exploited": true/false,
+      "in_cisa_kev": true/false,
+      "targeted_by_actors": "REQUIRED if actively exploited: List specific threat actors exploiting this CVE from Intel471 or CrowdStrike data (e.g., 'APT28', 'Lazarus Group', 'FIN7'). Leave empty string if no actor targeting is known.",
+      "exploited_by": "Source of exploitation evidence (e.g., 'CISA KEV', 'Ransomware groups (Intel471)', 'Active exploitation (CrowdStrike)', 'Unknown')"
     }}
   ],
   "apt_activity": [
@@ -548,15 +552,16 @@ Please provide your analysis in the following JSON format:
       "actor": "Threat actor name",
       "country": "Country of origin",
       "motivation": "Primary motivation",
-      "ttps": ["TTP1", "TTP2"],
+      "ttps": ["Generic kill chain phase or technique description - NOTE: Neither Intel471 nor CrowdStrike provide MITRE ATT&CK technique IDs"],
       "relevance": "Why this matters to genomics/biotech/manufacturing",
       "what_to_monitor": "Specific indicators and detection recommendations (e.g., 'Monitor for PowerShell activity; Watch for connections to Asia-Pacific regions; Scan for credential harvesting')",
       "intel471_activity": "If Intel471 provided underground activity for this actor, include it here with REPORT UID (e.g., 'Intel471 Report abc123: Actor selling access to biotech networks on underground forum')",
-      "intel471_report_uid": "REQUIRED if intel471_activity is provided: The exact UID from Intel471 data (e.g., 'abc123-def456-ghi789')"
+      "intel471_report_uid": "REQUIRED if intel471_activity is provided: The exact UID from Intel471 data (e.g., 'abc123-def456-ghi789')",
+      "crowdstrike_activity": "If CrowdStrike provided detection or targeting data for this actor, include it here"
     }}
   ],
   "recommendations": [
-    "Specific, actionable recommendation 1 (DO NOT say 'Refer to Rapid7' or 'Refer to OSINT sources' - be specific about what to do)",
+    "Specific, actionable recommendation 1",
     "Specific, actionable recommendation 2",
     "Specific, actionable recommendation 3",
     "Specific, actionable recommendation 4",
@@ -564,13 +569,24 @@ Please provide your analysis in the following JSON format:
   ],
   "osint_sources_used": [
     {{
-      "title": "Short reference (2-4 words, e.g., 'GitHub Breach', 'OT Robot Flaw')",
+      "title": "Full article title for peer incident tracking",
       "url": "https://example.com/article",
+      "source": "Publication name (e.g., 'BleepingComputer', 'SecurityWeek')",
       "relevance": "Brief note on why this source was relevant (1 sentence)",
+      "date": "Article publish date if available",
       "citation_number": 1
     }}
   ]
 }}
+
+FILTERING RULES FOR CVE_ANALYSIS:
+- ONLY include CVEs with exploitation evidence:
+  * In CISA KEV catalog
+  * Mentioned in Intel471 underground/breach reports
+  * Targeted by threat actors from CrowdStrike data
+  * Reported as actively exploited in OSINT
+- DO NOT include CVEs just because they're recent or high severity
+- Limit to top 20 most critical exploited CVEs
 
 IMPORTANT: Do NOT include a "statistics" field - statistics are calculated deterministically from the CVE data after your analysis.
 
