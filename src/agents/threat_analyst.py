@@ -574,7 +574,7 @@ Please provide your analysis in the following JSON format:
   ],
   "industry_incidents": [
     {{
-      "organization": "VICTIM company name (NOT the attacker). Extract the organization that was breached/attacked, e.g., 'Acme Healthcare', 'XYZ Manufacturing'",
+      "organization": "SPECIFIC victim company name (NOT generic like 'US Law Firms' or 'Healthcare Sector'). Must be an actual named organization, e.g., 'Morrison & Foerster LLP', 'City Hospital', 'Acme Manufacturing'. If article doesn't name specific victim, do NOT include the incident.",
       "incident_type": "Ransomware/Breach/Data Leak/DDoS/Supply Chain",
       "date": "YYYY-MM-DD from article publish date",
       "source": "Publication name (e.g., 'BleepingComputer')",
