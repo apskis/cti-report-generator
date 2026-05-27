@@ -203,7 +203,14 @@ def _print_gate_summary(session: dict, gate_info: dict, report_type: str) -> Non
         track_a = gate_info.get("track_a", [])
         track_b = gate_info.get("track_b", [])
         print(f"\nTrack A findings: {len(track_a)}")
+        if track_a:
+            for i, finding in enumerate(track_a, 1):
+                print(f"  {Fore.RED}[A{i}]{Style.RESET_ALL} {finding}")
+        
         print(f"Track B findings: {len(track_b)}")
+        if track_b:
+            for i, finding in enumerate(track_b, 1):
+                print(f"  {Fore.YELLOW}[B{i}]{Style.RESET_ALL} {finding}")
     
     print()
 
