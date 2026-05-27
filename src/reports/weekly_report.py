@@ -846,11 +846,16 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         self.doc.add_paragraph()
 
-        # Extract breach incidents from OSINT sources
-        osint_sources = analysis_result.get("osint_sources_used", [])
-        breach_incidents = self._extract_breach_incidents(osint_sources)
-
-        if breach_incidents:
+        # Use AI-identified incidents from structured output
+        incidents = analysis_result.get("industry_incidents", [])
+        
+        # Fallback: extract from OSINT if AI didn't provide structured incidents
+        if not incidents:
+            logger.warning("No industry_incidents from AI, falling back to extraction from OSINT titles")
+            osint_sources = analysis_result.get("osint_sources_used", [])
+            incidents = self._extract_breach_incidents(osint_sources)
+        
+        if incidents:
             # Create table: Company | Incident Type | Date | Source
             table = self.doc.add_table(rows=1, cols=4)
 
@@ -867,21 +872,32 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 self._set_cell_borders(header_cells[i], "CCCCCC")
 
             # Data rows
-            for incident in breach_incidents:
+            for incident in incidents:
                 row = table.add_row()
                 cells = row.cells
 
                 # Column 0: Organization name
-                cells[0].text = incident.get("organization", "Unknown")
+                org = incident.get("organization", "Unknown")
+                cells[0].text = org[:40]  # Truncate long names
                 
                 # Column 1: Incident type
                 cells[1].text = incident.get("incident_type", "Breach")
                 
                 # Column 2: Date
-                cells[2].text = incident.get("date", "Unknown")
+                date = incident.get("date", "Unknown")
+                if hasattr(date, 'strftime'):
+                    date = date.strftime('%Y-%m-%d')
+                elif isinstance(date, str) and len(date) > 10:
+                    date = date[:10]  # Truncate to YYYY-MM-DD
+                cells[2].text = date
                 
-                # Column 3: Source (shortened URL or publication name)
-                cells[3].text = incident.get("source", "OSINT")
+                # Column 3: Source with OSINT citation number
+                source_name = incident.get("source", "OSINT")
+                osint_citation = incident.get("osint_citation_number")
+                if osint_citation:
+                    cells[3].text = f"[{osint_citation}] {source_name[:20]}"
+                else:
+                    cells[3].text = source_name[:25]
 
                 # Styling for all columns
                 for idx in range(4):
@@ -902,7 +918,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             caption.space_before = Pt(4)
             caption.space_after = Pt(8)
             caption_text = (
-                f"Table: {len(breach_incidents)} peer incidents from OSINT sources. "
+                f"Table: {len(incidents)} peer incidents from OSINT sources. "
                 "Incidents may indicate threat actor targeting patterns or emerging attack vectors."
             )
             caption_run = caption.add_run(caption_text)

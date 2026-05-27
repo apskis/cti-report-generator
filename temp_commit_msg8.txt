@@ -1,0 +1,31 @@
+Improve industry breach tracking with structured AI output
+
+Issue 3: Industry Incidents showing different breaches between runs
+
+ROOT CAUSE:
+- _extract_breach_incidents() was parsing OSINT article titles using keyword matching
+- This was unreliable because:
+  * AI selects different OSINT articles each run (5-10 out of 30 collected)
+  * Keyword matching was heuristic and inconsistent
+  * Order of articles could change, affecting which breaches were extracted
+
+FIX:
+1. AI Prompt Enhancement:
+   - Added industry_incidents array to JSON schema
+   - AI now explicitly identifies and structures breach data
+   - Each incident includes: organization, incident_type, date, source, url, osint_citation_number
+   - AI links incidents to OSINT sources via citation numbers
+
+2. Report Generator Update:
+   - _add_industry_incidents() now prefers AI-provided structured data
+   - Falls back to keyword extraction only if AI didn't provide incidents
+   - Source column shows OSINT citation number (e.g., "[1] BleepingComputer")
+   - Date formatting improved to handle datetime objects
+
+3. Benefits:
+   - Deterministic breach tracking (same articles yield same incidents)
+   - Better traceability (citation numbers link to OSINT sources)
+   - More accurate organization name extraction (AI's NLP > regex patterns)
+   - Consistent incident type classification
+
+This makes breach tracking reliable and reproducible across runs.

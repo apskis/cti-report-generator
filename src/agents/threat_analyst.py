@@ -572,6 +572,16 @@ Please provide your analysis in the following JSON format:
     "Specific, actionable recommendation 4",
     "Specific, actionable recommendation 5"
   ],
+  "industry_incidents": [
+    {{
+      "organization": "Company name extracted from OSINT",
+      "incident_type": "Ransomware/Breach/Data Leak/DDoS/Supply Chain",
+      "date": "YYYY-MM-DD from article publish date",
+      "source": "Publication name (e.g., 'BleepingComputer')",
+      "url": "Article URL",
+      "osint_citation_number": 1  // Match to osint_sources_used array
+    }}
+  ],
   "osint_sources_used": [
     {{
       "title": "Full article title for peer incident tracking",
