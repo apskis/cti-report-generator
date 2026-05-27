@@ -56,8 +56,10 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     intel471_data = input.tier1_data.get("Intel471", [])
     crowdstrike_data = input.tier1_data.get("CrowdStrike", [])
     threatq_data = input.tier1_data.get("ThreatQ", [])
-    rapid7_data = input.tier1_data.get("Rapid7", [])
-    rapid7_scans_data = input.tier1_data.get("Rapid7-Scans", [])
+    
+    # Rapid7 is disabled for threat intelligence reports, but method signature requires it
+    rapid7_data = []
+    rapid7_scans_data = []
     
     # Convert OSINT articles to the format the AI expects
     osint_data = [
@@ -72,8 +74,7 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     
     logger.info(
         f"AI analysis input: {len(cve_data)} CVEs, {len(intel471_data)} Intel471 records, "
-        f"{len(crowdstrike_data)} CrowdStrike records, {len(rapid7_data)} Rapid7 records, "
-        f"{len(osint_data)} OSINT articles"
+        f"{len(crowdstrike_data)} CrowdStrike records, {len(osint_data)} OSINT articles"
     )
     
     # Import ThreatAnalystAgent here to avoid circular dependencies
