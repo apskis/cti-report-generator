@@ -8,6 +8,10 @@ Two layers:
    deterministic pass missed.
 
 Track A findings block publish. Track B findings can be corrected in place.
+
+Report-type specific checks:
+- Quarterly Strategic: threat_findings, open_signals_appendix, coverage_gaps
+- Weekly Tactical: cve_analysis, apt_activity, industry_incidents, statistics
 """
 from __future__ import annotations
 
@@ -122,6 +126,172 @@ def _scan_disabled_sources_cited(report: dict, gate1_sources: list) -> list[str]
         if source.lower() in resources_text:
             violations.append(
                 f"Disabled/empty source cited: '{source}' returned 0 records but appears in resources section"
+            )
+    
+    return violations
+
+
+def _scan_api_source_citations(report: dict) -> list[str]:
+    """
+    Track B warning: Check if API sources are properly cited in CVE and APT analysis.
+    
+    Weekly tactical reports should have source_citations arrays showing which APIs
+    provided intelligence for each finding.
+    """
+    violations: list[str] = []
+    
+    # Check CVE analysis for source citations
+    cve_analysis = report.get("cve_analysis", [])
+    if cve_analysis:
+        missing_citations = []
+        for cve in cve_analysis:
+            if isinstance(cve, dict):
+                cve_id = cve.get("cve_id", "Unknown")
+                citations = cve.get("source_citations", [])
+                if not citations or not isinstance(citations, list):
+                    missing_citations.append(cve_id)
+        
+        if missing_citations and len(missing_citations) > len(cve_analysis) * 0.5:
+            violations.append(
+                f"{len(missing_citations)}/{len(cve_analysis)} CVEs missing source_citations array. "
+                f"Should track which APIs (NVD, CISA KEV, Intel471, CrowdStrike) provided each CVE."
+            )
+    
+    # Check APT activity for source citations
+    apt_activity = report.get("apt_activity", [])
+    if apt_activity:
+        missing_citations = []
+        for apt in apt_activity:
+            if isinstance(apt, dict):
+                actor = apt.get("actor", "Unknown")
+                citations = apt.get("source_citations", [])
+                if not citations or not isinstance(citations, list):
+                    missing_citations.append(actor)
+        
+        if missing_citations and len(missing_citations) > len(apt_activity) * 0.5:
+            violations.append(
+                f"{len(missing_citations)}/{len(apt_activity)} threat actors missing source_citations array. "
+                f"Should track which APIs (Intel471, CrowdStrike) provided each actor's intelligence."
+            )
+    
+    return violations
+
+
+def _scan_statistics_accuracy(report: dict) -> list[str]:
+    """
+    Track A violation: Check if statistics match actual data counts.
+    
+    Weekly tactical reports have metric boxes - these should accurately reflect
+    the actual counts in the data.
+    """
+    violations: list[str] = []
+    
+    stats = report.get("statistics", {})
+    if not stats:
+        return violations
+    
+    # Check threat actors count
+    apt_activity = report.get("apt_activity", [])
+    reported_actors = stats.get("threat_actors", 0)
+    actual_actors = len([apt for apt in apt_activity if isinstance(apt, dict)])
+    
+    if reported_actors != actual_actors:
+        violations.append(
+            f"Threat Actors metric mismatch: reported {reported_actors}, actual {actual_actors}"
+        )
+    
+    # Check exploited CVEs count
+    cve_analysis = report.get("cve_analysis", [])
+    reported_exploited = stats.get("exploited_cves", 0)
+    actual_exploited = len([
+        cve for cve in cve_analysis 
+        if isinstance(cve, dict) and (
+            cve.get("actively_exploited") or 
+            cve.get("targeted_by_actors") or 
+            cve.get("in_cisa_kev")
+        )
+    ])
+    
+    if reported_exploited != actual_exploited:
+        violations.append(
+            f"Exploited CVEs metric mismatch: reported {reported_exploited}, actual {actual_exploited}"
+        )
+    
+    # Check peer incidents count
+    reported_incidents = stats.get("peer_incidents", 0)
+    industry_incidents = report.get("industry_incidents", [])
+    actual_incidents = len(industry_incidents) if industry_incidents else 0
+    
+    if reported_incidents != actual_incidents:
+        violations.append(
+            f"Peer Incidents metric mismatch: reported {reported_incidents}, actual {actual_incidents}"
+        )
+    
+    return violations
+
+
+def _scan_exploited_cve_evidence(report: dict) -> list[str]:
+    """
+    Track B warning: Check if CVEs marked as exploited have proper evidence.
+    
+    CVEs with actively_exploited=true should have exploited_by field populated.
+    """
+    violations: list[str] = []
+    
+    cve_analysis = report.get("cve_analysis", [])
+    missing_evidence = []
+    
+    for cve in cve_analysis:
+        if not isinstance(cve, dict):
+            continue
+        
+        cve_id = cve.get("cve_id", "Unknown")
+        actively_exploited = cve.get("actively_exploited", False)
+        exploited_by = cve.get("exploited_by", "")
+        
+        if actively_exploited and not exploited_by:
+            missing_evidence.append(cve_id)
+    
+    if missing_evidence:
+        violations.append(
+            f"{len(missing_evidence)} CVE(s) marked actively_exploited but missing exploited_by evidence: "
+            f"{', '.join(missing_evidence[:5])}"
+        )
+    
+    return violations
+
+
+def _scan_industry_incidents_completeness(report: dict) -> list[str]:
+    """
+    Track B warning: Check if industry incidents are structured or extracted.
+    
+    AI should provide structured industry_incidents array. If missing, report
+    had to fall back to unreliable keyword extraction.
+    """
+    violations: list[str] = []
+    
+    industry_incidents = report.get("industry_incidents", [])
+    osint_sources = report.get("osint_sources_used", [])
+    
+    # If we have OSINT sources but no structured incidents, AI didn't do its job
+    if osint_sources and not industry_incidents:
+        violations.append(
+            f"AI provided {len(osint_sources)} OSINT sources but no structured industry_incidents array. "
+            f"Report had to fall back to unreliable keyword extraction. AI should explicitly identify breaches."
+        )
+    
+    # Check if incidents have proper OSINT citation numbers
+    if industry_incidents:
+        missing_citations = [
+            inc.get("organization", "Unknown") 
+            for inc in industry_incidents 
+            if isinstance(inc, dict) and not inc.get("osint_citation_number")
+        ]
+        
+        if missing_citations:
+            violations.append(
+                f"{len(missing_citations)} industry incident(s) missing osint_citation_number: "
+                f"{', '.join(missing_citations[:3])}"
             )
     
     return violations
@@ -303,6 +473,18 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     
     # NEW: Disabled sources check (Track B - quality)
     track_b.extend(_scan_disabled_sources_cited(report, gate1_sources))
+    
+    # NEW: API source citations check (Track B - quality)
+    track_b.extend(_scan_api_source_citations(report))
+    
+    # NEW: Statistics accuracy check (Track A - blocking)
+    track_a.extend(_scan_statistics_accuracy(report))
+    
+    # NEW: Exploited CVE evidence check (Track B - quality)
+    track_b.extend(_scan_exploited_cve_evidence(report))
+    
+    # NEW: Industry incidents completeness check (Track B - quality)
+    track_b.extend(_scan_industry_incidents_completeness(report))
 
     # LLM adversary pass
     user_prompt = GATE_6_PROMPT_TEMPLATE.format(gate5_output=draft_text or str(report))

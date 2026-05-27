@@ -1,0 +1,49 @@
+Enhance Gate 6 to be true adversary for weekly tactical reports
+
+ISSUE:
+Gate 6 was designed for quarterly strategic reports with threat_findings,
+open_signals_appendix, and coverage_gaps structure. It was NOT validating
+the weekly tactical report structure (cve_analysis, apt_activity, statistics,
+industry_incidents), so it wasn't catching data quality issues.
+
+PROBLEM:
+- Checked fields that don't exist in weekly reports (threat_findings, coverage_gaps)
+- Missing critical validation for weekly-specific data:
+  * API source citations missing from CVE/APT analysis
+  * Statistics accuracy (metric boxes not matching actual data)
+  * Industry incidents completeness (AI not providing structured data)
+  * Exploited CVE evidence (CVEs marked exploited without proof)
+
+SOLUTION:
+Added 4 new Gate 6 validation functions for weekly tactical reports:
+
+1. _scan_api_source_citations() [Track B]:
+   - Validates CVEs and APT actors have source_citations arrays
+   - Warns if >50% of findings lack API source tracking
+   - Ensures traceability: which API provided which intelligence
+
+2. _scan_statistics_accuracy() [Track A - BLOCKING]:
+   - Validates metric box numbers match actual data counts
+   - Checks: threat_actors, exploited_cves, peer_incidents
+   - Prevents misleading statistics in executive summary
+
+3. _scan_exploited_cve_evidence() [Track B]:
+   - Validates CVEs with actively_exploited=true have exploited_by field
+   - Lists CVEs missing exploitation evidence
+   - Ensures claims are backed by data
+
+4. _scan_industry_incidents_completeness() [Track B]:
+   - Checks if AI provided structured industry_incidents array
+   - Warns if report fell back to unreliable keyword extraction
+   - Validates incidents have OSINT citation numbers
+
+IMPACT:
+Gate 6 is now a true adversary for both report types:
+- Quarterly: Validates threat_findings, coverage gaps, open signals
+- Weekly: Validates CVE/APT data quality, statistics accuracy, API citations
+
+This catches the exact issues the user reported:
+- ThreatQ listed but disabled ✓
+- Missing API source citations ✓
+- Industry breaches inconsistent ✓
+- Statistics potentially inaccurate ✓
