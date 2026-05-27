@@ -688,9 +688,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
             evidence = self._format_exploitation_evidence(cve)
             cells[2].text = evidence
 
-            # Styling for all columns
+            # Styling for all columns - white background (no fill)
             for idx in range(3):
-                self._set_cell_shading(cells[idx], "FF6B6B")  # Bright red for all exploited CVEs
+                self._clear_cell_shading(cells[idx])  # White/no fill
                 self._set_cell_borders(cells[idx], "CCCCCC")
                 for para in cells[idx].paragraphs:
                     for run in para.runs:
@@ -710,7 +710,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         caption.space_after = Pt(8)
         caption_text = (
             f"Table: {len(exploited_cves)} exploited CVEs from threat intelligence sources "
-            f"(Intel471, CrowdStrike, CISA KEV, OSINT). Red background indicates confirmed exploitation."
+            f"(Intel471, CrowdStrike, CISA KEV, OSINT)."
         )
         caption_run = caption.add_run(caption_text)
         caption_run.font.size = Pt(7)
@@ -1051,15 +1051,13 @@ class WeeklyReportGenerator(BaseReportGenerator):
         intro_run.font.italic = True
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
 
-        # Primary sources (always used)
+        # Primary sources (threat intelligence only - no Rapid7)
         primary_sources = [
             "NIST National Vulnerability Database (NVD)",
             "CISA Known Exploited Vulnerabilities (KEV) Catalog",
-            "Rapid7 InsightVM vulnerability scanning platform",
             "CrowdStrike Falcon Intelligence",
             "Intel471 Titan threat intelligence platform",
             "ThreatQ threat intelligence management platform",
-            "MITRE ATT&CK Framework"
         ]
 
         for source in primary_sources:

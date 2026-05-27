@@ -506,18 +506,19 @@ You are analyzing threat intelligence for a biotechnology/genomics/manufacturing
 This is a THREAT INTELLIGENCE report, NOT a vulnerability management report.
 
 KEY PRINCIPLES:
-- Focus on exploited vulnerabilities from Intel471, CrowdStrike, CISA KEV, and OSINT
+- Focus on NEW exploitation activity from the past 7 days
+- Report on exploited vulnerabilities from Intel471, CrowdStrike, CISA KEV, and OSINT
 - DO NOT require Rapid7 exposure data - we are reporting on intelligence-sourced threats
-- Include CVEs that are actively exploited in the wild (regardless of whether we detect them internally)
-- Provide context about threat actors, campaigns, and peer incidents
-- This report helps leadership understand the threat landscape, not manage internal patches
+- Only include CVEs with exploitation evidence from the 7-day collection window
+- Provide context about threat actors, campaigns, and peer incidents observed THIS WEEK
+- This report helps leadership understand current threats, not historical or patching status
 
-DATA SUMMARY:
-- CVEs: {len(cve_data)} records (from NVD)
-- Intel471 Threats: {len(intel471_data)} records (underground intelligence, breach reports)
-- CrowdStrike APT Activity: {len(crowdstrike_data)} records (threat actor tracking)
+DATA SUMMARY (7-DAY COLLECTION WINDOW):
+- CVEs: {len(cve_data)} records (from NVD - published in past 7 days)
+- Intel471 Threats: {len(intel471_data)} records (underground intelligence, breach reports from past 7 days)
+- CrowdStrike APT Activity: {len(crowdstrike_data)} records (threat actor activity from past 7 days)
 - ThreatQ Indicators: {len(threatq_data)} records
-- OSINT Articles: {len(osint_data)} records (public breach news, security research)
+- OSINT Articles: {len(osint_data)} records (public breach news from past 7 days)
 {intel471_context}
 {osint_context}
 
@@ -580,13 +581,14 @@ Please provide your analysis in the following JSON format:
 }}
 
 FILTERING RULES FOR CVE_ANALYSIS:
-- ONLY include CVEs with exploitation evidence:
-  * In CISA KEV catalog
-  * Mentioned in Intel471 underground/breach reports
-  * Targeted by threat actors from CrowdStrike data
-  * Reported as actively exploited in OSINT
-- DO NOT include CVEs just because they're recent or high severity
-- Limit to top 20 most critical exploited CVEs
+- ONLY include CVEs with exploitation evidence FROM THE PAST 7 DAYS:
+  * Added to CISA KEV catalog in the past 7 days
+  * Mentioned in Intel471 underground/breach reports from the past 7 days
+  * Targeted by threat actors in CrowdStrike data from the past 7 days
+  * Reported as actively exploited in OSINT articles from the past 7 days
+- DO NOT include CVEs just because they're recent, high severity, or historically exploited
+- Focus on NEW exploitation activity observed in the 7-day collection window
+- Limit to top 20 most critical exploited CVEs from this period
 
 IMPORTANT: Do NOT include a "statistics" field - statistics are calculated deterministically from the CVE data after your analysis.
 
