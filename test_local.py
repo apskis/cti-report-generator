@@ -212,100 +212,103 @@ def _print_gate_summary(session: dict, gate_info: dict, report_type: str) -> Non
 def get_mock_weekly_analysis() -> dict:
     """Generate mock data for weekly report testing."""
     return {
-        "executive_summary": """This week's threat intelligence collection identified 12 new vulnerabilities \
-affecting our environment, with 4 CVEs confirmed to be actively exploited in the wild. \
-Three APT groups with known interest in the life sciences sector were observed conducting \
-campaigns this week.
+        "executive_summary": """This week's threat intelligence collection identified 8 actively exploited vulnerabilities \
+from CISA KEV and underground intelligence sources. Three APT groups with known interest in the life sciences sector \
+were observed conducting campaigns targeting pharmaceutical supply chains.
 
-No direct threats to the organization were identified; however, the CVEs and threat actors \
-observed are consistent with those historically targeting genomics and biotech companies. \
-Immediate attention is recommended for CVE-2026-22907 (Grafana) which has public exploit code.""",
+Industry peer incidents this week include ransomware attacks against two biotech companies and a data breach at a \
+healthcare supply chain vendor. No direct threats to the organization were identified; however, the exploited CVEs \
+and threat actor TTPs are consistent with those historically targeting genomics and biotech companies. \
+Immediate attention is recommended for CVE-2026-22907 (Grafana) which has active exploitation confirmed by Intel471.""",
         "statistics": {
-            "total_cves": 12,
+            "threat_actors": 3,
+            "active_campaigns": 2,
+            "exploited_cves": 8,
+            "peer_incidents": 5,
+            # Legacy fallbacks
+            "total_cves": 8,
             "critical_count": 4,
-            "high_count": 5,
-            "exploited_count": 4,
-            "apt_groups": 3,
-            "new_this_week": 8,
-            "persistent_count": 4,
-            "resolved_count": 3,
-            "total_exposed": 12,
-            "p1_count": 2,
-            "p2_count": 4,
-            "p3_count": 6
         },
         "cve_analysis": [
             {
                 "cve_id": "CVE-2026-22907",
                 "affected_product": "Grafana",
-                "server_count": 12,
-                "exploited_by": "APT41",
-                "risk": "CRITICAL",
-                "weeks_detected": 1,
-                "exploitation_indicator": "Malformed LDAP queries in auth logs; unexpected LDAP binds"
-            },
-            {
-                "cve_id": "CVE-2026-22908",
-                "affected_product": "GLPI",
-                "server_count": 3,
-                "exploited_by": "None known",
-                "risk": "HIGH",
-                "weeks_detected": 1,
-                "exploitation_indicator": "SQL errors in application logs; UNION SELECT patterns"
+                "severity": "Critical",
+                "description": "Authentication bypass in LDAP authentication module",
+                "actively_exploited": True,
+                "in_cisa_kev": True,
+                "targeted_by_actors": "APT41",
+                "exploited_by": "CISA KEV; Underground forums (Intel471)"
             },
             {
                 "cve_id": "CVE-2026-0713",
                 "affected_product": "Windows Print Spooler",
-                "server_count": 28,
-                "exploited_by": "Ransomware groups",
-                "risk": "CRITICAL",
-                "weeks_detected": 2,
-                "exploitation_indicator": "Spoolsv.exe spawning cmd/powershell"
-            },
-            {
-                "cve_id": "CVE-2021-47757",
-                "affected_product": "Apache Log4j",
-                "endpoint_count": 142,
-                "exploited_by": "Multiple actors",
-                "risk": "CRITICAL",
-                "weeks_detected": 6,
-                "exploitation_indicator": "JNDI lookup patterns in logs"
+                "severity": "Critical",
+                "description": "Remote code execution via crafted print job",
+                "actively_exploited": True,
+                "in_cisa_kev": True,
+                "targeted_by_actors": "Ransomware groups",
+                "exploited_by": "CISA KEV; Ransomware campaigns"
             },
             {
                 "cve_id": "CVE-2025-98213",
                 "affected_product": "VMware vCenter",
-                "server_count": 6,
-                "exploited_by": "APT29",
-                "risk": "HIGH",
-                "weeks_detected": 4,
-                "exploitation_indicator": "Unauthorized API access patterns"
+                "severity": "High",
+                "description": "Authentication bypass in management API",
+                "actively_exploited": True,
+                "in_cisa_kev": False,
+                "targeted_by_actors": "APT29",
+                "exploited_by": "APT29 (CrowdStrike)"
             },
             {
                 "cve_id": "CVE-2025-12345",
                 "affected_product": "Microsoft Exchange",
-                "server_count": 47,
-                "exploited_by": "PoC available",
-                "risk": "HIGH",
-                "weeks_detected": 3,
-                "exploitation_indicator": "ProxyShell patterns in logs"
+                "severity": "High",
+                "description": "ProxyShell variant allowing remote code execution",
+                "actively_exploited": True,
+                "in_cisa_kev": True,
+                "targeted_by_actors": "",
+                "exploited_by": "CISA KEV"
+            },
+            {
+                "cve_id": "CVE-2026-22908",
+                "affected_product": "GLPI",
+                "severity": "High",
+                "description": "SQL injection in asset management module",
+                "actively_exploited": True,
+                "in_cisa_kev": False,
+                "targeted_by_actors": "",
+                "exploited_by": "Active exploitation (OSINT)"
             },
             {
                 "cve_id": "CVE-2024-5678",
-                "affected_product": "PostgreSQL",
-                "database_count": 4,
-                "exploited_by": "None observed",
-                "risk": "MEDIUM",
-                "weeks_detected": 2,
-                "exploitation_indicator": "Unusual connection attempts"
+                "affected_product": "Fortinet FortiOS",
+                "severity": "Critical",
+                "description": "Pre-authentication remote code execution",
+                "actively_exploited": True,
+                "in_cisa_kev": True,
+                "targeted_by_actors": "Multiple APT groups",
+                "exploited_by": "CISA KEV; Ransomware groups"
             },
             {
                 "cve_id": "CVE-2024-9999",
-                "affected_product": "Internal API",
-                "exposure": "Production",
-                "exploited_by": "None known",
-                "risk": "LOW",
-                "weeks_detected": 1,
-                "exploitation_indicator": "N/A"
+                "affected_product": "Apache Struts",
+                "severity": "High",
+                "description": "Remote code execution via OGNL injection",
+                "actively_exploited": True,
+                "in_cisa_kev": False,
+                "targeted_by_actors": "",
+                "exploited_by": "Underground exploit sales (Intel471)"
+            },
+            {
+                "cve_id": "CVE-2025-11111",
+                "affected_product": "Cisco IOS XE",
+                "severity": "Critical",
+                "description": "Privilege escalation in web UI",
+                "actively_exploited": True,
+                "in_cisa_kev": True,
+                "targeted_by_actors": "APT41",
+                "exploited_by": "CISA KEV"
             },
         ],
         "apt_activity": [
@@ -314,38 +317,83 @@ Immediate attention is recommended for CVE-2026-22907 (Grafana) which has public
                 "country": "China",
                 "motivation": "Espionage / Financial",
                 "activity": "Targeting pharmaceutical supply chains via compromised software updates",
-                "ttps": ["T1195.002", "T1566.001", "T1059.001"],
-                "what_to_monitor": "Software update anomalies; unexpected binary modifications"
+                "ttps": ["Initial Access: Software Supply Chain", "Execution: PowerShell", "Persistence: Registry Modification"],
+                "what_to_monitor": "Software update anomalies; unexpected binary modifications; connections to Asia-Pacific IPs",
+                "intel471_activity": "Intel471 Report 4a5b6c7d: APT41 selling access to pharmaceutical networks on underground forum",
+                "intel471_report_uid": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+                "crowdstrike_activity": "CrowdStrike detected APT41 targeting FortiOS and Grafana vulnerabilities"
             },
             {
                 "actor": "Lazarus Group",
                 "country": "North Korea",
                 "motivation": "Financial / Espionage",
                 "activity": "LinkedIn-based social engineering targeting biotech researchers",
-                "ttps": ["T1566.003", "T1204.002", "T1547.001"],
-                "what_to_monitor": "Suspicious LinkedIn outreach to research staff"
+                "ttps": ["Initial Access: Spearphishing", "Execution: User Execution", "Persistence: Boot/Logon Autostart"],
+                "what_to_monitor": "Suspicious LinkedIn outreach to research staff; unusual file downloads from cloud storage",
+                "intel471_activity": "",
+                "intel471_report_uid": "",
+                "crowdstrike_activity": "CrowdStrike observed Lazarus Group phishing campaigns targeting life sciences sector"
             },
             {
                 "actor": "LockBit Affiliates",
                 "country": "Russia",
                 "motivation": "Financial",
                 "activity": "Ransomware campaigns against healthcare and manufacturing",
-                "ttps": ["T1486", "T1490", "T1027"],
-                "what_to_monitor": "Unusual file encryption activity; VSS deletion"
+                "ttps": ["Impact: Data Encrypted", "Impact: Inhibit Recovery", "Defense Evasion: Obfuscation"],
+                "what_to_monitor": "Unusual file encryption activity; VSS deletion; lateral movement from DMZ",
+                "intel471_activity": "Intel471 Report 9z8y7x6w: LockBit affiliates advertising access to biotech companies",
+                "intel471_report_uid": "9z8y7x6w-5v4u-3t2s-1r0q-ponmlkjihgfe",
+                "crowdstrike_activity": ""
             },
         ],
-        "exploitation_indicators": [
-            "CVE-2026-22907 (Grafana): Malformed LDAP queries in auth logs; unexpected LDAP binds from Grafana to AD",
-            "CVE-2026-22908 (GLPI): SQL errors in application logs; UNION SELECT or stacked queries from web frontend",
-            "CVE-2026-0713 (Print Spooler): Spoolsv.exe spawning cmd/powershell; DLL writes to spool\\drivers directory",
-        ],
         "recommendations": [
-            "Review Rapid7 scan results for the 12 exposed vulnerabilities; validate asset ownership and remediation timelines",
-            "Persistent findings: CVE-2021-47757 (6 wks), CVE-2025-98213 (4 wks) require escalation to system owners",
-            "Brief development teams on supply chain compromise campaigns targeting software updates",
-            "Review LinkedIn connection requests for research and executive staff given social engineering activity",
-            "Verify CrowdStrike has latest behavioral IOAs enabled for ransomware detection",
-            "Confirm Splunk is receiving logs from Grafana, GLPI, and affected systems",
+            "Prioritize patching for the 8 exploited CVEs identified, particularly CVE-2026-22907 (Grafana) and CVE-2026-0713 (Print Spooler)",
+            "Review vendor security for software supply chain following APT41 campaigns targeting pharmaceutical vendors",
+            "Brief research and executive staff on LinkedIn social engineering campaigns by Lazarus Group",
+            "Verify CrowdStrike has latest behavioral IOAs enabled for ransomware and APT detection",
+            "Monitor industry peer incidents for emerging attack patterns affecting biotech organizations",
+        ],
+        "osint_sources_used": [
+            {
+                "title": "Biotech Firm Suffers Ransomware Attack",
+                "url": "https://example.com/biotech-ransomware",
+                "source": "BleepingComputer",
+                "relevance": "Peer incident showing ransomware targeting of biotech sector",
+                "date": "2026-05-25",
+                "citation_number": 1
+            },
+            {
+                "title": "Supply Chain Vendor Data Breach Affects Healthcare",
+                "url": "https://example.com/supply-chain-breach",
+                "source": "SecurityWeek",
+                "relevance": "Third-party breach affecting pharmaceutical supply chain",
+                "date": "2026-05-23",
+                "citation_number": 2
+            },
+            {
+                "title": "Grafana Authentication Bypass Exploited in Wild",
+                "url": "https://example.com/grafana-exploit",
+                "source": "The Hacker News",
+                "relevance": "Confirms active exploitation of CVE-2026-22907",
+                "date": "2026-05-24",
+                "citation_number": 3
+            },
+            {
+                "title": "APT41 Targets Pharmaceutical Companies",
+                "url": "https://example.com/apt41-pharma",
+                "source": "Dark Reading",
+                "relevance": "Intelligence on APT41 campaigns against pharmaceutical sector",
+                "date": "2026-05-26",
+                "citation_number": 4
+            },
+            {
+                "title": "Healthcare Company Hit by LockBit Ransomware",
+                "url": "https://example.com/lockbit-healthcare",
+                "source": "Healthcare IT News",
+                "relevance": "Peer incident showing LockBit targeting of healthcare sector",
+                "date": "2026-05-22",
+                "citation_number": 5
+            },
         ],
     }
 
