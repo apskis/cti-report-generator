@@ -56,6 +56,8 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     intel471_data = input.tier1_data.get("Intel471", [])
     crowdstrike_data = input.tier1_data.get("CrowdStrike", [])
     threatq_data = input.tier1_data.get("ThreatQ", [])
+    rapid7_data = input.tier1_data.get("Rapid7", [])
+    rapid7_scans_data = input.tier1_data.get("Rapid7-Scans", [])
     
     # Convert OSINT articles to the format the AI expects
     osint_data = [
@@ -70,7 +72,8 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     
     logger.info(
         f"AI analysis input: {len(cve_data)} CVEs, {len(intel471_data)} Intel471 records, "
-        f"{len(crowdstrike_data)} CrowdStrike records, {len(osint_data)} OSINT articles"
+        f"{len(crowdstrike_data)} CrowdStrike records, {len(rapid7_data)} Rapid7 records, "
+        f"{len(osint_data)} OSINT articles"
     )
     
     # Import ThreatAnalystAgent here to avoid circular dependencies
@@ -163,6 +166,8 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
                         intel471_data=intel471_data,
                         crowdstrike_data=crowdstrike_data,
                         threatq_data=threatq_data,
+                        rapid7_data=rapid7_data,
+                        rapid7_scans_data=rapid7_scans_data,
                         osint_data=osint_data
                     )
                 )
@@ -174,6 +179,8 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
                         intel471_data=intel471_data,
                         crowdstrike_data=crowdstrike_data,
                         threatq_data=threatq_data,
+                        rapid7_data=rapid7_data,
+                        rapid7_scans_data=rapid7_scans_data,
                         osint_data=osint_data
                     )
                 )
