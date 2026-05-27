@@ -23,11 +23,11 @@ collectors:
 
   - name: rapid7
     description: "Rapid7 InsightVM - Vulnerability enrichment (exploit info, malware kits)"
-    enabled: true
+    enabled: false  # Not used in weekly tactical (threat intel focused)
 
   - name: rapid7-scans
     description: "Rapid7 InsightVM Scans - CVE-to-asset exposure mapping from your environment"
-    enabled: true
+    enabled: false  # Not used in weekly tactical (threat intel focused)
 
   - name: rapid7-bulk-export
     description: "Rapid7 Bulk Export API - Comprehensive vulnerability data via GraphQL"

@@ -32,11 +32,11 @@ logger = logging.getLogger(__name__)
 
 
 # Gate sequences per report type
-# Weekly Tactical: Fast operational intelligence with CVE focus
+# Weekly Tactical: Fast operational intelligence with threat actor focus (no environment data)
 # Quarterly Geopolitical: Strategic threat landscape with source attribution
 _GATE_SEQUENCES = {
-    "weekly": ["1", "1A", "1B", "2", "3", "4", "5", "1C", "6"],  # Tactical - CVE focused, no source attribution audit
-    "quarterly": ["1", "1A", "1B", "2", "3", "4", "5", "1C", "1D", "6"],  # Strategic - includes source attribution
+    "weekly": ["1", "1A", "1B", "2", "3", "4", "5", "6"],  # Removed 1C - no environment/technology data
+    "quarterly": ["1", "1A", "1B", "2", "3", "4", "5", "1C", "1D", "6"],  # Strategic - includes tech coherence + attribution
 }
 
 _GATE_RUNNERS = {

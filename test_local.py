@@ -172,7 +172,7 @@ def _print_gate_summary(session: dict, gate_info: dict, report_type: str) -> Non
     
     # Gate sequences per report type
     gate_sequences = {
-        "weekly": ["1", "1A", "1B", "2", "3", "4", "5", "1C", "6"],
+        "weekly": ["1", "1A", "1B", "2", "3", "4", "5", "6"],  # No Gate 1C
         "quarterly": ["1", "1A", "1B", "2", "3", "4", "5", "1C", "1D", "6"],
     }
     sequence = gate_sequences.get(report_type.lower(), gate_sequences["weekly"])
