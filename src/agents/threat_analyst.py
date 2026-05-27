@@ -547,7 +547,8 @@ Please provide your analysis in the following JSON format:
       "actively_exploited": true/false,
       "in_cisa_kev": true/false,
       "targeted_by_actors": "REQUIRED if actively exploited: List specific threat actors exploiting this CVE from Intel471 or CrowdStrike data (e.g., 'APT28', 'Lazarus Group', 'FIN7'). Leave empty string if no actor targeting is known.",
-      "exploited_by": "Source of exploitation evidence (e.g., 'CISA KEV', 'Ransomware groups (Intel471)', 'Active exploitation (CrowdStrike)', 'Unknown')"
+      "exploited_by": "Source of exploitation evidence (e.g., 'CISA KEV', 'Ransomware groups (Intel471)', 'Active exploitation (CrowdStrike)', 'Unknown')",
+      "source_citations": ["CISA KEV", "Intel471", "CrowdStrike", "NVD"] // Array listing which APIs provided intelligence for this CVE. Used to build References section.
     }}
   ],
   "apt_activity": [
@@ -560,7 +561,8 @@ Please provide your analysis in the following JSON format:
       "what_to_monitor": "Specific indicators and detection recommendations (e.g., 'Monitor for PowerShell activity; Watch for connections to Asia-Pacific regions; Scan for credential harvesting')",
       "intel471_activity": "If Intel471 provided underground activity for this actor, include it here with REPORT UID (e.g., 'Intel471 Report abc123: Actor selling access to biotech networks on underground forum')",
       "intel471_report_uid": "REQUIRED if intel471_activity is provided: The exact UID from Intel471 data (e.g., 'abc123-def456-ghi789')",
-      "crowdstrike_activity": "If CrowdStrike provided detection or targeting data for this actor, include it here"
+      "crowdstrike_activity": "If CrowdStrike provided detection or targeting data for this actor, include it here",
+      "source_citations": ["Intel471", "CrowdStrike"] // Array listing which APIs provided intelligence for this actor. Used to build References section.
     }}
   ],
   "recommendations": [

@@ -648,9 +648,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
         text_run.font.color.rgb = BrandColors.TEXT_DARK
         text_run.font.italic = True
 
-        # Create table (removed "Wks" and "Exposure" columns - no environment data)
-        table = self.doc.add_table(rows=1, cols=3)
-        headers = ["CVE ID", "Affected Product", "Exploitation Evidence"]
+        # Create table: CVE ID | Affected Product | Exploitation Evidence | Source
+        table = self.doc.add_table(rows=1, cols=4)
+        headers = ["CVE ID", "Affected Product", "Exploitation Evidence", "Source"]
         header_cells = table.rows[0].cells
         table_caption_7pt = Pt(7)
 
@@ -687,9 +687,18 @@ class WeeklyReportGenerator(BaseReportGenerator):
             # Column 2: Exploitation Evidence (source of exploitation intel)
             evidence = self._format_exploitation_evidence(cve)
             cells[2].text = evidence
+            
+            # Column 3: Source Citations (e.g., [1][2][3])
+            source_citations = cve.get("source_citations", [])
+            if isinstance(source_citations, list) and source_citations:
+                # Build citation string: [1][2][3]
+                citation_str = "".join([f"[{i}]" for i, src in enumerate(source_citations, 1)])
+                cells[3].text = citation_str
+            else:
+                cells[3].text = "[1]"  # Default to NVD
 
             # Styling for all columns - white background (no fill)
-            for idx in range(3):
+            for idx in range(4):
                 self._clear_cell_shading(cells[idx])  # White/no fill
                 self._set_cell_borders(cells[idx], "CCCCCC")
                 for para in cells[idx].paragraphs:
@@ -699,10 +708,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
                         if idx == 0:  # Bold CVE ID
                             run.font.bold = True
 
-        # Set column widths (CVE ID narrower, Product wider, Evidence medium)
-        table.columns[0].width = Inches(1.2)
-        table.columns[1].width = Inches(3.0)
-        table.columns[2].width = Inches(2.0)
+        # Set column widths (CVE ID narrower, Product wider, Evidence medium, Source narrow)
+        table.columns[0].width = Inches(1.0)
+        table.columns[1].width = Inches(2.5)
+        table.columns[2].width = Inches(1.8)
+        table.columns[3].width = Inches(0.9)
 
         # Caption
         caption = self.doc.add_paragraph()
@@ -1051,38 +1061,67 @@ class WeeklyReportGenerator(BaseReportGenerator):
         intro_run.font.italic = True
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
 
-        # Primary sources - only list those that provided data this week
-        # Check analysis_result for which sources actually returned data
+        # Collect all API sources actually cited in analysis
+        api_sources_used = set()
+        
+        # Check CVE analysis for source citations
+        cve_analysis = analysis_result.get("cve_analysis", [])
+        for cve in cve_analysis:
+            if isinstance(cve, dict):
+                sources = cve.get("source_citations", [])
+                if isinstance(sources, list):
+                    api_sources_used.update(sources)
+        
+        # Check APT activity for source citations
+        apt_activity = analysis_result.get("apt_activity", [])
+        for apt in apt_activity:
+            if isinstance(apt, dict):
+                sources = apt.get("source_citations", [])
+                if isinstance(sources, list):
+                    api_sources_used.update(sources)
+        
+        # Build primary sources list based on what was actually used
         primary_sources = []
         
         # Always include NVD (CVE database)
-        primary_sources.append("NIST National Vulnerability Database (NVD)")
+        primary_sources.append(("NVD", "NIST National Vulnerability Database (NVD)"))
         
-        # Always include CISA KEV (for exploitation context)
-        primary_sources.append("CISA Known Exploited Vulnerabilities (KEV) Catalog")
+        # Include CISA KEV if any CVEs are in KEV
+        if any(cve.get("in_cisa_kev") for cve in cve_analysis if isinstance(cve, dict)):
+            primary_sources.append(("CISA KEV", "CISA Known Exploited Vulnerabilities (KEV) Catalog"))
         
-        # Only include Intel471 if data was used
-        intel471_data = analysis_result.get("apt_activity", [])
-        has_intel471 = any(apt.get("intel471_activity") or apt.get("intel471_report_uid") 
-                          for apt in intel471_data if isinstance(apt, dict))
-        if has_intel471:
-            primary_sources.append("Intel471 Titan threat intelligence platform")
+        # Include Intel471 if cited
+        if "Intel471" in api_sources_used:
+            primary_sources.append(("Intel471", "Intel471 Titan threat intelligence platform"))
         
-        # Only include CrowdStrike if data was used  
-        crowdstrike_data = analysis_result.get("apt_activity", [])
-        has_crowdstrike = any(apt.get("crowdstrike_activity") 
-                             for apt in crowdstrike_data if isinstance(apt, dict))
-        if has_crowdstrike or len(crowdstrike_data) > 0:
-            primary_sources.append("CrowdStrike Falcon Intelligence")
+        # Include CrowdStrike if cited
+        if "CrowdStrike" in api_sources_used:
+            primary_sources.append(("CrowdStrike", "CrowdStrike Falcon Intelligence"))
         
-        # Only include ThreatQ if indicators were used (usually disabled)
-        # ThreatQ data would show up in analysis if it was collected
-        # For now, we don't include it since it's typically disabled
+        # Include ThreatQ if cited (usually disabled)
+        if "ThreatQ" in api_sources_used:
+            primary_sources.append(("ThreatQ", "ThreatQ threat intelligence management platform"))
 
-        for source in primary_sources:
-            para = self.doc.add_paragraph(source, style="List Bullet")
-            for run in para.runs:
-                run.font.size = FontSizes.BODY_SMALL
+        # Add numbered citations for API sources
+        citation_map = {}
+        citation_counter = 1
+        
+        for short_name, full_name in primary_sources:
+            para = self.doc.add_paragraph(style="List Bullet")
+            
+            # Add citation number
+            cite_run = para.add_run(f"[{citation_counter}] ")
+            cite_run.font.size = FontSizes.BODY_SMALL
+            cite_run.font.bold = True
+            cite_run.font.color.rgb = BrandColors.TEXT_DARK
+            
+            # Add source name
+            source_run = para.add_run(full_name)
+            source_run.font.size = FontSizes.BODY_SMALL
+            
+            # Store mapping for use in tables
+            citation_map[short_name] = citation_counter
+            citation_counter += 1
 
         # OSINT sources (if any were listed by the AI)
         osint_sources = analysis_result.get("osint_sources_used", [])

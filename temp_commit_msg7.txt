@@ -1,0 +1,18 @@
+Add API source citation system and improve breach tracking
+
+1. API Source Citations (Issue 2):
+   - AI prompt now requires source_citations array in cve_analysis and apt_activity
+   - Resources section dynamically collects API sources from analysis (no hardcoded list)
+   - API sources now numbered [1], [2], [3] etc. like OSINT sources
+   - Exploited Vulnerabilities table adds "Source" column showing citation numbers
+   - Only lists sources actually cited in the analysis
+
+2. Resources Validation (Issue 1 - from previous commit):
+   - Gate 6 now validates disabled sources not listed in resources
+   - Resources section checks for source_citations to determine what to include
+   - ThreatQ no longer appears unless actually cited
+
+3. Next: Investigate breach extraction inconsistency (Issue 3):
+   - User reported different breaches appearing between runs
+   - Need to verify _extract_breach_incidents() logic is stable
+   - May need to add breach deduplication or more selective filtering
