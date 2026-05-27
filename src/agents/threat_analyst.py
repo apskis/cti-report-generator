@@ -495,8 +495,9 @@ OSINT - CURATED PUBLIC INTELLIGENCE ({len(osint_data)} articles from vetted sour
 Use these OSINT articles to:
 - Provide additional context for CVEs or threat actors mentioned
 - Identify emerging threats not yet in commercial feeds
-- If an article is particularly relevant to your analysis, include it in osint_sources_used with its title and URL
-- You can reference specific articles in the executive summary if they provide unique insights
+- Track peer incidents (company breaches) for Industry Incidents section
+- ONLY include articles in osint_sources_used if you actually reference them in your analysis
+- Do NOT list all 30 articles - be selective and only cite those that add value
 """
 
         return f"""Analyze this threat intelligence data and provide a comprehensive report.
@@ -580,6 +581,12 @@ Please provide your analysis in the following JSON format:
     }}
   ]
 }}
+
+CRITICAL - OSINT Source Selection:
+- ONLY include articles you actually cite or reference in your analysis
+- DO NOT include all 30 articles - be highly selective (aim for 5-10 max)
+- Each article must have been used to inform your CVE analysis, threat actor profiles, or peer incidents
+- If an article provides no unique value, do NOT include it
 
 FILTERING RULES FOR CVE_ANALYSIS:
 - Include CVEs that have current exploitation relevance:
