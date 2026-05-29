@@ -347,6 +347,71 @@ def _validate_quarterly_statistics(gate_input: GateInput) -> GateResult:
         "details": f"Geopolitical signals: {'present' if has_geopolitical else 'absent'}"
     })
     
+    # NEW VALIDATION 4: Breach statistics accuracy (if Gate 5 has run)
+    gate5_result = gate_input.prior_results.get("5")
+    if gate5_result and gate5_result.status == "COMPLETE":
+        report = gate5_result.payload.get("report", {})
+        breach_landscape = report.get("breach_landscape", {})
+        stat_cards = breach_landscape.get("stat_cards", [])
+        
+        # Get actual Intel471 breach alerts
+        intel471_data = gate_input.tier1_data.get("Intel471", [])
+        actual_breach_count = sum(
+            1 for item in intel471_data 
+            if "BREACH" in str(item.get("threat_type", "")).upper()
+        )
+        
+        # Find "Total Incidents" stat card
+        total_incidents_card = next(
+            (card for card in stat_cards if "Total Incidents" in card.get("label", "") or "Incidents" in card.get("label", "")),
+            None
+        )
+        
+        if total_incidents_card:
+            try:
+                reported_count = int(str(total_incidents_card.get("value", "0")).replace(",", ""))
+                variance = abs(reported_count - actual_breach_count)
+                
+                if variance > 5:  # Allow small variance for data filtering
+                    warnings.append(
+                        f"Breach count variance: report shows {reported_count} incidents, "
+                        f"Intel471 data contains {actual_breach_count} breach alerts (variance: {variance})"
+                    )
+                
+                validations.append({
+                    "check": "breach_count_accuracy",
+                    "passed": variance <= 5,
+                    "details": f"Reported: {reported_count}, Actual: {actual_breach_count}, Variance: {variance}"
+                })
+            except (ValueError, AttributeError) as e:
+                logger.warning(f"Could not validate breach count: {e}")
+    
+    # NEW VALIDATION 5: Quarter-over-quarter changes have proper signs
+    if gate5_result and gate5_result.status == "COMPLETE":
+        report = gate5_result.payload.get("report", {})
+        breach_landscape = report.get("breach_landscape", {})
+        stat_cards = breach_landscape.get("stat_cards", [])
+        
+        missing_signs = []
+        for card in stat_cards:
+            change_pct = card.get("change_pct", "")
+            label = card.get("label", "")
+            
+            # Check if change_pct exists and has proper +/- sign
+            if change_pct and change_pct != "0%" and not (change_pct.startswith("+") or change_pct.startswith("-")):
+                missing_signs.append(f"{label}: '{change_pct}'")
+        
+        if missing_signs:
+            warnings.append(
+                f"Stat cards missing +/- signs in change_pct: {', '.join(missing_signs)}"
+            )
+        
+        validations.append({
+            "check": "stat_cards_have_signs",
+            "passed": len(missing_signs) == 0,
+            "details": f"Checked {len(stat_cards)} stat cards, {len(missing_signs)} missing signs"
+        })
+    
     logger.info(f"Quarterly statistics validation: {len(validations)} checks, "
                 f"{len(warnings)} warnings, {len(errors)} errors")
     
