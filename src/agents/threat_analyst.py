@@ -201,7 +201,7 @@ class ThreatAnalystAgent:
             # Configure execution settings
             settings = AzureChatPromptExecutionSettings(
                 response_format={"type": "json_object"},
-                temperature=0.3,
+                temperature=0.1,  # Very low for consistent breach extraction
             )
 
             # Get response from GPT
@@ -493,11 +493,16 @@ OSINT - CURATED PUBLIC INTELLIGENCE ({len(osint_data)} articles from vetted sour
 {json.dumps(osint_articles, indent=2)}
 
 Use these OSINT articles to:
-- Provide additional context for CVEs or threat actors mentioned
-- Identify emerging threats not yet in commercial feeds
-- Track peer incidents (company breaches) for Industry Incidents section
-- ONLY include articles in osint_sources_used if you actually reference them in your analysis
-- Do NOT list all 30 articles - be selective and only cite those that add value
+1. INDUSTRY INCIDENTS (PRIMARY USE): Extract company breaches from article titles
+   - Look for patterns like "Company X breach", "Organization Y hacked", "Ransomware hits Z"
+   - Be generous with extraction - even partial company names are valuable
+   - Example: "GitHub confirms data breach" → organization: "GitHub", incident_type: "Breach"
+   - These go in industry_incidents array with osint_citation_number
+2. Provide additional context for CVEs or threat actors mentioned
+3. Identify emerging threats not yet in commercial feeds
+4. Track peer incidents (company breaches) for Industry Incidents section
+5. ONLY include articles in osint_sources_used if you actually reference them in your analysis
+6. Do NOT list all 30 articles - be selective and only cite those that add value
 """
 
         return f"""Analyze this threat intelligence data and provide a comprehensive report.
@@ -512,7 +517,8 @@ KEY PRINCIPLES:
 - Include CVEs in CISA KEV catalog (shows ongoing exploitation relevance)
 - Include CVEs mentioned in Intel471/CrowdStrike/OSINT data from this week
 - DO NOT require Rapid7 exposure data - this is threat intelligence, not vulnerability management
-- Provide context about threat actors active this week and recent peer incidents
+- ALWAYS mention peer incidents in executive summary - leadership cares about real-world breaches
+- Extract and highlight company breaches from OSINT - these show the active threat landscape
 - This report helps leadership understand current threats in the wild
 
 DATA SUMMARY (7-DAY COLLECTION WINDOW):
@@ -529,7 +535,14 @@ RAW DATA:
 
 Please provide your analysis in the following JSON format:
 {{
-  "executive_summary": "2-3 paragraph summary highlighting the most critical threats from intelligence sources. Focus on: (1) Threat actors targeting our sector, (2) Exploited vulnerabilities from CISA KEV / threat intelligence, (3) Industry peer incidents. If referencing OSINT intelligence, add inline citations like [1], [2] matching the osint_sources_used array. DO NOT reference source names directly - use citations.",
+  "executive_summary": "2-3 paragraph summary highlighting the most critical threats from intelligence sources. 
+  
+  MUST INCLUDE:
+  (1) Threat actors targeting our sector from Intel471/CrowdStrike
+  (2) Exploited vulnerabilities from CISA KEV / threat intelligence
+  (3) Industry peer incidents - ALWAYS mention key breaches from the industry_incidents array by company name (e.g., 'This week saw major breaches at Carnival Corporation (6M records) and Charter Communications (13M records), demonstrating ongoing targeting of large enterprises.')
+  
+  If referencing OSINT intelligence, add inline citations like [1], [2] matching the osint_sources_used array. DO NOT reference source names directly - use citations. Make peer incidents prominent - they show real-world impact and active threat landscape.",
   "top_threats": [
     {{
       "threat": "Description of threat (from intelligence sources)",
@@ -574,12 +587,14 @@ Please provide your analysis in the following JSON format:
   ],
   "industry_incidents": [
     {{
-      "organization": "SPECIFIC victim company name (NOT generic like 'US Law Firms' or 'Healthcare Sector'). Must be an actual named organization, e.g., 'Morrison & Foerster LLP', 'City Hospital', 'Acme Manufacturing'. If article doesn't name specific victim, do NOT include the incident.",
+      "organization": "REQUIRED: EXACT victim company/organization name. MUST be specific like 'Morrison & Foerster LLP', 'City Hospital', 'Acme Manufacturing'. 
+                      FORBIDDEN: Generic terms like 'Healthcare Sector', 'US Law Firms', 'Life sciences companies', 'Biotech firms', 'Multiple organizations'.
+                      FORBIDDEN: Breach aggregation sites like 'Databreach+' or descriptions like 'site operated by X'.
+                      If the Intel471 or OSINT source does NOT name the specific victim, do NOT include this incident.",
       "incident_type": "Ransomware/Breach/Data Leak/DDoS/Supply Chain",
-      "date": "YYYY-MM-DD from article publish date",
-      "source": "Publication name (e.g., 'BleepingComputer')",
-      "url": "Article URL",
-      "osint_citation_number": 1  // Match to osint_sources_used array
+      "date": "YYYY-MM-DD from Intel471 breach alert publish date or OSINT article date",
+      "source": "Intel471 or Publication name (e.g., 'BleepingComputer')",
+      "osint_citation_number": 1  // Only for OSINT incidents - match to osint_sources_used array. Omit for Intel471.
     }}
   ],
   "osint_sources_used": [
@@ -594,11 +609,47 @@ Please provide your analysis in the following JSON format:
   ]
 }}
 
-CRITICAL - OSINT Source Selection:
-- ONLY include articles you actually cite or reference in your analysis
+CRITICAL - OSINT Source Selection and Usage:
+- ONLY include articles in osint_sources_used if you ACTUALLY REFERENCE them in your analysis
 - DO NOT include all 30 articles - be highly selective (aim for 5-10 max)
-- Each article must have been used to inform your CVE analysis, threat actor profiles, or peer incidents
-- If an article provides no unique value, do NOT include it
+- Each article must be ACTIVELY USED for one of these purposes:
+  1. Industry incident extraction (company breach mentioned in executive summary or incidents table)
+  2. CVE context (article discusses exploitation of a specific CVE you're analyzing)
+  3. Threat actor context (article provides intelligence about an APT group you're profiling)
+- If you list an OSINT source, it MUST appear as a citation [1], [2] in:
+  * Executive summary text (inline citations)
+  * Industry incidents table (osint_citation_number column)
+  * CVE description or context (if article discusses that CVE)
+- WRONG: Listing 7 OSINT sources but none are cited anywhere in the report
+- RIGHT: Listing 5 OSINT sources, all cited in executive summary or incidents table
+- If an article provides no unique value or you don't reference it, DO NOT include it in osint_sources_used
+
+CRITICAL - Industry Incidents (Peer Breaches):
+- BE COMPREHENSIVE: Extract ALL breaches you can find - aim for 10-20 incidents per week
+- Include ALL breach incidents from Intel471 breach alerts (even if not biotech-specific)
+- Intel471 breach alerts show real victim organizations under attack - these are HIGH VALUE for peer context
+- Also include EVERY specific company breach from OSINT articles (must name actual victim organization)
+- Review ALL OSINT articles carefully - breach news is spread across multiple sources
+- For Intel471 breaches: set source="Intel471", omit osint_citation_number
+- For OSINT breaches: set source="Publication name", include osint_citation_number
+- DO NOT include generic threats like "Healthcare Sector" or "US Law Firms" - must be named victims
+- If NO specific victim organizations are named in Intel471 or OSINT this week, return EMPTY array: []
+- DO NOT create placeholder entries like "No organizations reported" - just use empty array
+- Typical weekly report should have 10-20 peer incidents total from Intel471 + OSINT
+- CONSISTENCY: Extract the same incidents every time - don't randomly skip some breaches
+
+HOW TO EXTRACT BREACH VICTIMS FROM OSINT:
+- Look for company/organization names in article titles and URLs
+- Common patterns: "Company X suffers breach", "Ransomware hits Organization Y", "Hackers breach Company Z"
+- Extract the organization name from the title - be generous, even partial names are valuable
+- REAL EXAMPLES from May 2026 OSINT (these ARE in your data):
+  * "Carnival Cruise confirms data breach affecting nearly 6 million people" → organization: "Carnival Corporation", incident_type: "Breach", date: "2026-05-28"
+  * "Charter confirms data breach after ShinyHunters extortion threat" → organization: "Charter Communications", incident_type: "Breach", date: "2026-05-26"
+  * "GitHub Breach 2026: Poisoned VS Code Extension Stole 3,800 Internal Repositories" → organization: "GitHub", incident_type: "Breach", date: "2026-05-20"
+  * "Qilin Hit Covenant Health Hospitals for 480K Records" → organization: "Covenant Health", incident_type: "Ransomware", date: "2026-05-26"
+- If you can identify ANY company/organization name from the article title, include it
+- Don't be overly strict - extract the company name even if you don't have all details
+- Better to include a breach than skip it - peer incident awareness is CRITICAL VALUE
 
 FILTERING RULES FOR CVE_ANALYSIS:
 - Include CVEs that have current exploitation relevance:
@@ -1381,7 +1432,8 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
         self,
         intel471_data: List[Dict],
         crowdstrike_data: List[Dict],
-        breach_data: List[Dict] | None = None
+        breach_data: List[Dict] | None = None,
+        illumina_context: str = ""
     ) -> Dict[str, Any]:
         """
         Analyze threat intelligence data for quarterly strategic reports.
@@ -1393,6 +1445,7 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
             intel471_data: List of threat intelligence from Intel471
             crowdstrike_data: List of APT intelligence from CrowdStrike
             breach_data: Optional list of industry breach incidents
+            illumina_context: Current Illumina company context from public sources
 
         Returns:
             Dictionary containing strategic analysis results
@@ -1407,7 +1460,7 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
 
             # Build strategic analysis prompt
             strategic_prompt = self._build_strategic_prompt(
-                intel471_data, crowdstrike_data, breach_data
+                intel471_data, crowdstrike_data, breach_data, illumina_context
             )
 
             # Create chat history with strategic system prompt
@@ -1418,7 +1471,7 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
             # Configure execution settings
             settings = AzureChatPromptExecutionSettings(
                 response_format={"type": "json_object"},
-                temperature=0.3,
+                temperature=0.1,  # Very low for consistent breach extraction
             )
 
             # Get response from GPT
@@ -1467,8 +1520,106 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
 
         # Fill breach_landscape if AI left zeros or missing fields
         bl = analysis_result.get("breach_landscape", {})
-        if bl and bl.get("total_incidents") in (0, None, "N/A") and breach_data:
-            bl["total_incidents"] = len(breach_data)
+        if bl:
+            # Check if using old schema (has total_incidents but missing stat_cards)
+            if "stat_cards" not in bl and "total_incidents" in bl:
+                logger.warning("breach_landscape is old schema, converting to new format")
+                # Convert old schema to new schema
+                total_incidents = bl.get("total_incidents", 0)
+                prev_total = bl.get("prev_total_incidents", 0)
+                total_impact = bl.get("total_impact_millions", 0)
+                prev_impact = bl.get("prev_total_impact", 0)
+                ransomware_count = bl.get("ransomware_count", 0)
+                prev_ransomware = bl.get("prev_ransomware", 0)
+                records_exposed = bl.get("records_exposed_millions", 0)
+                prev_records = bl.get("prev_records", 0)
+                
+                def calc_pct_change(current, prior):
+                    if not prior or prior == 0:
+                        return "+0%"
+                    try:
+                        curr = float(current)
+                        prev = float(prior)
+                        if prev == 0:
+                            return "+0%"
+                        change = ((curr - prev) / prev) * 100
+                        if change > 0:
+                            return f"+{int(change)}%"
+                        elif change < 0:
+                            return f"{int(change)}%"
+                        else:
+                            return "0%"
+                    except (ValueError, TypeError):
+                        return "0%"
+                
+                # Determine quarter labels
+                from datetime import datetime
+                today = datetime.now()
+                current_q = (today.month - 1) // 3 + 1
+                current_year = today.year
+                prior_q = current_q - 1 if current_q > 1 else 4
+                prior_year = current_year if current_q > 1 else current_year - 1
+                
+                analysis_result["breach_landscape"] = {
+                    "scope_note": f"Publicly disclosed incidents affecting life sciences, pharmaceutical, biotechnology, healthcare, and advanced manufacturing organizations during Q{current_q} {current_year}.",
+                    "stat_cards": [
+                        {
+                            "value": str(total_incidents),
+                            "label": "Total Incidents",
+                            "prior_label": f"Q{prior_q} {prior_year}",
+                            "prior_value": str(prev_total),
+                            "change_pct": calc_pct_change(total_incidents, prev_total)
+                        },
+                        {
+                            "value": f"${total_impact}M",
+                            "label": "Est. Total Impact",
+                            "prior_label": f"Q{prior_q} {prior_year}",
+                            "prior_value": f"${prev_impact}M",
+                            "change_pct": calc_pct_change(total_impact, prev_impact)
+                        },
+                        {
+                            "value": str(ransomware_count),
+                            "label": "Ransomware",
+                            "prior_label": f"Q{prior_q} {prior_year}",
+                            "prior_value": str(prev_ransomware),
+                            "change_pct": calc_pct_change(ransomware_count, prev_ransomware)
+                        },
+                        {
+                            "value": f"{records_exposed}M",
+                            "label": "Records Exposed",
+                            "prior_label": f"Q{prior_q} {prior_year}",
+                            "prior_value": f"{prev_records}M",
+                            "change_pct": calc_pct_change(records_exposed, prev_records)
+                        }
+                    ],
+                    "incidents_by_type": analysis_result.get("incidents_by_type", []),
+                    "current_quarter_label": f"Q{current_q} {current_year}",
+                    "prior_quarter_label": f"Q{prior_q} {prior_year}",
+                    "common_factors": analysis_result.get("common_factors", "Analysis pending - manual review of threat data recommended")
+                }
+                gaps_filled += 1
+        elif breach_data:
+            # No breach_landscape at all, create minimal one
+            from datetime import datetime
+            today = datetime.now()
+            current_q = (today.month - 1) // 3 + 1
+            current_year = today.year
+            prior_q = current_q - 1 if current_q > 1 else 4
+            prior_year = current_year if current_q > 1 else current_year - 1
+            
+            analysis_result["breach_landscape"] = {
+                "scope_note": f"Publicly disclosed incidents affecting life sciences, pharmaceutical, biotechnology, healthcare, and advanced manufacturing organizations during Q{current_q} {current_year}.",
+                "stat_cards": [
+                    {"value": "0", "label": "Total Incidents", "prior_label": f"Q{prior_q} {prior_year}", "prior_value": "0", "change_pct": "0%"},
+                    {"value": "$0M", "label": "Est. Total Impact", "prior_label": f"Q{prior_q} {prior_year}", "prior_value": "$0M", "change_pct": "0%"},
+                    {"value": "0", "label": "Ransomware", "prior_label": f"Q{prior_q} {prior_year}", "prior_value": "0", "change_pct": "0%"},
+                    {"value": "0M", "label": "Records Exposed", "prior_label": f"Q{prior_q} {prior_year}", "prior_value": "0M", "change_pct": "0%"}
+                ],
+                "incidents_by_type": [],
+                "current_quarter_label": f"Q{current_q} {current_year}",
+                "prior_quarter_label": f"Q{prior_q} {prior_year}",
+                "common_factors": "Analysis pending - manual review of threat data recommended"
+            }
             gaps_filled += 1
 
         # Fill risk_assessment if completely missing
@@ -1485,28 +1636,155 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
             }
             gaps_filled += 1
 
-        # Fill geopolitical_threats if missing
-        geo = analysis_result.get("geopolitical_threats", {})
-        if not geo:
+        # Fill geopolitical_threats if missing or empty
+        geo = analysis_result.get("geopolitical_threats", [])
+        
+        # Handle both old dict format and new list format
+        if isinstance(geo, dict):
+            # Old format - convert to new format or skip
+            logger.warning("geopolitical_threats is old dict format, converting to list")
             china_count = len([a for a in crowdstrike_data if self._is_china_related(a)])
             russia_count = len([a for a in crowdstrike_data if self._is_russia_related(a)])
             nk_count = len([a for a in crowdstrike_data if self._is_nk_related(a)])
-            analysis_result["geopolitical_threats"] = {
-                "china": {
-                    "strategic_context": "China designates biotechnology as a strategic priority.",
-                    "activity": f"Observed {china_count} China-linked actor groups this quarter.",
-                    "implications": "Potential IP theft risk for proprietary research."
+            
+            # Convert old dict to new list format
+            converted_list = []
+            if geo.get("china"):
+                converted_list.append({
+                    "name": "China",
+                    "level": "HIGH",
+                    "vector": "Espionage — IP theft",
+                    "exposure": "CRITICAL",
+                    "relevance": [geo["china"].get("strategic_context", "")],
+                    "activity": [geo["china"].get("activity", "")],
+                    "risk": [geo["china"].get("implications", "")]
+                })
+            if geo.get("russia"):
+                converted_list.append({
+                    "name": "Russia",
+                    "level": "HIGH",
+                    "vector": "Ransomware — Disruption",
+                    "exposure": "HIGH",
+                    "relevance": [geo["russia"].get("strategic_context", "")],
+                    "activity": [geo["russia"].get("activity", "")],
+                    "risk": [geo["russia"].get("implications", "")]
+                })
+            if geo.get("north_korea"):
+                converted_list.append({
+                    "name": "North Korea",
+                    "level": "MEDIUM",
+                    "vector": "Financial theft — Dual-use IP",
+                    "exposure": "MEDIUM",
+                    "relevance": [geo["north_korea"].get("strategic_context", "")],
+                    "activity": [geo["north_korea"].get("activity", "")],
+                    "risk": [geo["north_korea"].get("implications", "")]
+                })
+            
+            analysis_result["geopolitical_threats"] = converted_list
+            gaps_filled += 1
+        elif not geo:
+            # Empty list - provide defaults
+            china_count = len([a for a in crowdstrike_data if self._is_china_related(a)])
+            russia_count = len([a for a in crowdstrike_data if self._is_russia_related(a)])
+            nk_count = len([a for a in crowdstrike_data if self._is_nk_related(a)])
+            analysis_result["geopolitical_threats"] = [
+                {
+                    "name": "China",
+                    "level": "HIGH",
+                    "vector": "Espionage — IP theft",
+                    "exposure": "CRITICAL",
+                    "relevance": ["China designates biotechnology as a strategic priority."],
+                    "activity": [f"Observed {china_count} China-linked actor groups this quarter."],
+                    "risk": ["Potential IP theft risk for proprietary research."]
                 },
-                "russia": {
-                    "strategic_context": "Russian criminal groups pose significant ransomware risk.",
-                    "activity": f"Observed {russia_count} Russia-linked actor groups this quarter.",
-                    "implications": "Ransomware incidents can cause major operational disruption."
+                {
+                    "name": "Russia",
+                    "level": "HIGH",
+                    "vector": "Ransomware — Disruption",
+                    "exposure": "HIGH",
+                    "relevance": ["Russian criminal groups pose significant ransomware risk."],
+                    "activity": [f"Observed {russia_count} Russia-linked actor groups this quarter."],
+                    "risk": ["Ransomware incidents can cause major operational disruption."]
                 },
-                "north_korea": {
-                    "strategic_context": "NK cyber operations target pharmaceutical and healthcare sectors.",
-                    "activity": f"Observed {nk_count} North Korea-linked actor groups this quarter.",
-                    "implications": "Social engineering risk for research personnel."
+                {
+                    "name": "North Korea",
+                    "level": "MEDIUM",
+                    "vector": "Financial theft — Dual-use IP",
+                    "exposure": "MEDIUM",
+                    "relevance": ["NK cyber operations target pharmaceutical and healthcare sectors."],
+                    "activity": [f"Observed {nk_count} North Korea-linked actor groups this quarter."],
+                    "risk": ["Social engineering risk for research personnel."]
                 }
+            ]
+            gaps_filled += 1
+
+        # Fill looking_ahead if missing or using old format
+        looking_ahead = analysis_result.get("looking_ahead", {})
+        if looking_ahead:
+            # Check if using old format (has threat_outlook/planned_initiatives/watch_items as strings)
+            if isinstance(looking_ahead.get("watch_items"), str):
+                logger.warning("looking_ahead is old format (watch_items is string), converting to new format")
+                from datetime import datetime
+                today = datetime.now()
+                next_q = (today.month - 1) // 3 + 2
+                next_year = today.year
+                if next_q > 4:
+                    next_q = 1
+                    next_year += 1
+                
+                # Convert old string-based format to new list format
+                analysis_result["looking_ahead"] = {
+                    "next_quarter_label": f"Q{next_q} {next_year}",
+                    "watch_items": [
+                        {
+                            "subject": "Threat landscape monitoring",
+                            "detail": "continues to be essential as adversary capabilities evolve and targeting patterns shift."
+                        }
+                    ]
+                }
+                gaps_filled += 1
+        else:
+            # No looking_ahead at all, create minimal one
+            from datetime import datetime
+            today = datetime.now()
+            next_q = (today.month - 1) // 3 + 2
+            next_year = today.year
+            if next_q > 4:
+                next_q = 1
+                next_year += 1
+            
+            analysis_result["looking_ahead"] = {
+                "next_quarter_label": f"Q{next_q} {next_year}",
+                "watch_items": []
+            }
+            gaps_filled += 1
+
+        # Fill recommendations if missing or using old tuple format
+        recommendations = analysis_result.get("recommendations", [])
+        if recommendations:
+            # Check if using old tuple/list format
+            if isinstance(recommendations, list) and len(recommendations) > 0:
+                if isinstance(recommendations[0], (tuple, list)):
+                    logger.warning("recommendations is old tuple/list format, converting to new format")
+                    # Convert old tuple format to new dict format
+                    new_items = []
+                    for rec in recommendations[:3]:  # Take first 3
+                        if isinstance(rec, (tuple, list)) and len(rec) >= 2:
+                            new_items.append({
+                                "title": rec[0],
+                                "body": rec[1]
+                            })
+                    
+                    analysis_result["recommendations"] = {
+                        "intro_note": "Three prioritized actions informed by quarterly intelligence findings.",
+                        "items": new_items
+                    }
+                    gaps_filled += 1
+        else:
+            # No recommendations at all, create minimal one
+            analysis_result["recommendations"] = {
+                "intro_note": "Recommendations pending - manual review of threat data recommended.",
+                "items": []
             }
             gaps_filled += 1
 
@@ -1519,7 +1797,8 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
         self,
         intel471_data: List[Dict],
         crowdstrike_data: List[Dict],
-        breach_data: List[Dict] | None
+        breach_data: List[Dict] | None,
+        illumina_context: str = ""
     ) -> str:
         """Build the strategic analysis prompt for quarterly reports."""
         breach_data = breach_data or []
@@ -1532,12 +1811,34 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
         # Get target industries from config
         target_industries = ", ".join(industry_filter_config.target_industries)
         
+        # Build Illumina context section if available
+        illumina_context_section = ""
+        if illumina_context:
+            illumina_context_section = f"""
+## Current Illumina Company Context (sourced from public disclosures this quarter)
+
+{illumina_context}
+
+IMPORTANT: Use the above Illumina context to ground your geopolitical_threats "relevance" bullets.
+Reference specific Illumina products, platforms, market position, or regulatory situations that are
+directly relevant to why each threat actor poses a risk to Illumina. Draw on current, public facts.
+"""
+        else:
+            illumina_context_section = """
+## Current Illumina Company Context
+
+No current context available from public sources. Fall back to general life sciences sector exposure
+when writing "relevance" bullets, and note this limitation.
+"""
+        
         return f"""Analyze this threat intelligence data and provide a QUARTERLY STRATEGIC BRIEF for executive leadership.
 
 IMPORTANT: 
 - ALL breach reports (BREACH ALERT) should be included regardless of industry - they are critical for the breach landscape analysis.
 - Filter other Intel471 reports (SPOT REPORT, SITUATION REPORT, MALWARE REPORT) by relevance to these industries/sectors: {target_industries}
 - Focus on reports that mention or target these sectors: {target_industries}
+
+{illumina_context_section}
 
 DATA SUMMARY:
 - Intel471 Threat Reports: {len(intel471_data)} records (filtered for relevance to: {target_industries})
@@ -1559,7 +1860,17 @@ Industry Breaches:
 
 Please provide your STRATEGIC analysis in the following JSON format:
 {{
-  "executive_summary": "2-3 paragraph strategic overview for board/executives. Focus on business risk, not technical details.",
+  "executive_summary": "3-4 paragraph executive summary that serves as a complete standalone brief. If executives read ONLY this section, they should understand:
+  
+  PARAGRAPH 1 — Overall threat landscape: Summarize the quarter's threat environment, mention the number of industry breaches and estimated impact, and note key risk assessment changes (e.g., 'Nation-state espionage remains HIGH with increased activity...')
+  
+  PARAGRAPH 2 — Geopolitical threats: Highlight the top 2-3 geopolitical threats identified this quarter, including which countries/actors and what they're targeting (e.g., 'China-linked actors showed elevated focus on biomanufacturing IP...')
+  
+  PARAGRAPH 3 — Industry breach landscape: Provide specific examples of peer breaches by company name where relevant, common attack vectors, and what incident types dominated (e.g., 'Ransomware attacks increased 50%, with notable incidents at [Company A] and [Company B]...')
+  
+  PARAGRAPH 4 (OPTIONAL) — Direct organizational impact: Note whether any direct threats were identified, and briefly mention 1-2 key watch items for next quarter or critical recommendations.
+  
+  Write in clear, business-focused language. Avoid technical jargon. This is for board members and executives who need the full picture quickly.",
   "risk_assessment": {{
     "nation_state": "HIGH/MEDIUM/LOW",
     "nation_state_trend": "↑/↓/Unchanged",
@@ -1571,61 +1882,257 @@ Please provide your STRATEGIC analysis in the following JSON format:
     "insider_trend": "↑/↓/Unchanged"
   }},
   "breach_landscape": {{
-    "total_incidents": 0,
-    "prev_total_incidents": 0,
-    "total_impact_millions": 0,
-    "prev_total_impact": 0,
-    "ransomware_count": 0,
-    "prev_ransomware": 0,
-    "records_exposed_millions": 0,
-    "prev_records": 0
+    "scope_note": "One sentence describing what the data covers and the time period. Example: 'Publicly disclosed incidents affecting life sciences, pharmaceutical, biotechnology, healthcare, and advanced manufacturing organizations during Q2 2026.'",
+    "stat_cards": [
+      {{
+        "value": "20",
+        "label": "Total Incidents",
+        "prior_label": "Q1 2026",
+        "prior_value": "16",
+        "change_pct": "+25%"
+      }},
+      {{
+        "value": "$120M",
+        "label": "Est. Total Impact",
+        "prior_label": "Q1 2026",
+        "prior_value": "$90M",
+        "change_pct": "+33%"
+      }},
+      {{
+        "value": "12",
+        "label": "Ransomware",
+        "prior_label": "Q1 2026",
+        "prior_value": "10",
+        "change_pct": "+20%"
+      }},
+      {{
+        "value": "8M",
+        "label": "Records Exposed",
+        "prior_label": "Q1 2026",
+        "prior_value": "5M",
+        "change_pct": "+60%"
+      }}
+    ],
+    "incidents_by_type": [
+      {{
+        "type": "Ransomware",
+        "current_count": "12",
+        "prior_count": "10",
+        "notable_example": "Brief one-sentence description of a notable ransomware incident"
+      }},
+      {{
+        "type": "Supply Chain",
+        "current_count": "5",
+        "prior_count": "3",
+        "notable_example": "Brief one-sentence description of a notable supply chain incident"
+      }},
+      {{
+        "type": "Data Exposure",
+        "current_count": "3",
+        "prior_count": "3",
+        "notable_example": "Brief one-sentence description of a notable data exposure incident"
+      }}
+    ],
+    "current_quarter_label": "Q2 2026",
+    "prior_quarter_label": "Q1 2026",
+    "common_factors": "One paragraph of prose describing common factors across incidents. Include specific percentages where possible, e.g., 'Exploitation of unpatched systems accounted for 34% of incidents, followed by compromised credentials at 28%.'"
   }},
-  "incidents_by_type": [
+  "geopolitical_threats": [
     {{
-      "type": "Ransomware",
-      "current_count": 0,
-      "prev_count": 0,
-      "notable_example": "Brief description of notable incident"
+      "name": "Country or geopolitical region name ONLY",
+      "level": "HIGH/MEDIUM/LOW",
+      "vector": "Primary attack method (concise phrase, e.g., 'Espionage — IP theft', 'Ransomware — Disruption')",
+      "exposure": "CRITICAL/HIGH/MEDIUM",
+      "relevance": [
+        "Bullet 1: Illumina-specific relevance drawn from the Illumina context above (reference specific products, markets, or regulatory situations)",
+        "Bullet 2: Another Illumina-specific relevance point",
+        "Bullet 3: Third relevance point (max 3 bullets)"
+      ],
+      "activity": [
+        "Bullet 1: What this actor did this quarter (from Intel471/CrowdStrike data)",
+        "Bullet 2: Additional activity this quarter",
+        "Bullet 3: Third activity point (max 3 bullets)"
+      ],
+      "risk": [
+        "Bullet 1: Specific business risk to Illumina from this actor",
+        "Bullet 2: Additional risk",
+        "Bullet 3: Third risk (max 3 bullets)"
+      ]
     }}
   ],
-  "common_factors": "Common factors across incidents (percentages): e.g., 'Exploitation of unpatched systems (34%), compromised credentials (28%)'",
-  "geopolitical_threats": {{
-    "china": {{
-      "strategic_context": "China's strategic interest in biotech/genomics sector",
-      "activity": "Observed activity this quarter from China-linked actors",
-      "implications": "Business implications of China threat activity"
-    }},
-    "russia": {{
-      "strategic_context": "Russia's interests and ransomware ecosystem",
-      "activity": "Observed activity this quarter",
-      "implications": "Business implications"
-    }},
-    "north_korea": {{
-      "strategic_context": "NK's dual-purpose cyber operations",
-      "activity": "Observed activity this quarter",
-      "implications": "Business implications"
-    }}
-  }},
+
+CRITICAL - geopolitical_threats "name" field formatting rule:
+
+The "name" field must contain ONLY the country or geopolitical region name. Never include actor group names, threat actor codenames, or parenthetical lists in this field.
+
+  BAD:  "name": "China (CASCADE PANDA, VAULT PANDA, OVERCAST PANDA)"
+  BAD:  "name": "Russian Federation — APT28, APT29"
+  GOOD: "name": "China"
+  GOOD: "name": "Russian Federation"
+  GOOD: "name": "Iran"
+  GOOD: "name": "North Korea"
+
+The "name" field must always contain a real country or geopolitical region name based on the intelligence reviewed. Do not return "Unknown", "N/A", or placeholder values under any circumstances. If you cannot identify a specific country from the intelligence data, do not include that entry in the list at all. It is better to return fewer entries than to return entries with missing or fabricated data. Every field in every entry must be populated with real intelligence-based content before it is included in the output.
+
+Actor group names belong in the "activity" bullets, referenced naturally within the text:
+  
+  CORRECT activity bullet example:
+    "CASCADE PANDA targeted pharmaceutical organizations with credential harvesting campaigns focused on executive accounts with access to clinical trial data."
+  
+If multiple actor groups are active, dedicate separate activity bullets to each OR combine them naturally in prose:
+  
+  "VAULT PANDA and OVERCAST PANDA both conducted espionage operations targeting life sciences research institutions, focusing on genomics and proteomics data."
+
+
   "looking_ahead": {{
-    "threat_outlook": "What we anticipate next quarter",
-    "planned_initiatives": "Security initiatives to recommend",
-    "watch_items": "Specific items to monitor"
+    "next_quarter_label": "Q3 2026",
+    "watch_items": [
+      {{
+        "subject": "ALPHV/BlackCat successor groups",
+        "detail": "are actively rebuilding targeting infrastructure and re-engaging life sciences organizations. Expect elevated ransomware incident volume against sector peers in Q3. Illumina should validate that M365 playbooks reflect current RaaS TTPs."
+      }},
+      {{
+        "subject": "CISA KEV entries from Q2",
+        "detail": "affecting network management and VPN gateway software used in laboratory environments remain unpatched across a significant portion of the sector. Confirm patch status for all affected Illumina systems before Q3 close."
+      }},
+      {{
+        "subject": "Pending genomics data security legislation",
+        "detail": "in the United States and European Union — including provisions restricting foreign access to human genomic datasets — is expected to advance in Q3. Monitor for provisions relevant to ICA and BaseSpace customer data and Illumina's ongoing China market activity."
+      }}
+    ]
   }},
-  "recommendations": [
-    ["Executive Awareness", "Recommendation for executive security awareness"],
-    ["Vendor Risk Review", "Recommendation for third-party risk"],
-    ["Manufacturing Security", "Recommendation for OT/manufacturing security"],
-    ["Incident Response", "Recommendation for IR readiness"],
-    ["Board Reporting", "Support available for board communications"]
-  ]
+  "recommendations": {{
+    "intro_note": "Three prioritized actions informed by Q2 intelligence findings.",
+    "items": [
+      {{
+        "title": "Verify MFA Coverage Across Research and Manufacturing Environments",
+        "body": "Twelve percent of sector breaches this quarter involved absent MFA on critical systems. An MFA coverage audit across Illumina's sequencing systems, manufacturing network, and ICA/BaseSpace administrative interfaces should be completed before Q3 close, with any gaps remediated on an accelerated timeline."
+      }},
+      {{
+        "title": "Conduct ICA and BaseSpace Threat Model Review",
+        "body": "Nation-state targeting of cloud-hosted genomic data is the intelligence trend with the highest potential business impact for Illumina identified this quarter. A threat model review scoped to ICA and BaseSpace — covering data access controls, customer data segregation, and detection capabilities for unauthorized access scenarios — should be initiated this quarter and completed before the Q3 board cycle."
+      }},
+      {{
+        "title": "Prioritize Security Attestation for Critical Vendor Tier",
+        "body": "Eighteen percent of sector breaches originated from third-party and vendor compromise. Illumina should accelerate contractual security requirements and attestation reviews for vendors with access to instrument firmware, ICA infrastructure, or clinical data systems."
+      }}
+    ]
+  }}
 }}
+
+CRITICAL - geopolitical_threats Instructions:
+
+1. **Identify relevant nation-state actors**: Review all Intel471 and CrowdStrike data from the 90-day lookback period.
+   Identify every country or state-affiliated threat actor with meaningful activity targeting life sciences, pharmaceutical,
+   biotechnology, genomics, or advanced manufacturing sectors.
+
+2. **Rank by threat relevance**: Order actors by threat relevance to Illumina specifically (not just the sector in general).
+   Consider: direct targeting of genomics companies, IP theft capabilities, ransomware/disruption risk, and overlap with
+   Illumina's specific products/markets/regulatory environment.
+
+3. **Return up to 4 actors**: Include only actors with meaningful activity this quarter. If fewer than 4 have meaningful
+   activity, return only those that do. DO NOT pad the list with irrelevant actors just to reach 4.
+
+4. **For relevance bullets specifically**: Draw on the Illumina context provided above. Reference specific Illumina products
+   (e.g., NovaSeq X, sequencing platforms), market positions (e.g., "~80% global sequencing market share"), regulatory
+   situations (e.g., recent SEC filings, FDA approvals), or partnerships mentioned in the context. If the context is empty
+   or unparseable, fall back to general life sciences sector exposure and note the limitation in your analysis.
+
+5. **Keep bullets concise**: Each bullet should be one short sentence. Max 3 bullets per section (relevance, activity, risk).
+
+CRITICAL - breach_landscape Instructions:
+
+1. **scope_note**: Generate one sentence describing the data coverage and time period. Use the current quarter from the context.
+
+2. **stat_cards**: Always return exactly 4 cards in this exact order:
+   - Card 1: Total Incidents
+   - Card 2: Est. Total Impact (in millions, e.g., "$120M")
+   - Card 3: Ransomware (count of ransomware incidents)
+   - Card 4: Records Exposed (in millions, e.g., "8M")
+
+3. **change_pct calculation**: For each stat card, calculate the percentage change from prior quarter to current quarter.
+   ALWAYS include the sign explicitly:
+   - Use "+" prefix for increases (e.g., "+25%")
+   - Use "-" prefix for decreases (e.g., "-12%")
+   - Use "0%" for no change
+   The sign is REQUIRED - the renderer uses it to determine color (red for +, green for -, gray for 0%).
+
+4. **Quarter labels**: Set current_quarter_label and prior_quarter_label to the actual quarter identifiers (e.g., "Q2 2026", "Q1 2026").
+
+5. **incidents_by_type**: Return a dynamic list of incident types observed in the breach data. Common types include:
+   Ransomware, Supply Chain, Data Exposure, Insider Threat, DDoS, Business Email Compromise, etc.
+   DO NOT hardcode exactly 3 types - return however many distinct types you observe in the data (typically 3-6).
+   For each type, provide current_count, prior_count, and a one-sentence notable_example.
+
+6. **common_factors**: Write one paragraph analyzing common factors across the incidents. Include specific percentages
+   where possible (e.g., "Exploitation of unpatched systems accounted for 34% of incidents").
+
+CRITICAL - looking_ahead Instructions:
+
+1. **next_quarter_label**: Calculate the next quarter from the current reporting period. Format as "Q{{N}} YYYY" (e.g., "Q3 2026").
+
+2. **watch_items**: Return a list of 2-4 specific, named watch items. Each item must have:
+   - **subject**: A concise named entity (threat actor, CVE, policy, or specific technology). Examples: "ALPHV/BlackCat successor groups", "CISA KEV entries from Q2", "Pending genomics data security legislation"
+   - **detail**: The rest of the sentence explaining why this item matters and what to watch for. Should flow naturally after the subject.
+
+3. **Quality standards for watch items**:
+   - Must be SPECIFIC and NAMED - not generic (e.g., "CVE-2024-1234" not "unpatched vulnerabilities")
+   - Must be ACTIONABLE - give concrete next steps or monitoring guidance
+   - Must be RELEVANT to Illumina's specific business, products, or threat profile
+   - Avoid generic monitoring reminders like "Continue monitoring threat landscape"
+
+CRITICAL - recommendations Instructions:
+
+1. **intro_note**: Write one sentence describing the recommendations. Examples: "Three prioritized actions informed by Q2 intelligence findings.", "Four strategic initiatives to address identified risks."
+
+2. **items**: Return a list of 2-4 recommendations. Each must have:
+   - **title**: Full recommendation title. The first word will be underlined if it's purely alphabetic. Examples: "Verify MFA Coverage Across Research and Manufacturing Environments", "Conduct ICA and BaseSpace Threat Model Review"
+   - **body**: 2-4 sentences explaining the justification (what intelligence finding drove this) and the specific action to take
+
+3. **Quality standards for recommendations**:
+   - Must be SPECIFIC and ACTIONABLE - not vague (e.g., "Verify MFA coverage across research environments" not "Improve security posture")
+   - Must include CONTEXT from the quarter's intelligence findings (reference specific percentages, threat actors, or incidents)
+   - Must include CLEAR SCOPE and NEXT STEPS (what to review, when to complete, what outcome to achieve)
+   - No owners, no dates, no "leadership to decide" framing - these are direct technical recommendations
 
 Focus on STRATEGIC insights for leadership, not tactical details.
 When analyzing Intel471 data, prioritize reports relevant to: {target_industries}
 Include breach alerts, spot reports, situation reports, and malware reports that target or mention these sectors.
 Respond ONLY with valid JSON. Do not include any markdown formatting or code blocks.
 
-Do not use Hyphens."""
+Do not use Hyphens.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTPUT LENGTH AND CONCISENESS RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+EXECUTIVE SUMMARY:
+- Maximum 3 sentences total
+- Each sentence must be one standalone thought (no multi-sentence compound clauses)
+- No paragraph breaks — the entire summary is one short paragraph
+- If you generate more than 3 sentences, consolidate before returning
+
+GEOPOLITICAL BULLETS (relevance, activity, risk):
+- Maximum 2 bullets per section per country
+- Each bullet must be a maximum of 20 words
+- Bullets must be statements of fact or assessed risk — not explanatory prose
+- No bullet should begin with "Illumina" — vary the sentence openings
+
+WATCH ITEMS (looking_ahead):
+- Maximum 3 items
+- Each item's "detail" field must be a maximum of 40 words
+
+RECOMMENDATIONS:
+- Maximum 3 items
+- Each item's "body" field must be a maximum of 50 words
+
+BREACH LANDSCAPE COMMON FACTORS:
+- Maximum 4 sentences
+- Include percentages where available
+
+These are HARD LIMITS. Exceeding them will cause display overflow and formatting issues.
+Review your output before returning and trim to meet these constraints.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
     def _is_china_related(self, actor: Dict) -> bool:
         """Check if an actor is China-related."""
@@ -1653,6 +2160,14 @@ Do not use Hyphens."""
     ) -> Dict[str, Any]:
         """Generate default strategic analysis when AI analysis fails."""
         breach_data = breach_data or []
+        
+        # Determine current and prior quarter labels
+        from datetime import datetime
+        today = datetime.now()
+        current_q = (today.month - 1) // 3 + 1
+        current_year = today.year
+        prior_q = current_q - 1 if current_q > 1 else 4
+        prior_year = current_year if current_q > 1 else current_year - 1
 
         return {
             "executive_summary": f"""The threat landscape for the genomics, life sciences, and precision manufacturing sectors \
@@ -1673,44 +2188,95 @@ measures remain essential.""",
                 "insider_trend": "Unchanged"
             },
             "breach_landscape": {
-                "total_incidents": len(breach_data),
-                "prev_total_incidents": "N/A",
-                "total_impact_millions": 0,
-                "prev_total_impact": "N/A",
-                "ransomware_count": 0,
-                "prev_ransomware": "N/A",
-                "records_exposed_millions": 0,
-                "prev_records": "N/A"
+                "scope_note": f"Publicly disclosed incidents affecting life sciences, pharmaceutical, biotechnology, healthcare, and advanced manufacturing organizations during Q{current_q} {current_year}.",
+                "stat_cards": [
+                    {
+                        "value": str(len(breach_data)),
+                        "label": "Total Incidents",
+                        "prior_label": f"Q{prior_q} {prior_year}",
+                        "prior_value": "N/A",
+                        "change_pct": "0%"
+                    },
+                    {
+                        "value": "$0M",
+                        "label": "Est. Total Impact",
+                        "prior_label": f"Q{prior_q} {prior_year}",
+                        "prior_value": "N/A",
+                        "change_pct": "0%"
+                    },
+                    {
+                        "value": "0",
+                        "label": "Ransomware",
+                        "prior_label": f"Q{prior_q} {prior_year}",
+                        "prior_value": "N/A",
+                        "change_pct": "0%"
+                    },
+                    {
+                        "value": "0M",
+                        "label": "Records Exposed",
+                        "prior_label": f"Q{prior_q} {prior_year}",
+                        "prior_value": "N/A",
+                        "change_pct": "0%"
+                    }
+                ],
+                "incidents_by_type": [],
+                "current_quarter_label": f"Q{current_q} {current_year}",
+                "prior_quarter_label": f"Q{prior_q} {prior_year}",
+                "common_factors": "Analysis pending - manual review of threat data recommended"
             },
-            "incidents_by_type": [],
-            "common_factors": "Analysis pending - manual review of threat data recommended",
-            "geopolitical_threats": {
-                "china": {
-                    "strategic_context": "China's national plans designate biotechnology as a strategic priority.",
-                    "activity": f"Observed {len([a for a in crowdstrike_data if self._is_china_related(a)])} China-linked actor groups.",
-                    "implications": "Potential IP theft risk for proprietary research and manufacturing processes."
+            "geopolitical_threats": [
+                {
+                    "name": "China",
+                    "level": "HIGH",
+                    "vector": "Espionage — IP theft",
+                    "exposure": "CRITICAL",
+                    "relevance": ["China's national plans designate biotechnology as a strategic priority."],
+                    "activity": [f"Observed {len([a for a in crowdstrike_data if self._is_china_related(a)])} China-linked actor groups."],
+                    "risk": ["Potential IP theft risk for proprietary research and manufacturing processes."]
                 },
-                "russia": {
-                    "strategic_context": "Russian-speaking criminal groups pose significant ransomware risk to healthcare and life sciences.",
-                    "activity": f"Observed {len([a for a in crowdstrike_data if self._is_russia_related(a)])} Russia-linked actor groups.",
-                    "implications": "Ransomware incidents can result in significant operational disruption and recovery costs."
+                {
+                    "name": "Russia",
+                    "level": "HIGH",
+                    "vector": "Ransomware — Disruption",
+                    "exposure": "HIGH",
+                    "relevance": ["Russian-speaking criminal groups pose significant ransomware risk to healthcare and life sciences."],
+                    "activity": [f"Observed {len([a for a in crowdstrike_data if self._is_russia_related(a)])} Russia-linked actor groups."],
+                    "risk": ["Ransomware incidents can result in significant operational disruption and recovery costs."]
                 },
-                "north_korea": {
-                    "strategic_context": "North Korean cyber operations target pharmaceutical and healthcare sectors.",
-                    "activity": f"Observed {len([a for a in crowdstrike_data if self._is_nk_related(a)])} North Korea-linked actor groups.",
-                    "implications": "Social engineering risk for research and executive personnel."
+                {
+                    "name": "North Korea",
+                    "level": "MEDIUM",
+                    "vector": "Financial theft — Dual-use IP",
+                    "exposure": "MEDIUM",
+                    "relevance": ["North Korean cyber operations target pharmaceutical and healthcare sectors."],
+                    "activity": [f"Observed {len([a for a in crowdstrike_data if self._is_nk_related(a)])} North Korea-linked actor groups."],
+                    "risk": ["Social engineering risk for research and executive personnel."]
                 }
-            },
+            ],
             "looking_ahead": {
-                "threat_outlook": "Continued pressure from state-sponsored espionage campaigns anticipated.",
-                "planned_initiatives": "Enhanced monitoring and detection capabilities recommended.",
-                "watch_items": "Major industry events, product launches, and partnership announcements."
+                "next_quarter_label": f"Q{(current_q % 4) + 1} {current_year if current_q < 4 else current_year + 1}",
+                "watch_items": [
+                    {
+                        "subject": "Threat landscape evolution",
+                        "detail": "continues to require monitoring as adversary capabilities and targeting patterns shift."
+                    }
+                ]
             },
-            "recommendations": [
-                ("Executive Awareness", "Consider targeted security awareness for executives given social engineering campaigns."),
-                ("Vendor Risk Review", "Evaluate security posture of critical software and equipment vendors."),
-                ("Manufacturing Security", "Review network segmentation between IT and OT systems."),
-                ("Incident Response", "Confirm response plans address regulatory disclosure requirements."),
-                ("Board Reporting", "CTI team available to support board communication preparation.")
-            ]
+            "recommendations": {
+                "intro_note": "Three prioritized actions based on quarterly intelligence findings.",
+                "items": [
+                    {
+                        "title": "Executive Awareness",
+                        "body": "Consider targeted security awareness for executives and key research personnel given sustained social engineering campaigns via professional networks."
+                    },
+                    {
+                        "title": "Vendor Risk Review",
+                        "body": "Evaluate security posture of critical software and laboratory equipment vendors given supply chain compromise activity observed this quarter."
+                    },
+                    {
+                        "title": "Manufacturing Security",
+                        "body": "Review network segmentation between IT and OT/manufacturing systems. Ensure incident response plans address manufacturing disruption scenarios."
+                    }
+                ]
+            }
         }

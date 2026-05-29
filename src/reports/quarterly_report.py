@@ -6,6 +6,8 @@ Generates quarterly strategic threat intelligence briefs for leadership.
 from datetime import datetime, timedelta
 import logging
 import os
+import json
+from pathlib import Path
 import re
 from typing import Dict, Any, List
 
@@ -95,11 +97,11 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             self._add_header()
             self._add_executive_summary(analysis_result)
             self._add_risk_assessment(analysis_result)
-            self._add_breach_landscape(analysis_result)
             self._add_geopolitical_landscape(analysis_result)
+            self._add_breach_landscape(analysis_result)
             self._add_looking_ahead(analysis_result)
-            self._add_leadership_recommendations(analysis_result)
-            self._add_sources()
+            self._add_recommendations(analysis_result)
+            self._add_sources(analysis_result)
             self._add_footer()
 
             logger.info("Quarterly Strategic CTI Report generated successfully")
@@ -108,6 +110,31 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         except Exception as e:
             logger.error(f"Error generating quarterly report: {str(e)}", exc_info=True)
             raise
+
+    def _set_cell_left_border(self, cell, color_hex: str, size: str = "4") -> None:
+        """
+        Apply a left border to a table cell (used for accent borders on geo cards and stat cards).
+        
+        Args:
+            cell: The table cell to apply left border to
+            color_hex: Border color in hex format (e.g., "E65100" for orange)
+            size: Border size as string (e.g., "12" for thicker, "4" for thin)
+        """
+        tc_pr = cell._element.get_or_add_tcPr()
+        tc_borders = tc_pr.find(qn("w:tcBorders"))
+        if tc_borders is None:
+            tc_borders = OxmlElement("w:tcBorders")
+            tc_pr.append(tc_borders)
+        
+        left_border = tc_borders.find(qn("w:left"))
+        if left_border is None:
+            left_border = OxmlElement("w:left")
+            tc_borders.append(left_border)
+        
+        left_border.set(qn("w:val"), "single")
+        left_border.set(qn("w:sz"), size)
+        left_border.set(qn("w:space"), "0")
+        left_border.set(qn("w:color"), color_hex)
 
     def _calculate_quarter_info(self) -> None:
         """Calculate the reporting period based on actual quarterly lookback window."""
@@ -128,6 +155,81 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             self.quarter = 3
         else:
             self.quarter = 4
+    
+    def _get_historical_file_path(self) -> Path:
+        """Get the path to the historical data JSON file."""
+        data_dir = Path("data/historical")
+        data_dir.mkdir(parents=True, exist_ok=True)
+        return data_dir / "quarterly_risk_history.json"
+    
+    def _load_historical_data(self) -> Dict[str, Any]:
+        """Load historical quarterly risk assessment data."""
+        file_path = self._get_historical_file_path()
+        if not file_path.exists():
+            return {}
+        
+        try:
+            with open(file_path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load historical data: {e}")
+            return {}
+    
+    def _save_historical_data(self, history: Dict[str, Any]) -> None:
+        """Save historical quarterly risk assessment data."""
+        file_path = self._get_historical_file_path()
+        try:
+            with open(file_path, 'w') as f:
+                json.dump(history, f, indent=2)
+            logger.info(f"Saved historical data to {file_path}")
+        except Exception as e:
+            logger.error(f"Failed to save historical data: {e}")
+    
+    def _get_quarter_key(self, year: int, quarter: int) -> str:
+        """Get a string key for a specific quarter."""
+        return f"{year}-Q{quarter}"
+    
+    def _calculate_previous_quarter(self, year: int, quarter: int) -> tuple:
+        """Calculate the previous quarter's year and number."""
+        if quarter == 1:
+            return (year - 1, 4)
+        else:
+            return (year, quarter - 1)
+    
+    def _save_current_risk_assessment(self, risk_data: Dict[str, Any]) -> None:
+        """Save the current quarter's risk assessment to history."""
+        history = self._load_historical_data()
+        
+        year = self._get_year()
+        quarter_key = self._get_quarter_key(year, self.quarter)
+        
+        # Store the risk assessment for this quarter
+        history[quarter_key] = {
+            "timestamp": self.created_at.isoformat(),
+            "year": year,
+            "quarter": self.quarter,
+            "nation_state": risk_data.get("nation_state", "MEDIUM"),
+            "ransomware": risk_data.get("ransomware", "MEDIUM"),
+            "supply_chain": risk_data.get("supply_chain", "MEDIUM"),
+            "insider": risk_data.get("insider", "LOW"),
+        }
+        
+        self._save_historical_data(history)
+        logger.info(f"Saved risk assessment for {quarter_key}")
+    
+    def _compare_with_previous_quarter(self, current_risk: str, previous_risk: str) -> str:
+        """Compare current risk level with previous quarter and return trend indicator."""
+        risk_values = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
+        
+        current_val = risk_values.get(current_risk.upper(), 2)
+        previous_val = risk_values.get(previous_risk.upper(), 2)
+        
+        if current_val > previous_val:
+            return "↑"
+        elif current_val < previous_val:
+            return "↓"
+        else:
+            return "Unchanged"
 
     def _get_previous_quarter(self) -> str:
         """Get the previous quarter string (e.g., 'Q4 2025')."""
@@ -176,7 +278,9 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         # Reduce spacing after subtitle
         subtitle_para.paragraph_format.space_after = Pt(0)
 
-        self.doc.add_paragraph()
+        # Spacer after cover page
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(6)
 
     def _add_executive_summary(self, analysis_result: Dict[str, Any]) -> None:
         """Add executive summary section."""
@@ -187,6 +291,7 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         for run in summary_heading.runs:
             run.font.name = "Arial"
             run.font.size = Pt(14)  # Font size 14pt
+            run.font.color.rgb = BrandColors.ORANGE_DESIGN  # Orange heading
             run.font.color.rgb = BrandColors.ORANGE_PRIMARY
         # Add space after heading
         summary_heading.paragraph_format.space_after = Pt(6)
@@ -206,7 +311,9 @@ class QuarterlyReportGenerator(BaseReportGenerator):
                     run.font.name = "Arial"
                     run.font.size = FontSizes.BODY
 
-        self.doc.add_paragraph()
+        # Spacer after executive summary
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(6)
 
     def _generate_default_executive_summary(self, analysis_result: Dict[str, Any]) -> str:
         """Generate a default executive summary from available data."""
@@ -231,6 +338,7 @@ and vulnerabilities observed are consistent with those historically used against
         for run in risk_heading.runs:
             run.font.name = "Arial"
             run.font.size = Pt(14)  # Font size 14pt
+            run.font.color.rgb = BrandColors.ORANGE_DESIGN  # Orange heading
             run.font.color.rgb = BrandColors.ORANGE_PRIMARY
         # Add space before and after heading
         risk_heading.paragraph_format.space_before = Pt(12)
@@ -239,49 +347,78 @@ and vulnerabilities observed are consistent with those historically used against
         risk_data = analysis_result.get("risk_assessment", {})
         breach_data = analysis_result.get("breach_landscape", {})
         
-        # Helper function to calculate percentage change
-        def calculate_percentage(current, previous):
-            """Calculate percentage change between current and previous values."""
-            if not previous or previous == 0:
-                return None
-            if not current:
-                return None
-            try:
-                change = ((current - previous) / previous) * 100
-                return f"+{int(change)}%" if change > 0 else f"{int(change)}%"
-            except (TypeError, ValueError):
-                return None
-
-        # Create risk assessment cards table in horizontal layout (1 row, 4 columns)
-        # Calculate percentages for trends where possible
-        ransomware_pct = calculate_percentage(
-            breach_data.get("ransomware_count"),
-            breach_data.get("prev_ransomware")
-        )
+        # Load historical data to compare with previous quarter
+        history = self._load_historical_data()
+        year = self._get_year()
+        prev_year, prev_quarter = self._calculate_previous_quarter(year, self.quarter)
+        prev_quarter_key = self._get_quarter_key(prev_year, prev_quarter)
+        previous_assessment = history.get(prev_quarter_key, {})
+        
+        # Get current risk levels
+        current_nation_state = risk_data.get("nation_state", RiskLevel.HIGH).upper()
+        current_ransomware = risk_data.get("ransomware", RiskLevel.HIGH).upper()
+        current_supply_chain = risk_data.get("supply_chain", RiskLevel.MEDIUM).upper()
+        current_insider = risk_data.get("insider", RiskLevel.LOW).upper()
+        
+        # Calculate trends by comparing with previous quarter
+        if previous_assessment:
+            nation_state_trend = self._compare_with_previous_quarter(
+                current_nation_state, 
+                previous_assessment.get("nation_state", "MEDIUM")
+            )
+            ransomware_trend = self._compare_with_previous_quarter(
+                current_ransomware,
+                previous_assessment.get("ransomware", "MEDIUM")
+            )
+            supply_chain_trend = self._compare_with_previous_quarter(
+                current_supply_chain,
+                previous_assessment.get("supply_chain", "MEDIUM")
+            )
+            insider_trend = self._compare_with_previous_quarter(
+                current_insider,
+                previous_assessment.get("insider", "LOW")
+            )
+            logger.info(f"Compared with previous quarter {prev_quarter_key}: trends calculated")
+        else:
+            # No previous data available, default to unchanged
+            nation_state_trend = RiskLevel.UNCHANGED
+            ransomware_trend = RiskLevel.UNCHANGED
+            supply_chain_trend = RiskLevel.UNCHANGED
+            insider_trend = RiskLevel.UNCHANGED
+            logger.info(f"No historical data for {prev_quarter_key}, using 'Unchanged' for all trends")
+        
+        # Save current assessment for future comparisons
+        self._save_current_risk_assessment({
+            "nation_state": current_nation_state,
+            "ransomware": current_ransomware,
+            "supply_chain": current_supply_chain,
+            "insider": current_insider,
+        })
+        
         
         risks = [
             (
-                "Nation-State Espionage",  # Single line, no newline
-                risk_data.get("nation_state", RiskLevel.HIGH),
-                risk_data.get("nation_state_trend", RiskLevel.UNCHANGED),
+                "Nation-State Espionage",
+                current_nation_state,
+                nation_state_trend,
                 None,  # No percentage data available
             ),
             (
-                "Ransomware & Extortion",  # Single line, no newline
-                risk_data.get("ransomware", RiskLevel.HIGH),
-                risk_data.get("ransomware_trend", RiskLevel.INCREASED),
-                ransomware_pct,  # Use calculated percentage if available
+                "Ransomware & Extortion",
+                current_ransomware,
+                ransomware_trend,
+                None,  # Could calculate from breach data if available
             ),
             (
-                "Supply Chain Compromise",  # Single line, no newline
-                risk_data.get("supply_chain", RiskLevel.MEDIUM),
-                risk_data.get("supply_chain_trend", RiskLevel.UNCHANGED),
+                "Supply Chain Compromise",
+                current_supply_chain,
+                supply_chain_trend,
                 None,  # No percentage data available
             ),
             (
                 "Insider Threat",
-                risk_data.get("insider", RiskLevel.LOW),
-                risk_data.get("insider_trend", RiskLevel.UNCHANGED),
+                current_insider,
+                insider_trend,
                 None,  # No percentage data available
             ),
         ]
@@ -318,29 +455,44 @@ and vulnerabilities observed are consistent with those historically used against
                 tc_pr.append(v_align)
             v_align.set(qn("w:val"), "center")  # Center vertically
             
-            # Set cell margins for lean/compact spacing
+            # Set cell padding: 120 twips all sides
             tc_mar = tc_pr.find(qn("w:tcMar"))
             if tc_mar is None:
                 tc_mar = OxmlElement("w:tcMar")
                 tc_pr.append(tc_mar)
             
-            # Set all margins (top, bottom, left, right) to minimal padding for lean look
             for margin_type in ["top", "bottom", "left", "right"]:
                 margin = tc_mar.find(qn(f"w:{margin_type}"))
                 if margin is None:
                     margin = OxmlElement(f"w:{margin_type}")
                     tc_mar.append(margin)
-                margin.set(qn("w:w"), "72")  # 72 twips = 0.05 inches (reduced from 0.1)
+                margin.set(qn("w:w"), "120")  # 120 twips
                 margin.set(qn("w:type"), "dxa")
 
-            # Set cell background to "Light gray - background 2" (Word theme color)
-            # This is typically #F2F2F2 or similar very light gray
-            self._set_cell_shading(cell, "F2F2F2")  # Light gray - background 2
+            # Determine background and text color based on risk level
+            level_upper = level.upper()
+            if level_upper == "HIGH":
+                bg_color = "FEE2E2"  # Light red
+                text_color = RGBColor(0x99, 0x1B, 0x1B)  # Dark red
+            elif level_upper == "MEDIUM":
+                bg_color = "FEF3C7"  # Light amber
+                text_color = RGBColor(0x92, 0x40, 0x0E)  # Dark amber
+            elif level_upper == "LOW":
+                bg_color = "D1FAE5"  # Light green
+                text_color = RGBColor(0x06, 0x5F, 0x46)  # Dark green
+            else:
+                # Default for unexpected values
+                bg_color = "FFFFFF"  # White
+                text_color = BrandColors.GRAY_MEDIUM
+                logger.warning(f"Unexpected risk level '{level}' - using default styling")
+            
+            # Set cell background
+            self._set_cell_shading(cell, bg_color)
 
-            # Set cell borders (light gray, thinner - 1/2 pt)
-            self._set_cell_borders(cell, color_hex="C0C0C0", size="1")
+            # Set cell borders (BORDER_GRAY, size 4)
+            self._set_cell_borders(cell, color_hex="CCCCCC", size="4")
 
-            # Category name - centered, single line, lean spacing
+            # Category name - centered, single line
             cat_para = cell.paragraphs[0]
             cat_para.paragraph_format.space_before = Pt(0)
             cat_para.paragraph_format.space_after = Pt(0)
@@ -348,38 +500,24 @@ and vulnerabilities observed are consistent with those historically used against
             category_single_line = category.replace("\n", " ")
             cat_run = cat_para.add_run(category_single_line)
             cat_run.font.name = "Arial"
-            cat_run.font.size = Pt(9)  # Font size 9 as requested
+            cat_run.font.size = Pt(10)
             cat_run.font.bold = True
-            cat_run.font.color.rgb = RGBColor(0x33, 0x33, 0x33)  # Darker text for light background (brighter than before)
-            cat_para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Centered alignment
+            cat_run.font.color.rgb = BrandColors.TEXT_DARK
+            cat_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-            # Risk level - now as colored text (not colored background box)
+            # Risk level - large, bold, colored
             level_para = cell.add_paragraph()
             level_para.paragraph_format.space_before = Pt(0)
             level_para.paragraph_format.space_after = Pt(0)
             level_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             level_run = level_para.add_run(level)
             level_run.font.name = "Arial"
-            level_run.font.size = Pt(14)  # Font size 14 as requested
+            level_run.font.size = Pt(20)
             level_run.font.bold = True
-            
-            # Set text color based on risk level - use colors that match the example
-            risk_level_color = None
-            if level == RiskLevel.HIGH:
-                risk_level_color = RGBColor(0xF4, 0x7F, 0x7D)  # Pinkish-red like example
-                level_run.font.color.rgb = risk_level_color
-            elif level == RiskLevel.MEDIUM:
-                risk_level_color = RGBColor(0xFF, 0xA5, 0x00)  # Orange
-                level_run.font.color.rgb = risk_level_color
-            elif level == RiskLevel.LOW:
-                risk_level_color = RGBColor(0x7F, 0xCB, 0x7F)  # Green like example
-                level_run.font.color.rgb = risk_level_color
-            else:
-                # Default styling if level doesn't match
-                level_run.font.color.rgb = RGBColor(0xD0, 0xD0, 0xD0)
+            level_run.font.color.rgb = text_color
 
             # Trend vs previous quarter - format with percentage if available
-            prev_quarter_short = f"Q{self.quarter - 1 if self.quarter > 1 else 4}"  # Short format like "Q4"
+            prev_quarter_short = f"Q{self.quarter - 1 if self.quarter > 1 else 4}"
             trend_para = cell.add_paragraph()
             trend_para.paragraph_format.space_before = Pt(0)
             trend_para.paragraph_format.space_after = Pt(0)
@@ -388,268 +526,338 @@ and vulnerabilities observed are consistent with those historically used against
             # Parse trend to extract percentage or determine display
             trend_text = str(trend).strip()
             trend_display = None
-            trend_color = None
             
             # Prefer calculated percentage if available
             if calculated_pct:
                 trend_display = f"vs {prev_quarter_short}: {calculated_pct}"
-                if "+" in calculated_pct and risk_level_color:
-                    trend_color = risk_level_color
-                else:
-                    trend_color = RGBColor(0x33, 0x33, 0x33)  # Brighter/darker text for light background
             # Check if trend contains percentage
             elif "%" in trend_text:
-                # Already has percentage format
                 trend_display = f"vs {prev_quarter_short}: {trend_text}"
-                # Use risk level color if it's an increase
-                if "+" in trend_text and risk_level_color:
-                    trend_color = risk_level_color
-                else:
-                    trend_color = RGBColor(0x33, 0x33, 0x33)  # Brighter text for unchanged
             elif trend_text.upper() in ["UNCHANGED", "UNCHANGED"]:
                 trend_display = f"vs {prev_quarter_short}: Unchanged"
-                trend_color = RGBColor(0x33, 0x33, 0x33)  # Brighter text for "Unchanged"
             elif trend_text in ["↑", "INCREASED", "INCREASE"]:
-                # Show as "Unchanged" if no percentage available
                 trend_display = f"vs {prev_quarter_short}: Unchanged"
-                trend_color = RGBColor(0x33, 0x33, 0x33)
             elif trend_text in ["↓", "DECREASED", "DECREASE"]:
                 trend_display = f"vs {prev_quarter_short}: Unchanged"
-                trend_color = RGBColor(0x33, 0x33, 0x33)  # Brighter text
             else:
                 # Try to extract percentage from trend string
                 percentage_match = re.search(r'([+-]?\d+(?:\.\d+)?%)', trend_text)
                 if percentage_match:
                     percentage = percentage_match.group(1)
                     trend_display = f"vs {prev_quarter_short}: {percentage}"
-                    if "+" in percentage and risk_level_color:
-                        trend_color = risk_level_color
-                    else:
-                        trend_color = RGBColor(0x33, 0x33, 0x33)
                 else:
-                    # Default: show as "Unchanged"
                     trend_display = f"vs {prev_quarter_short}: Unchanged"
-                    trend_color = RGBColor(0x33, 0x33, 0x33)  # Brighter text
             
-            # Create trend run
             trend_run = trend_para.add_run(trend_display)
             trend_run.font.name = "Arial"
-            trend_run.font.size = FontSizes.FOOTNOTE
-            if trend_color:
-                trend_run.font.color.rgb = trend_color
+            trend_run.font.size = Pt(8)
+            trend_run.font.italic = True
+            trend_run.font.color.rgb = BrandColors.GRAY_MEDIUM
 
-        self.doc.add_paragraph()
+        # Spacer after risk assessment
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(6)
 
     def _add_breach_landscape(self, analysis_result: Dict[str, Any]) -> None:
         """Add industry breach landscape section."""
         logger.info("Adding Industry Breach Landscape section")
-
-        # Industry Breach Landscape heading - Heading 1
+        
+        # COMPONENT 1 — Section heading
         breach_heading = self.doc.add_heading("Industry Breach Landscape", level=1)
         for run in breach_heading.runs:
             run.font.name = "Arial"
-            run.font.size = Pt(14)  # Font size 14pt
+            run.font.size = Pt(14)
+            run.font.color.rgb = BrandColors.ORANGE_DESIGN  # Orange heading
             run.font.color.rgb = BrandColors.ORANGE_PRIMARY
-        # Add space before and after heading
         breach_heading.paragraph_format.space_before = Pt(12)
         breach_heading.paragraph_format.space_after = Pt(6)
-
-        # Subtitle
-        subtitle = self.doc.add_paragraph()
-        sub_run = subtitle.add_run(
-            f"Publicly disclosed security incidents affecting life sciences, pharmaceutical, "
-            f"biotechnology, healthcare, and advanced manufacturing organizations during "
-            f"Q{self.quarter} {self._get_year()}."
-        )
-        sub_run.font.name = "Arial"
-        sub_run.font.size = FontSizes.SUBTITLE
-        sub_run.font.italic = True
-        sub_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-
-        self.doc.add_paragraph()
-
-        breach_data = analysis_result.get("breach_landscape", {})
-        prev_quarter = self._get_previous_quarter()
         
-        # Helper function to calculate percentage change
-        def calculate_pct(current, previous):
-            """Calculate percentage change."""
-            if not previous or previous == 0 or previous == "N/A":
-                return None
-            if not current or current == "N/A":
-                return None
-            try:
-                curr_val = float(str(current).replace("$", "").replace("M", "").replace(",", ""))
-                prev_val = float(str(previous).replace("$", "").replace("M", "").replace(",", ""))
-                if prev_val == 0:
-                    return None
-                change = ((curr_val - prev_val) / prev_val) * 100
-                return f"+{int(change)}%" if change > 0 else f"{int(change)}%"
-            except (ValueError, TypeError):
-                return None
-
-        # Metric cards with percentage calculations
-        metrics = [
-            (
-                str(breach_data.get("total_incidents", 0)),
-                "Total Incidents",
-                breach_data.get('prev_total_incidents', 'N/A'),
-                calculate_pct(breach_data.get("total_incidents", 0), breach_data.get('prev_total_incidents'))
-            ),
-            (
-                f"${breach_data.get('total_impact_millions', 0)}M",
-                "Est. Total Impact",
-                f"${breach_data.get('prev_total_impact', 'N/A')}M",
-                calculate_pct(breach_data.get('total_impact_millions', 0), breach_data.get('prev_total_impact'))
-            ),
-            (
-                str(breach_data.get("ransomware_count", 0)),
-                "Ransomware",
-                breach_data.get('prev_ransomware', 'N/A'),
-                calculate_pct(breach_data.get("ransomware_count", 0), breach_data.get('prev_ransomware'))
-            ),
-            (
-                f"{breach_data.get('records_exposed_millions', 0)}M",
-                "Records Exposed",
-                f"{breach_data.get('prev_records', 'N/A')}M",
-                calculate_pct(breach_data.get('records_exposed_millions', 0), breach_data.get('prev_records'))
-            ),
-        ]
-
-        self._create_breach_metric_cards(metrics, prev_quarter)
-        self.doc.add_paragraph()
-
-        # Incidents by Type heading - Heading 2, font size 12, Arial, black color
-        incidents_heading = self.doc.add_heading("Incidents by Type", level=2)
-        for run in incidents_heading.runs:
-            run.font.name = "Arial"  # Arial font
-            run.font.size = Pt(12)  # Font size 12pt
-            run.font.color.rgb = RGBColor(0, 0, 0)  # Black color (default)
-        # Add space after heading
-        incidents_heading.paragraph_format.space_after = Pt(6)
-
-        incidents = analysis_result.get("incidents_by_type", [])
-        if incidents:
+        # Get breach landscape data
+        breach_data = analysis_result.get("breach_landscape", {})
+        
+        # If missing, render unavailable message and return
+        if not breach_data:
+            logger.warning("breach_landscape missing from analysis_result")
+            unavailable_para = self.doc.add_paragraph()
+            unavailable_run = unavailable_para.add_run("Breach landscape data unavailable for this reporting period.")
+            unavailable_run.font.name = "Arial"
+            unavailable_run.font.size = Pt(10)
+            unavailable_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+            spacer = self.doc.add_paragraph()
+            spacer.paragraph_format.space_after = Pt(6)
+            return
+        
+        # COMPONENT 2 — Italic scope note
+        scope_note = breach_data.get("scope_note", "")
+        if scope_note:
+            scope_para = self.doc.add_paragraph()
+            scope_para.paragraph_format.space_before = Pt(0)
+            scope_para.paragraph_format.space_after = Pt(6)
+            scope_run = scope_para.add_run(scope_note)
+            scope_run.font.name = "Arial"
+            scope_run.font.size = Pt(9)
+            scope_run.font.italic = True
+            scope_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+        
+        # Spacer after scope note
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(6)
+        
+        # COMPONENT 3 — Stat cards
+        stat_cards = breach_data.get("stat_cards", [])
+        if stat_cards and len(stat_cards) == 4:
+            # Create single-row table with 4 columns
             table = self.doc.add_table(rows=1, cols=4)
-            table.style = None  # Remove table style to avoid overrides
+            table.autofit = False
+            table.style = None
             
-            # Set column widths: narrow for Q1 and Q4 (just fit headers), expand Notable Example
-            # Column widths in inches
-            # Incident Type: 1.5 inches, Q1 2026: 0.5 inches (narrow to fit header), Q4 2025: 0.5 inches (narrow to fit header), Notable Example: auto (remaining)
-            columns = table.columns
-            columns[0].width = Inches(1.5)  # Incident Type
-            columns[1].width = Inches(0.5)    # Q1 2026 - narrow to fit header text
-            columns[2].width = Inches(0.5)    # Q4 2025 - narrow to fit header text
-            columns[3].width = Inches(4.5)    # Notable Example - takes remaining space
+            # Set column widths
+            for col in table.columns:
+                col.width = Inches(1.625)
+            
+            for i, card in enumerate(stat_cards):
+                cell = table.rows[0].cells[i]
+                cell.paragraphs[0].clear()
+                
+                # Set cell background to light blue-gray (#E8F4F8 or similar light blue)
+                self._set_cell_shading(cell, "E8F4F8")
 
-            # Column headers: "Incident Type", "Q1 2026", "Q4 2025", "Notable Example"
-            headers = ["Incident Type", "Q1 2026", "Q4 2025", "Notable Example"]
+                # Apply thin gray borders on all sides (no accent border)
+                tc_pr = cell._element.get_or_add_tcPr()
+                tc_borders = tc_pr.find(qn("w:tcBorders"))
+                if tc_borders is None:
+                    tc_borders = OxmlElement("w:tcBorders")
+                    tc_pr.append(tc_borders)
+                
+                for border_name in ["top", "left", "right", "bottom"]:
+                    border = tc_borders.find(qn(f"w:{border_name}"))
+                    if border is None:
+                        border = OxmlElement(f"w:{border_name}")
+                        tc_borders.append(border)
+                    border.set(qn("w:val"), "single")
+                    border.set(qn("w:sz"), "4")
+                    border.set(qn("w:color"), "D0D0D0")  # Light gray border
+                
+                # Paragraph 1 — large display value (black, bold)
+                value_para = cell.paragraphs[0]
+                value_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                value_para.paragraph_format.space_after = Pt(2)
+                value_run = value_para.add_run(card.get("value", ""))
+                value_run.font.name = "Arial"
+                value_run.font.size = Pt(24)
+                value_run.font.bold = True
+                value_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)  # Black
+                
+                # Paragraph 2 — label (black, bold)
+                label_para = cell.add_paragraph()
+                label_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                label_para.paragraph_format.space_after = Pt(4)
+                label_run = label_para.add_run(card.get("label", ""))
+                label_run.font.name = "Arial"
+                label_run.font.size = Pt(10)
+                label_run.font.bold = True
+                label_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)  # Black
+                
+                # Paragraph 3 — prior quarter comparison (red italic, single line)
+                prior_label = card.get("prior_label", "")
+                prior_value = card.get("prior_value", "")
+                change_pct = card.get("change_pct", "")
+                
+                prior_para = cell.add_paragraph()
+                prior_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                
+                # Single run with full comparison text
+                comparison_text = f"{prior_label}: {prior_value} ({change_pct})"
+                comparison_run = prior_para.add_run(comparison_text)
+                comparison_run.font.name = "Arial"
+                comparison_run.font.size = Pt(8)
+                comparison_run.font.italic = True
+                comparison_run.font.bold = False
+                comparison_run.font.color.rgb = RGBColor(0xDC, 0x35, 0x45)  # Red color for comparison
+        
+        # Spacer after stat cards
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(6)
+        
+        # COMPONENT 4 — Incidents by type
+        incidents = breach_data.get("incidents_by_type", [])
+        current_quarter_label = breach_data.get("current_quarter_label", "Current")
+        prior_quarter_label = breach_data.get("prior_quarter_label", "Prior")
+        
+        # Subheading
+        incidents_heading = self.doc.add_paragraph()
+        incidents_heading.paragraph_format.space_before = Pt(10)
+        incidents_heading.paragraph_format.space_after = Pt(4)
+        heading_run = incidents_heading.add_run("Incidents by Type")
+        heading_run.font.name = "Arial"
+        heading_run.font.size = Pt(11)
+        heading_run.font.bold = True
+        heading_run.font.color.rgb = BrandColors.ORANGE_PRIMARY
+        
+        if incidents:
+            # Create table with header row + data rows
+            table = self.doc.add_table(rows=1 + len(incidents), cols=4)
+            table.autofit = False
+            table.style = None
+            
+            # Set column widths
+            table.columns[0].width = Inches(1.39)
+            table.columns[1].width = Inches(0.83)
+            table.columns[2].width = Inches(0.83)
+            table.columns[3].width = Inches(3.45)
+            
+            # Header row
+            headers = ["Incident Type", current_quarter_label, prior_quarter_label, "Notable Example"]
             header_cells = table.rows[0].cells
-            for i, header in enumerate(headers):
-                header_cells[i].paragraphs[0].clear()
-                header_run = header_cells[i].paragraphs[0].add_run(header)
+            
+            for i, header_text in enumerate(headers):
+                cell = header_cells[i]
+                cell.paragraphs[0].clear()
+                
+                # Set background to #E65100 (orange)
+                self._set_cell_shading(cell, "E65100")
+                
+                # Header text
+                header_run = cell.paragraphs[0].add_run(header_text)
                 header_run.font.name = "Arial"
+                header_run.font.size = Pt(10)
                 header_run.font.bold = True
-                header_run.font.size = Pt(11.43)  # 114300 EMU = 11.43pt (matches example)
-                header_run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)  # White text
-                # Center-align Q1 2026 and Q4 2025 headers, center others
-                header_cells[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                # Center-align vertically for Q1 and Q4 header cells
-                if i == 1 or i == 2:  # Q1 2026 or Q4 2025 columns
-                    tc_pr = header_cells[i]._element.get_or_add_tcPr()
-                    v_align = tc_pr.find(qn("w:vAlign"))
-                    if v_align is None:
-                        v_align = OxmlElement("w:vAlign")
-                        tc_pr.append(v_align)
-                    v_align.set(qn("w:val"), "center")
-                # Orange header background (#E65100) with val=clear
-                self._set_cell_shading(header_cells[i], "E65100")  # Orange background
-                # Add borders to header cells
-                self._set_cell_borders(header_cells[i], color_hex="C0C0C0", size="1")
-
-            for incident in incidents:
-                row = table.add_row()
+                header_run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                
+                # Cell padding
+                tc_pr = cell._element.get_or_add_tcPr()
+                tc_mar = tc_pr.find(qn("w:tcMar"))
+                if tc_mar is None:
+                    tc_mar = OxmlElement("w:tcMar")
+                    tc_pr.append(tc_mar)
+                
+                for margin_type in ["top", "bottom", "left", "right"]:
+                    margin = tc_mar.find(qn(f"w:{margin_type}"))
+                    if margin is None:
+                        margin = OxmlElement(f"w:{margin_type}")
+                        tc_mar.append(margin)
+                    if margin_type in ["top", "bottom"]:
+                        margin.set(qn("w:w"), "60")
+                    else:  # left, right
+                        margin.set(qn("w:w"), "80")
+                    margin.set(qn("w:type"), "dxa")
+            
+            # Data rows
+            for row_idx, incident in enumerate(incidents):
+                row = table.rows[row_idx + 1]
                 cells = row.cells
                 
-                # Column 1: Incident Type - Arial 11.43pt, default black, left-aligned, no background
+                # Alternate row backgrounds
+                if row_idx % 2 == 0:
+                    bg_color = "FFFFFF"  # even rows
+                else:
+                    bg_color = "F3F4F6"  # odd rows
+                
+                for cell in cells:
+                    self._set_cell_shading(cell, bg_color)
+                
+                # Col 0 — incident type (bold black)
                 cells[0].paragraphs[0].clear()
                 type_run = cells[0].paragraphs[0].add_run(incident.get("type", ""))
                 type_run.font.name = "Arial"
-                type_run.font.size = Pt(11.43)  # 114300 EMU = 11.43pt
-                type_run.font.bold = False
-                type_run.font.italic = False
-                # No color set (default black)
+                type_run.font.size = Pt(10)
+                type_run.font.bold = True
+                type_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)  # Black
                 cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
                 
-                # Column 2: Q1 2026 - Arial 11.43pt, bold, default black, center-aligned (horizontally and vertically)
+                # Col 1 — current_count (large bold black)
                 cells[1].paragraphs[0].clear()
-                current_run = cells[1].paragraphs[0].add_run(str(incident.get("current_count", 0)))
+                current_run = cells[1].paragraphs[0].add_run(incident.get("current_count", "0"))
                 current_run.font.name = "Arial"
-                current_run.font.size = Pt(11.43)  # 114300 EMU = 11.43pt
-                current_run.font.bold = True  # Bold numbers in Q1 2026 column
-                current_run.font.italic = False
-                # No color set (default black)
-                cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center-aligned horizontally
-                # Center-align vertically
-                tc_pr = cells[1]._element.get_or_add_tcPr()
-                v_align = tc_pr.find(qn("w:vAlign"))
-                if v_align is None:
-                    v_align = OxmlElement("w:vAlign")
-                    tc_pr.append(v_align)
-                v_align.set(qn("w:val"), "center")
+                current_run.font.size = Pt(14)  # Larger size for emphasis
+                current_run.font.bold = True
+                current_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)  # Black
+                cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
                 
-                # Column 3: Q4 2025 - Arial 11.43pt, not bold, gray (#666666), center-aligned (horizontally and vertically)
+                # Col 2 — prior_count (regular black, not bold)
                 cells[2].paragraphs[0].clear()
-                prev_run = cells[2].paragraphs[0].add_run(str(incident.get("prev_count", 0)))
-                prev_run.font.name = "Arial"
-                prev_run.font.size = Pt(11.43)  # 114300 EMU = 11.43pt
-                prev_run.font.bold = False
-                prev_run.font.italic = False
-                prev_run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)  # Gray #666666
-                cells[2].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center-aligned horizontally
-                # Center-align vertically
-                tc_pr = cells[2]._element.get_or_add_tcPr()
-                v_align = tc_pr.find(qn("w:vAlign"))
-                if v_align is None:
-                    v_align = OxmlElement("w:vAlign")
-                    tc_pr.append(v_align)
-                v_align.set(qn("w:val"), "center")
+                prior_run = cells[2].paragraphs[0].add_run(incident.get("prior_count", "0"))
+                prior_run.font.name = "Arial"
+                prior_run.font.size = Pt(10)
+                prior_run.font.bold = False
+                prior_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)  # Black
+                cells[2].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
                 
-                # Column 4: Notable Example - Arial 10.16pt, italic, dark gray (#555555), left-aligned
+                # Col 3 — notable_example (italic gray)
                 cells[3].paragraphs[0].clear()
                 example_run = cells[3].paragraphs[0].add_run(incident.get("notable_example", ""))
                 example_run.font.name = "Arial"
-                example_run.font.size = Pt(10.16)  # 101600 EMU = 10.16pt
-                example_run.font.italic = True  # Italic text
-                example_run.font.bold = False
-                example_run.font.color.rgb = RGBColor(0x55, 0x55, 0x55)  # Dark gray #555555
+                example_run.font.size = Pt(9)
+                example_run.font.italic = True
+                example_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)  # Gray
                 cells[3].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
                 
-                # Add borders to data row cells (no background shading - uses default white)
+                # Apply gray borders and padding to all data cells
                 for cell in cells:
-                    # No background shading (None = default white)
-                    # Add borders
-                    self._set_cell_borders(cell, color_hex="C0C0C0", size="1")  # Thin light gray borders
-
-        self.doc.add_paragraph()
-
-        # Common factors
-        common_factors = analysis_result.get("common_factors", "")
+                    tc_pr = cell._element.get_or_add_tcPr()
+                    
+                    # Borders
+                    tc_borders = tc_pr.find(qn("w:tcBorders"))
+                    if tc_borders is None:
+                        tc_borders = OxmlElement("w:tcBorders")
+                        tc_pr.append(tc_borders)
+                    
+                    for border_name in ["top", "left", "bottom", "right"]:
+                        border = tc_borders.find(qn(f"w:{border_name}"))
+                        if border is None:
+                            border = OxmlElement(f"w:{border_name}")
+                            tc_borders.append(border)
+                        border.set(qn("w:val"), "single")
+                        border.set(qn("w:sz"), "4")
+                        border.set(qn("w:color"), "D1D5DB")
+                    
+                    # Padding
+                    tc_mar = tc_pr.find(qn("w:tcMar"))
+                    if tc_mar is None:
+                        tc_mar = OxmlElement("w:tcMar")
+                        tc_pr.append(tc_mar)
+                    
+                    for margin_type in ["top", "bottom", "left", "right"]:
+                        margin = tc_mar.find(qn(f"w:{margin_type}"))
+                        if margin is None:
+                            margin = OxmlElement(f"w:{margin_type}")
+                            tc_mar.append(margin)
+                        if margin_type in ["top", "bottom"]:
+                            margin.set(qn("w:w"), "60")
+                        else:  # left, right
+                            margin.set(qn("w:w"), "80")
+                        margin.set(qn("w:type"), "dxa")
+        
+        # COMPONENT 5 — Common factors
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(6)
+        
+        common_factors = breach_data.get("common_factors", "")
         if common_factors:
+            # Subheading
+            factors_heading = self.doc.add_paragraph()
+            factors_heading.paragraph_format.space_before = Pt(8)
+            factors_heading.paragraph_format.space_after = Pt(4)
+            factors_heading_run = factors_heading.add_run("Common Factors Across Incidents")
+            factors_heading_run.font.name = "Arial"
+            factors_heading_run.font.size = Pt(11)
+            factors_heading_run.font.bold = True
+            factors_heading_run.font.color.rgb = BrandColors.ORANGE_PRIMARY
+            
+            # Body paragraph
             factors_para = self.doc.add_paragraph()
-            # Text before colon: blue and bold
-            factors_label = factors_para.add_run("Common factors across incidents: ")
-            factors_label.font.name = "Arial"
-            factors_label.font.size = FontSizes.BODY_SMALL
-            factors_label.font.bold = True
-            factors_label.font.color.rgb = RGBColor(0x00, 0x8A, 0xC9)  # #008AC9
-            # Text after colon: normal (not bold)
-            factors_text = factors_para.add_run(common_factors)
-            factors_text.font.name = "Arial"
-            factors_text.font.size = FontSizes.BODY_SMALL
-            factors_text.font.bold = False
-
-        # Don't add paragraph here - divider will be added right after
+            factors_para.paragraph_format.space_after = Pt(6)
+            factors_run = factors_para.add_run(common_factors)
+            factors_run.font.name = "Arial"
+            factors_run.font.size = Pt(10)
+            factors_run.font.bold = False
+            factors_run.font.color.rgb = RGBColor(0x11, 0x18, 0x27)
+        
+        # Spacer after breach landscape
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(6)
+        logger.info("Breach landscape section added")
 
     def _create_metric_cards(self, metrics: List[tuple]) -> None:
         """Create metric cards for breach landscape."""
@@ -804,13 +1012,14 @@ and vulnerabilities observed are consistent with those historically used against
                 comp_run.font.color.rgb = RGBColor(0xF0, 0xF0, 0xF0)  # Light gray/white
 
     def _add_geopolitical_landscape(self, analysis_result: Dict[str, Any]) -> None:
-        """Add geopolitical threat landscape section."""
+        """Add geopolitical threat landscape section with dynamic card table."""
         logger.info("Adding Geopolitical Threat Landscape section")
 
         geo_heading = self.doc.add_heading("Geopolitical Threat Landscape", level=1)
         for run in geo_heading.runs:
             run.font.name = "Arial"
             run.font.size = Pt(14)  # Font size 14pt
+            run.font.color.rgb = BrandColors.ORANGE_DESIGN  # Orange heading
             run.font.color.rgb = BrandColors.ORANGE_PRIMARY  # Orange color
         # Add space before and after heading
         geo_heading.paragraph_format.space_before = Pt(12)
@@ -819,282 +1028,947 @@ and vulnerabilities observed are consistent with those historically used against
         # Subtitle
         subtitle = self.doc.add_paragraph()
         sub_run = subtitle.add_run(
-            f"Nation-state cyber activity with implications for the life sciences and "
-            f"genomics sector during Q{self.quarter} {self._get_year()}."
+            f"Nation-state activity assessed for direct relevance to Illumina's assets, operations, and competitive position — Q{self.quarter} {self._get_year()}."
         )
         sub_run.font.name = "Arial"
         sub_run.font.size = FontSizes.SUBTITLE
         sub_run.font.italic = True
         sub_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+        subtitle.paragraph_format.keep_with_next = True  # Keep with table
 
-        self.doc.add_paragraph()
+        # Spacer after subtitle
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(6)
 
-        geopolitical = analysis_result.get("geopolitical_threats", {})
+        # Get geopolitical threats from AI analysis (should be a list of dicts)
+        geopolitical_list = analysis_result.get("geopolitical_threats", [])
+        
+        # If it's a dict (old format), skip rendering - log warning
+        if isinstance(geopolitical_list, dict):
+            logger.warning("geopolitical_threats is a dict (old format), expected list. Skipping geopolitical section.")
+            no_data_para = self.doc.add_paragraph()
+            no_data_run = no_data_para.add_run("No significant nation-state threat activity identified in this reporting period.")
+            no_data_run.font.name = "Arial"
+            no_data_run.font.size = FontSizes.BODY
+            no_data_run.font.italic = True
+            no_data_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+            spacer = self.doc.add_paragraph()
+            spacer.paragraph_format.space_after = Pt(6)
+            return
 
-        # Default countries to cover if not provided
-        countries = ["china", "russia", "north_korea", "iran"]
+        # Cap at 4 countries max
+        if len(geopolitical_list) > 4:
+            logger.warning(f"AI returned {len(geopolitical_list)} countries, capping at 4 for readability")
+            geopolitical_list = geopolitical_list[:4]
 
-        for country in countries:
-            country_data = geopolitical.get(country, {})
-            if country_data or country in ["china", "russia", "north_korea"]:
-                self._add_country_section(country, country_data)
+        # Validate and filter geopolitical entries
+        valid_entries = []
+        for entry in geopolitical_list:
+            # Extract fields for validation (support both 'name' and 'country' fields)
+            name = entry.get("name", "").strip() if entry.get("name") else ""
+            country = entry.get("country", "").strip() if entry.get("country") else ""
+            display_name = entry.get("display_name", "").strip() if entry.get("display_name") else ""
+            level = entry.get("threat_level", "").strip() if entry.get("threat_level") else ""
+            if not level:
+                level = entry.get("level", "").strip() if entry.get("level") else ""
+            relevance = entry.get("relevance", [])
+            activity = entry.get("activity", [])
+            risk = entry.get("risk", [])
+            
+            # Check if we have at least one valid identifier (name, country, or display_name)
+            # At least one must be present and not "Unknown"
+            has_valid_name = (name and name.upper() != "UNKNOWN") or \
+                            (country and country.upper() != "UNKNOWN") or \
+                            (display_name and display_name.upper() != "UNKNOWN")
+            
+            # Check if level is missing or empty
+            level_invalid = not level
+            
+            # Check if all three bullet lists are empty
+            all_bullets_empty = (not relevance or len(relevance) == 0) and \
+                               (not activity or len(activity) == 0) and \
+                               (not risk or len(risk) == 0)
+            
+            # Skip if any validation fails
+            if not has_valid_name or level_invalid or all_bullets_empty:
+                logger.warning(f"Skipping geopolitical entry with insufficient data: {entry}")
+                continue
+            
+            valid_entries.append(entry)
+        
+        # Update list to only valid entries
+        geopolitical_list = valid_entries
 
-    def _add_country_section(self, country: str, data: Dict[str, Any]) -> None:
-        """Add a country-specific threat section."""
-        # Country heading - styled in blue/teal color
-        country_names = {
-            "china": "China",
-            "russia": "Russia",
-            "north_korea": "North Korea",
-            "iran": "Iran"
-        }
-        country_heading = self.doc.add_heading(country_names.get(country, country.title()), level=2)
-        # Style country headings - Heading 2, font size 12, black, bold
-        for run in country_heading.runs:
-            run.font.name = "Arial"
-            run.font.size = Pt(12)  # Font size 12pt
-            run.font.bold = True  # Bold
-            run.font.color.rgb = RGBColor(0, 0, 0)  # Black color
-        # Add space after heading
-        country_heading.paragraph_format.space_after = Pt(6)
+        # If no valid entries remain after filtering, render insufficient data message
+        if not geopolitical_list:
+            no_data_para = self.doc.add_paragraph()
+            no_data_run = no_data_para.add_run("Insufficient geopolitical threat data returned for this reporting period. Review ThreatAnalystAgent output.")
+            no_data_run.font.name = "Arial"
+            no_data_run.font.size = FontSizes.BODY
+            no_data_run.font.italic = True
+            no_data_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+            spacer = self.doc.add_paragraph()
+            spacer.paragraph_format.space_after = Pt(6)
+            return
 
-        # Strategic Context
-        strategic_context = data.get("strategic_context", self._get_default_strategic_context(country))
-        context_para = self.doc.add_paragraph()
-        context_label = context_para.add_run("Strategic Context: ")
-        context_label.font.name = "Arial"
-        context_label.font.size = Pt(10.5)  # 10.5pt font
-        context_label.font.bold = True
-        context_label.font.color.rgb = RGBColor(0x00, 0x8A, 0xC9)  # #008AC9
-        context_text = context_para.add_run(strategic_context)
-        context_text.font.name = "Arial"
-        context_text.font.size = FontSizes.BODY
-        context_text.font.bold = False
+        # Calculate column count and widths dynamically based on valid countries
+        num_countries = len(geopolitical_list)
+        
+        # Column widths based on count (updated to exact specifications)
+        if num_countries == 1:
+            col_width = Inches(6.5)  # Full content width
+        elif num_countries == 2:
+            col_width = Inches(3.25)
+        elif num_countries == 3:
+            col_width = Inches(2.167)
+        else:  # 4 countries
+            col_width = Inches(1.625)
 
-        # Very small space between subsections
-        spacing_para = self.doc.add_paragraph()
-        spacing_para.paragraph_format.space_before = Pt(0)
-        spacing_para.paragraph_format.space_after = Pt(3)  # Very small spacing
+        # Define geopolitical card color scheme (local to this section only)
+        GEO_HEADER_BG = "1E2D3D"  # dark navy charcoal — header row bg
+        GEO_METRICS_BG = "F8FAFC"  # near white — metrics strip bg
+        GEO_LABEL_BG = "FFFFFF"  # pure white — section label rows bg
+        GEO_BULLET_BG_A = "FFFFFF"  # white — relevance and risk rows bg
+        GEO_BULLET_BG_B = "F3F4F6"  # light gray — activity row bg
+        GEO_LABEL_COLOR = BrandColors.ORANGE_PRIMARY  # orange text for section labels
+        GEO_LABEL_BORDER = "E5E7EB"  # light gray bottom line under labels
+        GEO_CARD_BORDER = "D1D5DB"  # gray outer border on all cells
+        GEO_ACCENT_LEFT = "E65100"  # orange left border on header only (hex string)
 
-        # Quarter Activity
-        activity = data.get("activity", self._get_default_activity(country))
-        activity_para = self.doc.add_paragraph()
-        activity_label = activity_para.add_run(f"Q{self.quarter} Activity: ")
-        activity_label.font.name = "Arial"
-        activity_label.font.size = Pt(10.5)  # 10.5pt font
-        activity_label.font.bold = True
-        activity_label.font.color.rgb = RGBColor(0x00, 0x8A, 0xC9)  # #008AC9
-        activity_text = activity_para.add_run(activity)
-        activity_text.font.name = "Arial"
-        activity_text.font.size = FontSizes.BODY
-        activity_text.font.bold = False
+        # Create table with 5 rows (header, metrics, relevance, activity, risk) and N columns (one per country)
+        table = self.doc.add_table(rows=5, cols=num_countries)
+        table.alignment = WD_TABLE_ALIGNMENT.LEFT
+        table.style = None  # Remove any default styling
+        table.autofit = False
 
-        # Very small space between subsections
-        spacing_para = self.doc.add_paragraph()
-        spacing_para.paragraph_format.space_before = Pt(0)
-        spacing_para.paragraph_format.space_after = Pt(3)  # Very small spacing
+        # Set table width to content width
+        tbl = table._element
+        tbl_pr = tbl.find(qn("w:tblPr"))
+        if tbl_pr is None:
+            tbl_pr = OxmlElement("w:tblPr")
+            tbl.insert(0, tbl_pr)
 
-        # Business Implications
-        implications = data.get("implications", self._get_default_implications(country))
-        impl_para = self.doc.add_paragraph()
-        impl_label = impl_para.add_run("Business Implications: ")
-        impl_label.font.name = "Arial"
-        impl_label.font.size = Pt(10.5)  # 10.5pt font
-        impl_label.font.bold = True
-        impl_label.font.color.rgb = RGBColor(0x00, 0x8A, 0xC9)  # #008AC9
-        impl_text = impl_para.add_run(implications)
-        impl_text.font.name = "Arial"
-        impl_text.font.size = FontSizes.BODY
-        impl_text.font.bold = False
+        # Set column widths
+        for i, col in enumerate(table.columns):
+            col.width = col_width
+        
+        # Prevent page breaks within card rows
+        for row in table.rows:
+            tr = row._tr
+            tr_pr = tr.find(qn("w:trPr"))
+            if tr_pr is None:
+                tr_pr = OxmlElement("w:trPr")
+                tr.insert(0, tr_pr)
+            cant_split = OxmlElement("w:cantSplit")
+            cant_split.set(qn("w:val"), "1")
+            tr_pr.append(cant_split)
 
-        # Add divider after each country section
-        self._add_section_divider()
+        # Populate each country card (column)
+        for col_idx, country_data in enumerate(geopolitical_list):
+            # Extract country data (support both 'name' and 'country' fields)
+            country_name = country_data.get("name", "")
+            if not country_name:
+                country_name = country_data.get("country", "Unknown")
+            display_name = country_data.get("display_name", country_name)
+            
+            # Truncate display name if longer than 20 characters
+            if len(display_name) > 20:
+                truncate_pos = display_name.rfind(" ", 0, 20)
+                if truncate_pos > 0:
+                    display_name = display_name[:truncate_pos] + "..."
+                else:
+                    display_name = display_name[:17] + "..."
+                logger.debug(f"Geo card name truncated: '{country_name}' -> '{display_name}'")
+            
+            threat_level = country_data.get("threat_level", "MEDIUM").upper()
+            primary_vector = country_data.get("vector", "Multiple vectors")
+            exposure = country_data.get("exposure", "MEDIUM").upper()
+            relevance_bullets = country_data.get("relevance", [])
+            activity_bullets = country_data.get("activity", [])
+            risk_bullets = country_data.get("risk", [])
 
-    def _get_default_strategic_context(self, country: str) -> str:
-        """Get default strategic context for a country."""
-        defaults = {
-            "china": "China's national plans designate biotechnology as a strategic priority, with emphasis on genomics, precision medicine, and biomanufacturing.",
-            "russia": "Russian state cyber interests in life sciences remain opportunistic, focusing on healthcare disruption capabilities. Russian-speaking criminal groups pose significant ransomware risk.",
-            "north_korea": "North Korean cyber operations serve dual purposes: revenue generation to circumvent sanctions and acquisition of medical/pharmaceutical research for domestic programs.",
-            "iran": "Iranian cyber operations target healthcare and pharmaceutical sectors primarily for intelligence gathering and potential disruptive capabilities."
-        }
-        return defaults.get(country, "Strategic context requires analysis.")
+            # ============================================================
+            # ROW 1 — HEADER ROW (dark charcoal background, white text)
+            # ============================================================
+            header_cell = table.rows[0].cells[col_idx]
+            header_cell.width = col_width
+            header_cell.paragraphs[0].clear()
+            
+            # Set background to dark charcoal
+            self._set_cell_shading(header_cell, GEO_HEADER_BG)
+            
+            # Set all borders to match the header background color (dark charcoal) for seamless look
+            tc_pr = header_cell._element.get_or_add_tcPr()
+            tc_borders = tc_pr.find(qn("w:tcBorders"))
+            if tc_borders is None:
+                tc_borders = OxmlElement("w:tcBorders")
+                tc_pr.append(tc_borders)
+            for border_name in ["top", "left", "right", "bottom"]:
+                border = tc_borders.find(qn(f"w:{border_name}"))
+                if border is None:
+                    border = OxmlElement(f"w:{border_name}")
+                    tc_borders.append(border)
+                border.set(qn("w:val"), "single")
+                border.set(qn("w:sz"), "4")
+                border.set(qn("w:color"), GEO_HEADER_BG)  # Match cell background
+            
+            # Set cell padding: 100 top/bottom, 100 left, 80 right (twips)
+            tc_mar = tc_pr.find(qn("w:tcMar"))
+            if tc_mar is None:
+                tc_mar = OxmlElement("w:tcMar")
+                tc_pr.append(tc_mar)
+            for margin_type, value in [("top", "100"), ("bottom", "100"), ("left", "100"), ("right", "80")]:
+                margin = tc_mar.find(qn(f"w:{margin_type}"))
+                if margin is None:
+                    margin = OxmlElement(f"w:{margin_type}")
+                    tc_mar.append(margin)
+                margin.set(qn("w:w"), value)
+                margin.set(qn("w:type"), "dxa")
+            
+            # Country name paragraph
+            name_para = header_cell.paragraphs[0]
+            name_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            name_para.paragraph_format.space_after = Pt(3)
+            name_run = name_para.add_run(display_name)
+            name_run.font.name = "Arial"
+            name_run.font.size = Pt(10)
+            name_run.font.bold = True
+            name_run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)  # White
+            
+            # Threat level paragraph (two runs on same line)
+            level_para = header_cell.add_paragraph()
+            level_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            level_para.paragraph_format.space_after = Pt(0)
+            
+            # Run A: "THREAT LEVEL  " label
+            level_label_run = level_para.add_run("THREAT LEVEL  ")
+            level_label_run.font.name = "Arial"
+            level_label_run.font.size = Pt(7)
+            level_label_run.font.bold = False
+            level_label_run.font.color.rgb = RGBColor(0x88, 0x99, 0xAA)  # Muted blue-gray
+            
+            # Run B: threat level value (colored based on level)
+            level_value_run = level_para.add_run(threat_level)
+            level_value_run.font.name = "Arial"
+            level_value_run.font.size = Pt(9)
+            level_value_run.font.bold = True
+            if threat_level == "HIGH":
+                level_value_run.font.color.rgb = RGBColor(0xFF, 0x6B, 0x6B)  # Soft red
+            elif threat_level == "MEDIUM":
+                level_value_run.font.color.rgb = RGBColor(0xFF, 0xD1, 0x66)  # Soft amber
+            else:  # LOW
+                level_value_run.font.color.rgb = RGBColor(0x06, 0xD6, 0xA0)  # Soft green
 
-    def _get_default_activity(self, country: str) -> str:
-        """Get default activity description for a country."""
-        return f"Activity analysis for {country.title()} threat actors pending data collection from Intel471 and CrowdStrike sources."
+            # ============================================================
+            # ROW 2 — METRICS STRIP (near white background)
+            # ============================================================
+            metrics_cell = table.rows[1].cells[col_idx]
+            metrics_cell.width = col_width
+            metrics_cell.paragraphs[0].clear()
+            
+            # Set background to near white
+            self._set_cell_shading(metrics_cell, GEO_METRICS_BG)
+            
+            # Set borders to match cell background for seamless look
+            tc_pr = metrics_cell._element.get_or_add_tcPr()
+            tc_borders = tc_pr.find(qn("w:tcBorders"))
+            if tc_borders is None:
+                tc_borders = OxmlElement("w:tcBorders")
+                tc_pr.append(tc_borders)
+            for border_name in ["top", "left", "right", "bottom"]:
+                border = tc_borders.find(qn(f"w:{border_name}"))
+                if border is None:
+                    border = OxmlElement(f"w:{border_name}")
+                    tc_borders.append(border)
+                border.set(qn("w:val"), "single")
+                border.set(qn("w:sz"), "4")
+                border.set(qn("w:color"), GEO_METRICS_BG)  # Match cell background
+            
+            # Set cell padding: 60 top/bottom, 100 left, 80 right (twips)
+            tc_pr = metrics_cell._element.get_or_add_tcPr()
+            tc_mar = tc_pr.find(qn("w:tcMar"))
+            if tc_mar is None:
+                tc_mar = OxmlElement("w:tcMar")
+                tc_pr.append(tc_mar)
+            for margin_type, value in [("top", "60"), ("bottom", "60"), ("left", "100"), ("right", "80")]:
+                margin = tc_mar.find(qn(f"w:{margin_type}"))
+                if margin is None:
+                    margin = OxmlElement(f"w:{margin_type}")
+                    tc_mar.append(margin)
+                margin.set(qn("w:w"), value)
+                margin.set(qn("w:type"), "dxa")
+            
+            # Line 1 — Primary vector
+            vector_para = metrics_cell.paragraphs[0]
+            vector_para.paragraph_format.space_after = Pt(2)
+            vector_label_run = vector_para.add_run("Primary vector  ")
+            vector_label_run.font.name = "Arial"
+            vector_label_run.font.size = Pt(7.5)
+            vector_label_run.font.bold = True
+            vector_label_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+            vector_value_run = vector_para.add_run(primary_vector)
+            vector_value_run.font.name = "Arial"
+            vector_value_run.font.size = Pt(7.5)
+            vector_value_run.font.bold = False
+            vector_value_run.font.color.rgb = RGBColor(0x1A, 0x20, 0x2C)
+            
+            # Line 2 — Illumina exposure
+            exposure_para = metrics_cell.add_paragraph()
+            exposure_para.paragraph_format.space_after = Pt(0)
+            exposure_label_run = exposure_para.add_run("Illumina exposure  ")
+            exposure_label_run.font.name = "Arial"
+            exposure_label_run.font.size = Pt(7.5)
+            exposure_label_run.font.bold = True
+            exposure_label_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+            exposure_value_run = exposure_para.add_run(exposure)
+            exposure_value_run.font.name = "Arial"
+            exposure_value_run.font.size = Pt(7.5)
+            exposure_value_run.font.bold = True
+            if exposure == "CRITICAL":
+                exposure_value_run.font.color.rgb = RGBColor(0x99, 0x1B, 0x1B)
+            elif exposure in ("HIGH", "MEDIUM"):
+                exposure_value_run.font.color.rgb = RGBColor(0x92, 0x40, 0x0E)
+            else:  # LOW
+                exposure_value_run.font.color.rgb = RGBColor(0x06, 0x5F, 0x46)
 
-    def _get_default_implications(self, country: str) -> str:
-        """Get default business implications for a country."""
-        defaults = {
-            "china": "Theft of proprietary research, sequencing technology designs, or manufacturing processes could erode competitive advantage.",
-            "russia": "Ransomware incidents in life sciences and manufacturing can result in significant recovery costs and operational disruption.",
-            "north_korea": "Credential compromise of research or executive personnel could provide access to sensitive environments and IP repositories.",
-            "iran": "Potential for both espionage and disruptive operations targeting pharmaceutical supply chains."
-        }
-        return defaults.get(country, "Business implications require assessment.")
+            # ============================================================
+            # ROW 3 — RELEVANCE TO ILLUMINA (white background)
+            # ============================================================
+            relevance_cell = table.rows[2].cells[col_idx]
+            relevance_cell.width = col_width
+            relevance_cell.paragraphs[0].clear()
+            
+            # Set background to white
+            self._set_cell_shading(relevance_cell, GEO_BULLET_BG_A)
+            
+            # Set borders to match cell background for seamless look
+            tc_pr = relevance_cell._element.get_or_add_tcPr()
+            tc_borders = tc_pr.find(qn("w:tcBorders"))
+            if tc_borders is None:
+                tc_borders = OxmlElement("w:tcBorders")
+                tc_pr.append(tc_borders)
+            for border_name in ["top", "left", "right", "bottom"]:
+                border = tc_borders.find(qn(f"w:{border_name}"))
+                if border is None:
+                    border = OxmlElement(f"w:{border_name}")
+                    tc_borders.append(border)
+                border.set(qn("w:val"), "single")
+                border.set(qn("w:sz"), "4")
+                border.set(qn("w:color"), GEO_BULLET_BG_A)  # Match cell background
+            
+            # Set cell padding: 80 top/bottom, 100 left, 80 right (twips)
+            tc_pr = relevance_cell._element.get_or_add_tcPr()
+            tc_mar = tc_pr.find(qn("w:tcMar"))
+            if tc_mar is None:
+                tc_mar = OxmlElement("w:tcMar")
+                tc_pr.append(tc_mar)
+            for margin_type, value in [("top", "80"), ("bottom", "80"), ("left", "100"), ("right", "80")]:
+                margin = tc_mar.find(qn(f"w:{margin_type}"))
+                if margin is None:
+                    margin = OxmlElement(f"w:{margin_type}")
+                    tc_mar.append(margin)
+                margin.set(qn("w:w"), value)
+                margin.set(qn("w:type"), "dxa")
+            
+            # Section label paragraph
+            label_para = relevance_cell.paragraphs[0]
+            label_para.paragraph_format.space_after = Pt(3)
+            label_run = label_para.add_run("RELEVANCE TO ILLUMINA")
+            label_run.font.name = "Arial"
+            label_run.font.size = Pt(7)
+            label_run.font.bold = True
+            label_run.font.color.rgb = GEO_LABEL_COLOR
+            
+            # Bullets (max 2, truncate at 120 chars)
+            bullets_to_render = relevance_bullets[:2]
+            if len(relevance_bullets) > 2:
+                logger.debug(f"Geo card bullets capped at 2 for section 'RELEVANCE', country '{display_name}'")
+            
+            for bullet_text in bullets_to_render:
+                # Truncate bullet to 120 characters
+                if len(bullet_text) > 120:
+                    truncate_pos = bullet_text.rfind(" ", 0, 120)
+                    if truncate_pos > 0:
+                        bullet_text = bullet_text[:truncate_pos] + "..."
+                    else:
+                        bullet_text = bullet_text[:117] + "..."
+                    logger.debug(f"Geo bullet truncated for '{display_name}': '{bullet_text[:40]}...'")
+                
+                # Use bullet character prefix (not List Bullet style)
+                bullet_para = relevance_cell.add_paragraph()
+                bullet_para.paragraph_format.space_after = Pt(2)
+                bullet_run = bullet_para.add_run("\u2022  " + bullet_text)
+                bullet_run.font.name = "Arial"
+                bullet_run.font.size = Pt(7.5)
+                bullet_run.font.color.rgb = RGBColor(0x1A, 0x20, 0x2C)
+
+            # ============================================================
+            # ROW 4 — Q2 ACTIVITY (light gray background)
+            # ============================================================
+            activity_cell = table.rows[3].cells[col_idx]
+            activity_cell.width = col_width
+            activity_cell.paragraphs[0].clear()
+            
+            # Set background to light gray
+            self._set_cell_shading(activity_cell, GEO_BULLET_BG_B)
+            
+            # Set borders to match cell background for seamless look
+            tc_pr = activity_cell._element.get_or_add_tcPr()
+            tc_borders = tc_pr.find(qn("w:tcBorders"))
+            if tc_borders is None:
+                tc_borders = OxmlElement("w:tcBorders")
+                tc_pr.append(tc_borders)
+            for border_name in ["top", "left", "right", "bottom"]:
+                border = tc_borders.find(qn(f"w:{border_name}"))
+                if border is None:
+                    border = OxmlElement(f"w:{border_name}")
+                    tc_borders.append(border)
+                border.set(qn("w:val"), "single")
+                border.set(qn("w:sz"), "4")
+                border.set(qn("w:color"), GEO_BULLET_BG_B)  # Match cell background
+            
+            # Set cell padding: 80 top/bottom, 100 left, 80 right (twips)
+            tc_pr = activity_cell._element.get_or_add_tcPr()
+            tc_mar = tc_pr.find(qn("w:tcMar"))
+            if tc_mar is None:
+                tc_mar = OxmlElement("w:tcMar")
+                tc_pr.append(tc_mar)
+            for margin_type, value in [("top", "80"), ("bottom", "80"), ("left", "100"), ("right", "80")]:
+                margin = tc_mar.find(qn(f"w:{margin_type}"))
+                if margin is None:
+                    margin = OxmlElement(f"w:{margin_type}")
+                    tc_mar.append(margin)
+                margin.set(qn("w:w"), value)
+                margin.set(qn("w:type"), "dxa")
+            
+            # Section label paragraph
+            label_para = activity_cell.paragraphs[0]
+            label_para.paragraph_format.space_after = Pt(3)
+            label_run = label_para.add_run(f"Q{self.quarter} ACTIVITY")
+            label_run.font.name = "Arial"
+            label_run.font.size = Pt(7)
+            label_run.font.bold = True
+            label_run.font.color.rgb = GEO_LABEL_COLOR
+            
+            # Bullets (max 2, truncate at 120 chars)
+            bullets_to_render = activity_bullets[:2]
+            if len(activity_bullets) > 2:
+                logger.debug(f"Geo card bullets capped at 2 for section 'ACTIVITY', country '{display_name}'")
+            
+            for bullet_text in bullets_to_render:
+                # Truncate bullet to 120 characters
+                if len(bullet_text) > 120:
+                    truncate_pos = bullet_text.rfind(" ", 0, 120)
+                    if truncate_pos > 0:
+                        bullet_text = bullet_text[:truncate_pos] + "..."
+                    else:
+                        bullet_text = bullet_text[:117] + "..."
+                    logger.debug(f"Geo bullet truncated for '{display_name}': '{bullet_text[:40]}...'")
+                
+                # Use bullet character prefix (not List Bullet style)
+                bullet_para = activity_cell.add_paragraph()
+                bullet_para.paragraph_format.space_after = Pt(2)
+                bullet_run = bullet_para.add_run("\u2022  " + bullet_text)
+                bullet_run.font.name = "Arial"
+                bullet_run.font.size = Pt(7.5)
+                bullet_run.font.color.rgb = RGBColor(0x1A, 0x20, 0x2C)
+
+            # ============================================================
+            # ROW 5 — RISK TO ILLUMINA (white background)
+            # ============================================================
+            risk_cell = table.rows[4].cells[col_idx]
+            risk_cell.width = col_width
+            risk_cell.paragraphs[0].clear()
+            
+            # Set background to white
+            self._set_cell_shading(risk_cell, GEO_BULLET_BG_A)
+            
+            # Set borders to match cell background for seamless look
+            tc_pr = risk_cell._element.get_or_add_tcPr()
+            tc_borders = tc_pr.find(qn("w:tcBorders"))
+            if tc_borders is None:
+                tc_borders = OxmlElement("w:tcBorders")
+                tc_pr.append(tc_borders)
+            for border_name in ["top", "left", "right", "bottom"]:
+                border = tc_borders.find(qn(f"w:{border_name}"))
+                if border is None:
+                    border = OxmlElement(f"w:{border_name}")
+                    tc_borders.append(border)
+                border.set(qn("w:val"), "single")
+                border.set(qn("w:sz"), "4")
+                border.set(qn("w:color"), GEO_BULLET_BG_A)  # Match cell background
+            
+            # Set cell padding: 80 top/bottom, 100 left, 80 right (twips)
+            tc_pr = risk_cell._element.get_or_add_tcPr()
+            tc_mar = tc_pr.find(qn("w:tcMar"))
+            if tc_mar is None:
+                tc_mar = OxmlElement("w:tcMar")
+                tc_pr.append(tc_mar)
+            for margin_type, value in [("top", "80"), ("bottom", "80"), ("left", "100"), ("right", "80")]:
+                margin = tc_mar.find(qn(f"w:{margin_type}"))
+                if margin is None:
+                    margin = OxmlElement(f"w:{margin_type}")
+                    tc_mar.append(margin)
+                margin.set(qn("w:w"), value)
+                margin.set(qn("w:type"), "dxa")
+            
+            # Section label paragraph
+            label_para = risk_cell.paragraphs[0]
+            label_para.paragraph_format.space_after = Pt(3)
+            label_run = label_para.add_run("RISK TO ILLUMINA")
+            label_run.font.name = "Arial"
+            label_run.font.size = Pt(7)
+            label_run.font.bold = True
+            label_run.font.color.rgb = GEO_LABEL_COLOR
+            
+            # Bullets (max 2, truncate at 120 chars)
+            bullets_to_render = risk_bullets[:2]
+            if len(risk_bullets) > 2:
+                logger.debug(f"Geo card bullets capped at 2 for section 'RISK', country '{display_name}'")
+            
+            for bullet_text in bullets_to_render:
+                # Truncate bullet to 120 characters
+                if len(bullet_text) > 120:
+                    truncate_pos = bullet_text.rfind(" ", 0, 120)
+                    if truncate_pos > 0:
+                        bullet_text = bullet_text[:truncate_pos] + "..."
+                    else:
+                        bullet_text = bullet_text[:117] + "..."
+                    logger.debug(f"Geo bullet truncated for '{display_name}': '{bullet_text[:40]}...'")
+                
+                # Use bullet character prefix (not List Bullet style)
+                bullet_para = risk_cell.add_paragraph()
+                bullet_para.paragraph_format.space_after = Pt(2)
+                bullet_run = bullet_para.add_run("\u2022  " + bullet_text)
+                bullet_run.font.name = "Arial"
+                bullet_run.font.size = Pt(7.5)
+                bullet_run.font.color.rgb = RGBColor(0x1A, 0x20, 0x2C)
+
+
+        # Spacer after geopolitical landscape
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(6)
+
+    # DEPRECATED: Old country section rendering - replaced by dynamic card table in _add_geopolitical_landscape()
+    # Keeping these methods for reference but they are no longer called
+    #
+    # def _add_country_section(self, country: str, data: Dict[str, Any]) -> None:
+    #     """Add a country-specific threat section."""
+    #     ...
+    #
+    # def _get_default_strategic_context(self, country: str) -> str:
+    #     """Get default strategic context for a country."""
+    #     ...
+    #
+    # def _get_default_activity(self, country: str) -> str:
+    #     """Get default activity description for a country."""
+    #     ...
+    #
+    # def _get_default_implications(self, country: str) -> str:
+    #     """Get default business implications for a country."""
+    #     ...
 
     def _add_looking_ahead(self, analysis_result: Dict[str, Any]) -> None:
         """Add looking ahead section for next quarter."""
         logger.info("Adding Looking Ahead section")
-
-        next_quarter = self.quarter + 1 if self.quarter < 4 else 1
-        next_year = self._get_year() if self.quarter < 4 else self._get_year() + 1
-
-        looking_ahead_heading = self.doc.add_heading(f"Looking Ahead: Q{next_quarter} {next_year}", level=1)
-        # Style "Looking Ahead" heading - Heading 1, font size 14, orange
+        
+        # Get looking ahead data
+        looking_ahead = analysis_result.get("looking_ahead", {})
+        
+        # If missing or watch_items is empty, render unavailable message
+        watch_items = looking_ahead.get("watch_items", [])
+        if not looking_ahead or not watch_items:
+            logger.warning("looking_ahead missing or watch_items empty")
+            
+            # Still render heading with fallback quarter calculation
+            next_quarter = self.quarter + 1 if self.quarter < 4 else 1
+            next_year = self._get_year() if self.quarter < 4 else self._get_year() + 1
+            
+            looking_ahead_heading = self.doc.add_heading(f"Looking Ahead: Q{next_quarter} {next_year}", level=1)
+            for run in looking_ahead_heading.runs:
+                run.font.name = "Arial"
+                run.font.size = Pt(14)
+                run.font.color.rgb = BrandColors.ORANGE_PRIMARY
+            looking_ahead_heading.paragraph_format.space_before = Pt(12)
+            looking_ahead_heading.paragraph_format.space_after = Pt(6)
+            
+            # Unavailable message
+            unavailable_para = self.doc.add_paragraph()
+            unavailable_run = unavailable_para.add_run("No specific watch items identified for this reporting period.")
+            unavailable_run.font.name = "Arial"
+            unavailable_run.font.size = Pt(10)
+            unavailable_run.font.italic = True
+            unavailable_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+            spacer = self.doc.add_paragraph()
+            spacer.paragraph_format.space_after = Pt(6)
+            return
+        
+        # Component 1 — Section heading with next_quarter_label
+        next_quarter_label = looking_ahead.get("next_quarter_label", "")
+        if not next_quarter_label:
+            # Fallback calculation if AI didn't provide label
+            next_quarter = self.quarter + 1 if self.quarter < 4 else 1
+            next_year = self._get_year() if self.quarter < 4 else self._get_year() + 1
+            next_quarter_label = f"Q{next_quarter} {next_year}"
+        
+        looking_ahead_heading = self.doc.add_heading(f"Looking Ahead: {next_quarter_label}", level=1)
         for run in looking_ahead_heading.runs:
             run.font.name = "Arial"
-            run.font.size = Pt(14)  # Font size 14pt
-            run.font.color.rgb = BrandColors.ORANGE_PRIMARY  # Orange color
-        # Add space before and after heading
+            run.font.size = Pt(14)
+            run.font.color.rgb = BrandColors.ORANGE_DESIGN  # Orange heading
+            run.font.color.rgb = BrandColors.ORANGE_PRIMARY
         looking_ahead_heading.paragraph_format.space_before = Pt(12)
         looking_ahead_heading.paragraph_format.space_after = Pt(6)
+        
+        # Component 2 — Subheading (black, not orange)
+        subheading_para = self.doc.add_paragraph()
+        subheading_para.paragraph_format.space_before = Pt(6)
+        subheading_para.paragraph_format.space_after = Pt(2)
+        subheading_run = subheading_para.add_run("Specific Watch Items")
+        subheading_run.font.name = "Arial"
+        subheading_run.font.size = Pt(11)
+        subheading_run.font.bold = True
+        subheading_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)  # Black
+        
+        # Component 3 — Italic note (gray)
+        note_para = self.doc.add_paragraph()
+        note_para.paragraph_format.space_before = Pt(0)
+        note_para.paragraph_format.space_after = Pt(6)
+        note_run = note_para.add_run("Named, specific items — not generic monitoring reminders.")
+        note_run.font.name = "Arial"
+        note_run.font.size = Pt(9)
+        note_run.font.italic = True
+        note_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)  # Gray
+        
+        # Component 4 — Numbered watch item list
+        for i, item in enumerate(watch_items):
+            subject = item.get("subject", "")
+            detail = item.get("detail", "")
+            
+            # Try to use 'List Number' style, fall back to manual numbering
+            try:
+                item_para = self.doc.add_paragraph(style="List Number")
+            except KeyError:
+                # 'List Number' style not available, use manual numbering
+                item_para = self.doc.add_paragraph()
+                # Add manual number prefix
+                num_run = item_para.add_run(f"{i+1}.  ")
+                num_run.font.name = "Arial"
+                num_run.font.size = Pt(10)
+                num_run.font.bold = False
+                num_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)  # Black
+            
+            item_para.paragraph_format.space_after = Pt(4)
+            
+            # Run 1 — subject (bold, dark navy)
+            subject_run = item_para.add_run(subject)
+            subject_run.font.name = "Arial"
+            subject_run.font.size = Pt(10)
+            subject_run.font.bold = True
+            subject_run.font.color.rgb = RGBColor(0x2C, 0x3E, 0x50)  # Dark navy
+            
+            # Run 2 — detail (regular, black)
+            detail_run = item_para.add_run(f" {detail}")
+            detail_run.font.name = "Arial"
+            detail_run.font.size = Pt(10)
+            detail_run.font.bold = False
+            detail_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)  # Black
+        
+        # Spacer after looking ahead
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(6)
+        logger.info("Looking ahead section added")
 
-        looking_ahead = analysis_result.get("looking_ahead", {})
-
-        # Threat Outlook
-        outlook = looking_ahead.get("threat_outlook",
-            "We anticipate continued pressure from state-sponsored espionage campaigns as genomics "
-            "research and precision manufacturing technology becomes increasingly valuable.")
-        outlook_para = self.doc.add_paragraph()
-        outlook_bold = outlook_para.add_run("Threat Outlook: ")
-        outlook_bold.font.name = "Arial"
-        outlook_bold.font.size = Pt(10.5)  # 10.5pt font
-        outlook_bold.font.bold = True
-        outlook_bold.font.color.rgb = RGBColor(0x00, 0x8A, 0xC9)  # #008AC9
-        outlook_text = outlook_para.add_run(outlook)
-        outlook_text.font.name = "Arial"
-        outlook_text.font.size = FontSizes.BODY
-        outlook_text.font.bold = False
-
-        # Very small space between subsections
-        spacing_para = self.doc.add_paragraph()
-        spacing_para.paragraph_format.space_before = Pt(0)
-        spacing_para.paragraph_format.space_after = Pt(3)  # Very small spacing
-
-        # Planned Initiatives
-        initiatives = looking_ahead.get("planned_initiatives",
-            "Continued monitoring of threat landscape and enhancement of detection capabilities.")
-        init_para = self.doc.add_paragraph()
-        init_bold = init_para.add_run("Planned Initiatives: ")
-        init_bold.font.name = "Arial"
-        init_bold.font.size = Pt(10.5)  # 10.5pt font
-        init_bold.font.bold = True
-        init_bold.font.color.rgb = RGBColor(0x00, 0x8A, 0xC9)  # #008AC9
-        init_text = init_para.add_run(initiatives)
-        init_text.font.name = "Arial"
-        init_text.font.size = FontSizes.BODY
-        init_text.font.bold = False
-
-        # Very small space between subsections
-        spacing_para = self.doc.add_paragraph()
-        spacing_para.paragraph_format.space_before = Pt(0)
-        spacing_para.paragraph_format.space_after = Pt(3)  # Very small spacing
-
-        # Watch Items
-        watch_items = looking_ahead.get("watch_items",
-            "Potential escalation in state-sponsored activity around major industry events and product announcements.")
-        watch_para = self.doc.add_paragraph()
-        watch_bold = watch_para.add_run("Watch Items: ")
-        watch_bold.font.name = "Arial"
-        watch_bold.font.size = Pt(10.5)  # 10.5pt font
-        watch_bold.font.bold = True
-        watch_bold.font.color.rgb = RGBColor(0x00, 0x8A, 0xC9)  # #008AC9
-        watch_text = watch_para.add_run(watch_items)
-        watch_text.font.name = "Arial"
-        watch_text.font.size = FontSizes.BODY
-        watch_text.font.bold = False
-
-        # Don't add paragraph here - divider will be added right after
-
-    def _add_leadership_recommendations(self, analysis_result: Dict[str, Any]) -> None:
-        """Add recommendations for leadership section."""
-        logger.info("Adding Recommendations for Leadership section")
-
-        recommendations_heading = self.doc.add_heading("Recommendations for Leadership", level=1)
-        # Style "Recommendations" heading - Heading 1, font size 14, orange
-        for run in recommendations_heading.runs:
+    def _add_recommendations(self, analysis_result: Dict[str, Any]) -> None:
+        """Add recommendations section."""
+        logger.info("Adding Recommendations section")
+        
+        # Component 1 — Section heading
+        rec_heading = self.doc.add_heading("Recommendations", level=1)
+        for run in rec_heading.runs:
             run.font.name = "Arial"
-            run.font.size = Pt(14)  # Font size 14pt
-            run.font.color.rgb = BrandColors.ORANGE_PRIMARY  # Orange color
-        # Add space before and after heading
-        recommendations_heading.paragraph_format.space_before = Pt(12)
-        recommendations_heading.paragraph_format.space_after = Pt(6)
-
-        recommendations = analysis_result.get("recommendations", [])
-
-        if not recommendations:
-            recommendations = [
-                ("Executive Awareness", "Consider targeted security awareness for executives and key research personnel given sustained social engineering campaigns via professional networks."),
-                ("Vendor Risk Review", "Evaluate security posture of critical software and laboratory equipment vendors given supply chain compromise activity."),
-                ("Manufacturing Environment Security", "Review network segmentation between IT and OT/manufacturing systems. Ensure incident response plans address manufacturing disruption scenarios."),
-                ("Incident Response Readiness", "Confirm ransomware response plans address regulatory disclosure timelines, notification requirements, and manufacturing continuity scenarios."),
-                ("Board Reporting", "Peer incidents and regulatory enforcement may prompt board inquiries. CTI team available to support sector threat context preparation."),
-            ]
-
-        for rec in recommendations:
-            if isinstance(rec, tuple):
-                title, description = rec
-                para = self.doc.add_paragraph(style="List Bullet")
-                title_run = para.add_run(f"{title}: ")
-                title_run.font.name = "Arial"
-                title_run.font.bold = True
-                title_run.font.size = Pt(10.5)  # 10.5pt font
-                title_run.font.color.rgb = RGBColor(0x00, 0x8A, 0xC9)  # #008AC9
-                desc_run = para.add_run(description)
-                desc_run.font.name = "Arial"
-                desc_run.font.size = FontSizes.BODY
-                # Add spacing after each bullet point
-                para.paragraph_format.space_after = Pt(6)
+            run.font.size = Pt(14)
+            run.font.color.rgb = BrandColors.ORANGE_DESIGN  # Orange heading
+            run.font.color.rgb = BrandColors.ORANGE_PRIMARY
+        rec_heading.paragraph_format.space_before = Pt(12)
+        rec_heading.paragraph_format.space_after = Pt(6)
+        
+        # Get recommendations data
+        recommendations = analysis_result.get("recommendations", {})
+        
+        # If missing or items is empty, render unavailable message
+        items = recommendations.get("items", []) if isinstance(recommendations, dict) else []
+        if not recommendations or not items:
+            logger.warning("recommendations missing or items empty")
+            unavailable_para = self.doc.add_paragraph()
+            unavailable_run = unavailable_para.add_run("No recommendations generated for this reporting period.")
+            unavailable_run.font.name = "Arial"
+            unavailable_run.font.size = Pt(10)
+            unavailable_run.font.italic = True
+            unavailable_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+            spacer = self.doc.add_paragraph()
+            spacer.paragraph_format.space_after = Pt(6)
+            return
+        
+        # Component 2 — Italic intro note
+        intro_note = recommendations.get("intro_note", "")
+        if intro_note:
+            intro_para = self.doc.add_paragraph()
+            intro_para.paragraph_format.space_before = Pt(0)
+            intro_para.paragraph_format.space_after = Pt(6)
+            intro_run = intro_para.add_run(intro_note)
+            intro_run.font.name = "Arial"
+            intro_run.font.size = Pt(9)
+            intro_run.font.italic = True
+            intro_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+        
+        # Component 3 — Recommendation boxes
+        for index, item in enumerate(items, start=1):
+            title = item.get("title", "")
+            body = item.get("body", "")
+            
+            # Create single-cell table for box
+            table = self.doc.add_table(rows=1, cols=1)
+            table.autofit = False
+            table.style = None
+            
+            # Set table width to full content width (6.5 inches)
+            table.columns[0].width = Inches(6.5)
+            
+            cell = table.rows[0].cells[0]
+            cell.paragraphs[0].clear()
+            
+            # Set cell background to #FFF3E0 (light orange)
+            self._set_cell_shading(cell, "FFF3E0")
+            
+            # Apply borders via XML
+            tc_pr = cell._element.get_or_add_tcPr()
+            tc_borders = tc_pr.find(qn("w:tcBorders"))
+            if tc_borders is None:
+                tc_borders = OxmlElement("w:tcBorders")
+                tc_pr.append(tc_borders)
+            
+            # Left border: style SINGLE, size 18, color "E65100" (orange)
+            left_border = tc_borders.find(qn("w:left"))
+            if left_border is None:
+                left_border = OxmlElement("w:left")
+                tc_borders.append(left_border)
+            left_border.set(qn("w:val"), "single")
+            left_border.set(qn("w:sz"), "18")
+            left_border.set(qn("w:color"), "E65100")
+            
+            # Top, right, bottom borders: style SINGLE, size 4, color "D1D5DB"
+            for border_name in ["top", "right", "bottom"]:
+                border = tc_borders.find(qn(f"w:{border_name}"))
+                if border is None:
+                    border = OxmlElement(f"w:{border_name}")
+                    tc_borders.append(border)
+                border.set(qn("w:val"), "single")
+                border.set(qn("w:sz"), "4")
+                border.set(qn("w:color"), "D1D5DB")
+            
+            # Cell padding via w:tcMar XML: 80 top/bottom, 120 left/right
+            tc_mar = tc_pr.find(qn("w:tcMar"))
+            if tc_mar is None:
+                tc_mar = OxmlElement("w:tcMar")
+                tc_pr.append(tc_mar)
+            
+            for margin_type in ["top", "bottom", "left", "right"]:
+                margin = tc_mar.find(qn(f"w:{margin_type}"))
+                if margin is None:
+                    margin = OxmlElement(f"w:{margin_type}")
+                    tc_mar.append(margin)
+                if margin_type in ["top", "bottom"]:
+                    margin.set(qn("w:w"), "80")
+                else:  # left, right
+                    margin.set(qn("w:w"), "120")
+                margin.set(qn("w:type"), "dxa")
+            
+            # Title paragraph with underline guard
+            title_para = cell.paragraphs[0]
+            title_para.paragraph_format.space_after = Pt(6)
+            
+            # Prefix run: "{index}.  "
+            prefix_run = title_para.add_run(f"{index}.  ")
+            prefix_run.font.name = "Arial"
+            prefix_run.font.size = Pt(11)
+            prefix_run.font.bold = True
+            prefix_run.font.color.rgb = BrandColors.ORANGE_PRIMARY
+            prefix_run.font.underline = False
+            
+            # Split title on first space
+            if " " in title:
+                first_word = title.split(" ", 1)[0]
+                remainder = title.split(" ", 1)[1]
             else:
-                para = self.doc.add_paragraph(rec, style="List Bullet")
-                for run in para.runs:
-                    run.font.name = "Arial"
-                    run.font.size = FontSizes.BODY
-                    run.font.bold = True
-                # Add spacing after each bullet point
-                para.paragraph_format.space_after = Pt(6)
+                first_word = title
+                remainder = ""
+            
+            # Apply underline guard
+            if first_word.isalpha():
+                # First word is purely alphabetic - underline it
+                first_word_run = title_para.add_run(first_word)
+                first_word_run.font.name = "Arial"
+                first_word_run.font.size = Pt(11)
+                first_word_run.font.bold = True
+                first_word_run.font.color.rgb = BrandColors.ORANGE_PRIMARY
+                first_word_run.font.underline = True
+                
+                # Remainder (if exists)
+                if remainder:
+                    remainder_run = title_para.add_run(f" {remainder}")
+                    remainder_run.font.name = "Arial"
+                    remainder_run.font.size = Pt(11)
+                    remainder_run.font.bold = True
+                    remainder_run.font.color.rgb = BrandColors.ORANGE_PRIMARY
+                    remainder_run.font.underline = False
+            else:
+                # First word not purely alphabetic - no underline, render entire title
+                logger.debug(f"Rec title underline skipped — first word not purely alphabetic: '{first_word}'")
+                full_title_run = title_para.add_run(title)
+                full_title_run.font.name = "Arial"
+                full_title_run.font.size = Pt(11)
+                full_title_run.font.bold = True
+                full_title_run.font.color.rgb = BrandColors.ORANGE_PRIMARY
+                full_title_run.font.underline = False
+            
+            # Body paragraph
+            body_para = cell.add_paragraph()
+            body_para.paragraph_format.space_after = Pt(0)
+            body_run = body_para.add_run(body)
+            body_run.font.name = "Arial"
+            body_run.font.size = Pt(10)
+            body_run.font.bold = False
+            body_run.font.color.rgb = RGBColor(0x11, 0x18, 0x27)
+            
+            # Add spacer paragraph after box
+            spacer = self.doc.add_paragraph()
+            spacer.paragraph_format.space_after = Pt(8)
+        
+        logger.info("Recommendations section added")
 
-        self.doc.add_paragraph()
+    def _add_sources(self, analysis_result: Dict[str, Any]) -> None:
+        """Add Resources & Intelligence Sources section with numbered citations."""
+        logger.info("Adding Resources & Intelligence Sources section")
 
-    def _add_sources(self) -> None:
-        """Add a Sources section listing public intelligence sources used."""
-        logger.info("Adding Sources section")
-
-        h = self.doc.add_heading("Sources", level=1)
+        # Heading
+        h = self.doc.add_heading("Resources & Intelligence Sources", level=1)
         for run in h.runs:
             run.font.name = "Arial"
             run.font.size = Pt(14)
             run.font.color.rgb = BrandColors.ORANGE_PRIMARY
 
-        sources = [
-            ("CrowdStrike Falcon Intelligence", "Threat actor profiles, APT campaigns, and adversary tracking"),
-            ("Intel471 Titan", "Underground threat intelligence, breach reporting, and actor monitoring"),
-            ("NIST National Vulnerability Database (NVD)", "https://nvd.nist.gov/"),
-            ("CISA Known Exploited Vulnerabilities (KEV) Catalog", "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"),
-            ("HHS Breach Portal", "https://ocrportal.hhs.gov/ocr/breach/breach_report.jsf"),
-            ("FBI Internet Crime Complaint Center (IC3)", "https://www.ic3.gov/"),
-            ("SEC EDGAR Filings", "https://www.sec.gov/cgi-bin/browse-edgar"),
-            ("MITRE ATT&CK", "https://attack.mitre.org/"),
-            ("Open Source Intelligence (OSINT)", "Industry publications, state AG notifications, and vendor advisories"),
+        # Intro text
+        intro = self.doc.add_paragraph()
+        intro_run = intro.add_run("This report was compiled using the following intelligence sources:")
+        intro_run.font.name = "Arial"
+        intro_run.font.size = FontSizes.BODY_SMALL
+        intro_run.font.italic = True
+        intro_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+        intro.paragraph_format.space_after = Pt(6)
+
+        # Primary intelligence sources (numbered [1]-[4])
+        # Only list sources that are actually collected/used
+        primary_sources = [
+            "NIST National Vulnerability Database (NVD)",
+            "CISA Known Exploited Vulnerabilities (KEV) Catalog",
+            "Intel471 Titan threat intelligence platform",
+            "CrowdStrike Falcon Intelligence",
         ]
 
-        for name, detail in sources:
+        for idx, source in enumerate(primary_sources, start=1):
             para = self.doc.add_paragraph(style="List Bullet")
-            name_run = para.add_run(f"{name}")
+            # Number in bold
+            number_run = para.add_run(f"[{idx}] ")
+            number_run.font.name = "Arial"
+            number_run.font.size = FontSizes.BODY_SMALL
+            number_run.font.bold = True
+            # Source name
+            name_run = para.add_run(source)
             name_run.font.name = "Arial"
             name_run.font.size = FontSizes.BODY_SMALL
-            name_run.font.bold = True
-            if detail.startswith("http"):
-                detail_run = para.add_run(f"  {detail}")
-            else:
-                detail_run = para.add_run(f" — {detail}")
-            detail_run.font.name = "Arial"
-            detail_run.font.size = FontSizes.BODY_SMALL
-            detail_run.font.color.rgb = BrandColors.GRAY_MEDIUM
 
-        self.doc.add_paragraph()
+        # OSINT Sources heading
+        osint_heading = self.doc.add_paragraph()
+        osint_heading.paragraph_format.space_before = Pt(12)
+        osint_heading.paragraph_format.space_after = Pt(6)
+        osint_run = osint_heading.add_run("Open Source Intelligence (OSINT) Sources:")
+        osint_run.font.name = "Arial"
+        osint_run.font.size = FontSizes.BODY_SMALL
+        osint_run.font.bold = True
+
+        # Get OSINT sources from analysis_result
+        osint_sources = analysis_result.get("osint_sources_used", [])
+        
+        if osint_sources:
+            for idx, osint in enumerate(osint_sources, start=5):
+                para = self.doc.add_paragraph(style="List Bullet")
+                
+                # Number in bold
+                number_run = para.add_run(f"[{idx}] ")
+                number_run.font.name = "Arial"
+                number_run.font.size = FontSizes.BODY_SMALL
+                number_run.font.bold = True
+                
+                # Title as hyperlink (blue, underlined)
+                title = osint.get("title", "Untitled")
+                url = osint.get("url", "")
+                description = osint.get("description", "")
+                
+                if url:
+                    # Add title as blue underlined text (hyperlink styling)
+                    title_run = para.add_run(title)
+                    title_run.font.name = "Arial"
+                    title_run.font.size = FontSizes.BODY_SMALL
+                    title_run.font.color.rgb = RGBColor(0x00, 0x5A, 0x9C)  # Blue
+                    title_run.font.underline = True
+                    
+                    # Try to add actual hyperlink functionality
+                    try:
+                        part = para._element
+                        r = title_run._element
+                        hyperlink = OxmlElement('w:hyperlink')
+                        hyperlink.set(qn('r:id'), self.doc.part.relate_to(
+                            url, 
+                            'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink', 
+                            is_external=True
+                        ))
+                        # Move the run element into the hyperlink
+                        new_r = OxmlElement('w:r')
+                        for child in list(r):
+                            new_r.append(child)
+                        hyperlink.append(new_r)
+                        # Replace the run with the hyperlink
+                        parent = r.getparent()
+                        parent.replace(r, hyperlink)
+                    except Exception as e:
+                        logger.warning(f"Could not create hyperlink for {title}: {e}")
+                        # Hyperlink creation failed, but blue underlined text still shows
+                else:
+                    # No URL, just show title in regular text
+                    title_run = para.add_run(title)
+                    title_run.font.name = "Arial"
+                    title_run.font.size = FontSizes.BODY_SMALL
+                
+                # Description in gray italic
+                if description:
+                    desc_run = para.add_run(f" - {description}")
+                    desc_run.font.name = "Arial"
+                    desc_run.font.size = FontSizes.BODY_SMALL
+                    desc_run.font.italic = True
+                    desc_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+        else:
+            # No OSINT sources, show placeholder
+            para = self.doc.add_paragraph(style="List Bullet")
+            para_run = para.add_run("No OSINT sources were referenced in this report")
+            para_run.font.name = "Arial"
+            para_run.font.size = FontSizes.BODY_SMALL
+            para_run.font.italic = True
+            para_run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+
+        # Spacer after sources
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(6)
 
     def _add_footer(self) -> None:
         """Add footer with contact info, sources, TLP classification, and page number."""
@@ -1102,7 +1976,7 @@ and vulnerabilities observed are consistent with those historically used against
 
         # Contact info
         contact = self.doc.add_paragraph()
-        contact_run = contact.add_run("Prepared by: Cyber Threat Intelligence | cti@illumina.com")
+        contact_run = contact.add_run("Questions or suspicious activity: secops@illumina.com | ServiceNow")
         contact_run.font.name = "Arial"
         contact_run.font.size = FontSizes.BODY_SMALL
         contact_run.font.bold = True
@@ -1110,7 +1984,9 @@ and vulnerabilities observed are consistent with those historically used against
         contact_run.font.underline = False  # No underline
         contact.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left align
 
-        self.doc.add_paragraph()
+        # Spacer at end
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(6)
 
         # Data sources - removed, now covered by Sources section
 

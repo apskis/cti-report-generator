@@ -427,52 +427,160 @@ biomanufacturing IP and clinical trial data.""",
             "insider_trend": "Unchanged"
         },
         "breach_landscape": {
-            "total_incidents": 47,
-            "prev_total_incidents": 36,
-            "total_impact_millions": 127,
-            "prev_total_impact": 89,
-            "ransomware_count": 18,
-            "prev_ransomware": 12,
-            "records_exposed_millions": 4.2,
-            "prev_records": 2.8
+            "scope_note": "Analysis based on publicly disclosed incidents affecting life sciences, pharmaceutical, and precision manufacturing organizations during Q1 2026.",
+            "current_quarter_label": "Q1 2026",
+            "prior_quarter_label": "Q4 2025",
+            "stat_cards": [
+                {
+                    "value": "47",
+                    "label": "Total Incidents",
+                    "prior_label": "Prior Quarter",
+                    "prior_value": "36",
+                    "change_pct": "+30%"
+                },
+                {
+                    "value": "$127M",
+                    "label": "Est. Impact",
+                    "prior_label": "Prior Quarter",
+                    "prior_value": "$89M",
+                    "change_pct": "+43%"
+                },
+                {
+                    "value": "18",
+                    "label": "Ransomware",
+                    "prior_label": "Prior Quarter",
+                    "prior_value": "12",
+                    "change_pct": "+50%"
+                },
+                {
+                    "value": "4.2M",
+                    "label": "Records Exposed",
+                    "prior_label": "Prior Quarter",
+                    "prior_value": "2.8M",
+                    "change_pct": "+50%"
+                }
+            ],
+            "incidents_by_type": [
+                {"type": "Ransomware", "current_count": "18", "prior_count": "12", "notable_example": "Pharma manufacturer: 12-day production halt, FDA notification"},
+                {"type": "Data Theft / Exfiltration", "current_count": "11", "prior_count": "9", "notable_example": "Genomics institute: 2.3M patient samples accessed"},
+                {"type": "Manufacturing / OT Disruption", "current_count": "5", "prior_count": "3", "notable_example": "Medical device mfg: assembly line shutdown, 8-day recovery"},
+                {"type": "Business Email Compromise", "current_count": "6", "prior_count": "5", "notable_example": "CRO: $3.8M fraudulent wire transfers"},
+                {"type": "Third-Party / Vendor", "current_count": "4", "prior_count": "4", "notable_example": "Lab software vendor: credentials exposed for 200+ customers"},
+                {"type": "Unauthorized Access", "current_count": "3", "prior_count": "3", "notable_example": "Biotech: former employee accessed IP post-termination"},
+            ],
+            "common_factors": "Exploitation of unpatched internet-facing systems accounted for 34% of incidents, followed by compromised credentials without MFA (28%). Third-party vendor compromise represented 19% of cases, with social engineering accounting for the remaining 19%. Manufacturing environments faced extended recovery timelines averaging 23 days due to OT system complexity."
         },
-        "incidents_by_type": [
-            {"type": "Ransomware", "current_count": 18, "prev_count": 12, "notable_example": "Pharma manufacturer: 12-day production halt, FDA notification"},
-            {"type": "Data Theft / Exfiltration", "current_count": 11, "prev_count": 9, "notable_example": "Genomics institute: 2.3M patient samples accessed"},
-            {"type": "Manufacturing / OT Disruption", "current_count": 5, "prev_count": 3, "notable_example": "Medical device mfg: assembly line shutdown, 8-day recovery"},
-            {"type": "Business Email Compromise", "current_count": 6, "prev_count": 5, "notable_example": "CRO: $3.8M fraudulent wire transfers"},
-            {"type": "Third-Party / Vendor", "current_count": 4, "prev_count": 4, "notable_example": "Lab software vendor: credentials exposed for 200+ customers"},
-            {"type": "Unauthorized Access", "current_count": 3, "prev_count": 3, "notable_example": "Biotech: former employee accessed IP post-termination"},
-        ],
-        "common_factors": "Exploitation of unpatched internet-facing systems (34%), compromised credentials without MFA (28%), third-party vendor compromise (19%), and social engineering (19%).",
-        "geopolitical_threats": {
-            "china": {
-                "strategic_context": "China's 14th Five-Year Plan designates biotechnology as a strategic priority, with specific emphasis on genomics, precision medicine, and biomanufacturing. The Ministry of State Security (MSS) and affiliated actors continue systematic collection against Western life sciences organizations.",
-                "activity": "APT41 and associated clusters conducted multiple intrusions against pharmaceutical and genomics companies via compromised software update mechanisms. GENESIS PANDA conducted spearphishing campaigns targeting clinical research coordinators at 6 biotech firms.",
-                "implications": "Theft of proprietary research, sequencing technology designs, or manufacturing processes could erode competitive advantage and represent significant R&D investment loss. Compromised clinical trial data raises regulatory and patient safety concerns."
+        "geopolitical_threats": [
+            {
+                "country": "china",
+                "display_name": "China",
+                "threat_level": "HIGH",
+                "activity_level": "HIGH",
+                "relevance": [
+                    "China's 14th Five-Year Plan designates biotechnology as strategic priority with genomics emphasis.",
+                    "MSS-affiliated actors conduct systematic collection against Western life sciences organizations."
+                ],
+                "activity": [
+                    "APT41 conducted intrusions via compromised software update mechanisms targeting pharma and genomics.",
+                    "GENESIS PANDA spearphished clinical research coordinators at 6 biotech firms this quarter."
+                ],
+                "risk": [
+                    "Theft of sequencing technology designs could erode competitive advantage and R&D investment.",
+                    "Compromised clinical trial data raises regulatory and patient safety concerns for ongoing studies."
+                ]
             },
-            "russia": {
-                "strategic_context": "Russian state cyber interests in life sciences remain opportunistic, focusing on vaccine research and healthcare disruption capabilities. However, Russian-speaking criminal groups operating with tacit state approval pose the most significant threat through ransomware operations.",
-                "activity": "Ransomware incidents affecting healthcare, pharmaceutical, and manufacturing organizations increased 31% quarter-over-quarter. LockBit, ALPHV/BlackCat, and Cl0p affiliates accounted for the majority of incidents.",
-                "implications": "Ransomware incidents in life sciences and manufacturing average $4.2M in recovery costs and 23 days of operational disruption. Manufacturing environments face extended recovery timelines due to OT system complexity."
+            {
+                "country": "russia",
+                "display_name": "Russia",
+                "threat_level": "HIGH",
+                "activity_level": "MEDIUM",
+                "relevance": [
+                    "Russian-speaking criminal groups operating with tacit state approval pose ransomware threat.",
+                    "State cyber interests in life sciences remain opportunistic, focusing on healthcare disruption."
+                ],
+                "activity": [
+                    "Ransomware incidents affecting healthcare and pharma increased 31% quarter-over-quarter.",
+                    "LockBit, ALPHV/BlackCat, and Cl0p affiliates accounted for majority of industry incidents."
+                ],
+                "risk": [
+                    "Ransomware incidents average $4.2M recovery costs and 23 days operational disruption.",
+                    "Manufacturing environments face extended recovery due to OT system complexity and validation."
+                ]
             },
-            "north_korea": {
-                "strategic_context": "North Korean cyber operations serve dual purposes: revenue generation to circumvent sanctions and acquisition of medical/pharmaceutical research for domestic programs. The regime has demonstrated sustained interest in COVID-19 vaccine research and oncology treatments.",
-                "activity": "Lazarus Group, Kimsuky, and VELVET CHOLLIMA conducted social engineering campaigns via LinkedIn and professional networking platforms throughout the quarter. Campaigns used fake recruiter personas targeting research scientists and engineers.",
-                "implications": "Credential compromise of research or executive personnel could provide access to sensitive environments, collaboration platforms, and IP repositories. Executive targeting also enables BEC fraud attempts."
+            {
+                "country": "north_korea",
+                "display_name": "North Korea",
+                "threat_level": "MEDIUM",
+                "activity_level": "MEDIUM",
+                "relevance": [
+                    "DPRK cyber operations serve revenue generation and medical research acquisition purposes.",
+                    "Sustained interest in vaccine research and oncology treatments for domestic programs."
+                ],
+                "activity": [
+                    "Lazarus Group and Kimsuky conducted LinkedIn social engineering throughout the quarter.",
+                    "Campaigns used fake recruiter personas targeting research scientists and engineers."
+                ],
+                "risk": [
+                    "Credential compromise provides access to sensitive environments and IP repositories.",
+                    "Executive targeting enables BEC fraud attempts and supply chain infiltration vectors."
+                ]
             }
-        },
+        ],
         "looking_ahead": {
+            "next_quarter_label": "Q2 2026",
             "threat_outlook": "We anticipate continued pressure from state-sponsored espionage campaigns as genomics research and precision manufacturing technology becomes increasingly valuable to national biotechnology strategies. Ransomware threat remains elevated with likely targeting of manufacturing operations.",
             "planned_initiatives": "Integration of Microsoft Sentinel for unified security event correlation. Development of automated threat intelligence sharing with industry partners via H-ISAC. Expansion of executive protection monitoring.",
-            "watch_items": "Potential escalation in state-sponsored activity around major genomics conferences, product launches, and partnership announcements. Continued evolution of ransomware tactics, particularly double extortion and OT targeting."
+            "watch_items": [
+                {
+                    "subject": "Major genomics conferences and product launches —",
+                    "detail": "Potential escalation in state-sponsored espionage activity targeting intellectual property and partnership announcements during high-profile industry events."
+                },
+                {
+                    "subject": "Ransomware evolution targeting OT environments —",
+                    "detail": "Continued sophistication in double extortion tactics with increased focus on manufacturing and operational technology systems."
+                },
+                {
+                    "subject": "Supply chain vendor compromises —",
+                    "detail": "Ongoing third-party security incidents affecting laboratory equipment vendors and biomanufacturing software providers."
+                }
+            ]
         },
-        "recommendations": [
-            ("Executive Awareness", "Consider targeted security awareness for executives and key research personnel given sustained social engineering campaigns via professional networks. CTI team can provide customized briefings."),
-            ("Vendor Risk Review", "Evaluate security posture of critical software and laboratory equipment vendors given Q1 supply chain compromise activity. Prioritize vendors with privileged access to research and manufacturing systems."),
-            ("Manufacturing Environment Security", "Review network segmentation between IT and OT/manufacturing systems. Ensure incident response plans address manufacturing disruption scenarios and production recovery."),
-            ("Incident Response Readiness", "Confirm ransomware response plans address SEC disclosure timelines (4-day materiality determination), FDA notification requirements, and manufacturing continuity scenarios."),
-            ("Board Reporting", "Q1 peer incidents and regulatory enforcement may prompt board inquiries regarding security posture. CTI team available to support preparation of sector threat context and benchmarking."),
+        "recommendations": {
+            "intro_note": "Based on Q1 threat activity and industry incidents, these actions will strengthen security posture:",
+            "items": [
+                {
+                    "title": "Executive Awareness Briefings",
+                    "body": "Consider targeted security awareness for executives and key research personnel given sustained social engineering campaigns via professional networks. CTI team can provide customized briefings on current threat actor tactics."
+                },
+                {
+                    "title": "Vendor Risk Assessment Review",
+                    "body": "Evaluate security posture of critical software and laboratory equipment vendors given Q1 supply chain compromise activity. Prioritize vendors with privileged access to research and manufacturing systems."
+                },
+                {
+                    "title": "Manufacturing Environment Security",
+                    "body": "Review network segmentation between IT and OT/manufacturing systems. Ensure incident response plans address manufacturing disruption scenarios and production recovery timelines."
+                }
+            ]
+        },
+        "osint_sources_used": [
+            {
+                "title": "FortiClient EMS Flaw",
+                "url": "https://example.com/forticlient-vulnerability",
+                "description": "Confirmed active exploitation of FortiClient EMS vulnerability impacting device security.",
+                "citation_number": 5
+            },
+            {
+                "title": "GreyVibe AI Attacks",
+                "url": "https://example.com/greyvibe-ai-phishing",
+                "description": "Highlights emerging use of AI-powered phishing and malware delivery by Russian-linked threat clusters.",
+                "citation_number": 6
+            },
+            {
+                "title": "BTMOB Android Malware",
+                "url": "https://example.com/btmob-android-threat",
+                "description": "Identifies new Android malware service generating custom phishing payloads, increasing risk to healthcare systems.",
+                "citation_number": 7
+            }
         ]
     }
 
