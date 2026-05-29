@@ -2132,7 +2132,26 @@ CRITICAL - geopolitical_threats Instructions:
 3. **Return up to 4 actors**: Include only actors with meaningful activity this quarter. If fewer than 4 have meaningful
    activity, return only those that do. DO NOT pad the list with irrelevant actors just to reach 4.
 
-4. **For relevance bullets specifically**: Draw on the Illumina context provided above. Reference specific Illumina products
+4. **Threat Level Criteria** - Use these criteria to assign threat_level (HIGH/MEDIUM/LOW):
+
+   **HIGH**:
+   - 5+ actor groups from this country actively targeting the sector this quarter, OR
+   - Direct confirmed intrusions into genomics/life sciences companies, OR
+   - Systematic IP theft campaigns targeting biotech/pharma, OR
+   - Confirmed targeting of sequencing technology or genomics platforms
+
+   **MEDIUM**:
+   - 2-4 actor groups with sector interest, OR
+   - Opportunistic targeting without sustained campaigns, OR
+   - General healthcare/pharma targeting without genomics-specific focus, OR
+   - Ransomware activity targeting sector but not genomics-specific
+
+   **LOW**:
+   - 1 or fewer actor groups observed, OR
+   - Minimal sector-specific activity, OR
+   - Primarily focused on other sectors with occasional healthcare targeting
+
+5. **For relevance bullets specifically**: Draw on the Illumina context provided above. Reference specific Illumina products
    (e.g., NovaSeq X, sequencing platforms), market positions (e.g., "~80% global sequencing market share"), regulatory
    situations (e.g., recent SEC filings, FDA approvals), or partnerships mentioned in the context. If the context is empty
    or unparseable, fall back to general life sciences sector exposure and note the limitation in your analysis.
