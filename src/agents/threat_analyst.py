@@ -2017,8 +2017,37 @@ If multiple actor groups are active, dedicate separate activity bullets to each 
         "body": "Eighteen percent of sector breaches originated from third-party and vendor compromise. Illumina should accelerate contractual security requirements and attestation reviews for vendors with access to instrument firmware, ICA infrastructure, or clinical data systems."
       }}
     ]
-  }}
+  }},
+  "osint_sources_used": [
+    {{
+      "title": "Article title (shortened for citation, 2-5 words max)",
+      "url": "https://example.com/article",
+      "description": "One sentence describing what intelligence this source provided (e.g., 'Confirmed active exploitation of FortiClient EMS vulnerability impacting device security.')",
+      "citation_number": 5
+    }}
+  ]
 }}
+
+CRITICAL - osint_sources_used Instructions:
+
+1. **Purpose**: List ONLY the OSINT articles that you ACTUALLY REFERENCE in your analysis. These should be articles that:
+   - Provide specific intelligence about Illumina (company news, SEC filings, regulatory updates, incidents)
+   - Offer peer breach intelligence with named victim organizations
+   - Discuss specific threat actors, vulnerabilities, or incidents relevant to the quarterly analysis
+   
+2. **Illumina-Specific OSINT**: If the Illumina context section above contains articles from Illumina OSINT collector,
+   AND you reference them in your relevance bullets or executive summary, MUST include them in osint_sources_used with:
+   - Short title (2-5 words)
+   - Original URL
+   - Description of what intelligence it provided (1 sentence)
+   - Citation number starting from 5 (after the 4 primary intelligence sources)
+
+3. **Citation numbering**: Start from 5 (sources [1]-[4] are reserved for NVD, CISA KEV, Intel471, CrowdStrike)
+
+4. **Quality over quantity**: It's better to have 0-3 highly relevant OSINT sources than to list 10+ that weren't actually used
+
+5. **When to include zero OSINT**: If no OSINT articles added unique value beyond what Intel471/CrowdStrike provided,
+   return an empty array: []
 
 CRITICAL - geopolitical_threats Instructions:
 

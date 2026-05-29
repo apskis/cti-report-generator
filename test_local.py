@@ -974,10 +974,25 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
             if item.get("threat_type", "").upper() != "BREACH ALERT"
         ]
         
+        # Get Illumina OSINT context for quarterly reports
+        illumina_osint = data_by_source.get("Illumina-OSINT", [])
+        illumina_context = ""
+        if illumina_osint:
+            # Concatenate all Illumina OSINT articles into context
+            context_parts = []
+            for article in illumina_osint:
+                title = article.get("title", "")
+                summary = article.get("summary", "")
+                url = article.get("url", "")
+                if title or summary:
+                    context_parts.append(f"- {title}: {summary} ({url})")
+            illumina_context = "\n".join(context_parts) if context_parts else ""
+        
         result = await agent.analyze_strategic(
             intel471_data=intel471_data,
             crowdstrike_data=data_by_source.get("CrowdStrike", []),
-            breach_data=breach_data if breach_data else None
+            breach_data=breach_data if breach_data else None,
+            illumina_context=illumina_context
         )
         print_status("Analysis complete", "success")
         return result, data_by_source
