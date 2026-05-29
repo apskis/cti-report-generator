@@ -2167,31 +2167,42 @@ CRITICAL - breach_landscape Instructions:
    Ransomware, Supply Chain, Data Exposure, Insider Threat, DDoS, Business Email Compromise, Manufacturing/OT Disruption, Third-Party/Vendor, Unauthorized Access, etc.
    DO NOT hardcode exactly 3 types - return however many distinct types you observe in the data (typically 4-7).
    For each type, provide current_count, prior_count, and a notable_example.
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   CRITICAL - notable_example MUST USE ACTUAL COMPANY NAMES
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    
-   **CRITICAL - notable_example formatting**:
-   - MUST include the actual company/organization name from the breach data
-   - Format: "CompanyName: brief description of what happened"
-   - Examples of CORRECT format:
-     * "Covenant Health: ransomware attack disrupted operations for 3 weeks"
-     * "Memorial Sloan Kettering: 2.3M patient samples accessed via vendor breach"
-     * "Medtronic: assembly line shutdown for 8 days following OT compromise"
-     * "LabCorp: third-party credentials exposed affecting 200+ customers"
-     * "Regeneron: former employee accessed IP repository post-termination"
+   THIS IS MANDATORY - NOT OPTIONAL:
    
-   - **FORBIDDEN - NEVER use these generic terms**:
-     * "Pharma manufacturer" → WRONG - use actual company name like "Pfizer" or "Merck"
-     * "Genomics institute" → WRONG - use actual name like "Broad Institute" or "Sanger Institute"
-     * "Research institute" → WRONG - use actual organization name
-     * "Biotech company" → WRONG - use actual company name like "Genentech" or "Amgen"
-     * "Medical device mfg" → WRONG - use actual manufacturer name
-     * "Lab software vendor" → WRONG - use vendor name like "LabCorp" or "Quest Diagnostics"
-     * "Healthcare provider" → WRONG - use actual hospital/health system name
-     * "Life sciences company" → WRONG - use specific company name
+   ✓ CORRECT - Use actual company/organization names:
+     • "Covenant Health: ransomware attack disrupted operations for 3 weeks"
+     • "Memorial Sloan Kettering: 2.3M patient samples accessed via vendor breach"
+     • "Medtronic: assembly line shutdown for 8 days following OT compromise"
+     • "LabCorp: third-party credentials exposed affecting 200+ customers"
+     • "Regeneron: former employee accessed IP repository post-termination"
+     • "Broad Institute: genomics database misconfiguration exposed research data"
    
-   - If the breach data includes a SPECIFIC organization name, you MUST use it
-   - Only use "Multiple organizations" if truly no single organization can be identified, but this should be EXTREMELY rare
-   - When in doubt, review the Industry Breaches data above - it contains specific victim organization names
-   - The notable_example should be the MOST SIGNIFICANT or RELEVANT incident of that type from the quarter with a NAMED victim
+   ✗ WRONG - Generic terms are STRICTLY FORBIDDEN:
+     • "Pharma manufacturer" ← NO - find the actual company name in the breach data
+     • "Genomics institute" ← NO - use "Broad Institute", "Sanger Institute", etc.
+     • "Research institute" ← NO - use the actual organization name
+     • "Genomics research institute" ← NO - use the specific institution name
+     • "Biotech company" ← NO - use "Genentech", "Amgen", "Illumina", etc.
+     • "Medical device mfg" ← NO - use "Medtronic", "Boston Scientific", etc.
+     • "Lab software vendor" ← NO - use "LabCorp", "Quest Diagnostics", etc.
+     • "Healthcare provider" ← NO - use "Kaiser Permanente", "Mayo Clinic", etc.
+     • "Life sciences company" ← NO - use the specific company name
+     • "Clinical research org" ← NO - use the actual CRO name
+   
+   INSTRUCTIONS:
+   1. Review the Industry Breaches data provided above - it contains SPECIFIC victim organization names
+   2. For EACH notable_example, find the ACTUAL company/organization name from the breach data
+   3. If you cannot find a specific name in the data, you MUST NOT make up a generic placeholder
+   4. Format MUST be: "ActualCompanyName: what happened"
+   5. The validation system WILL REJECT generic terms - this is your FINAL warning before rejection
+   
+   Only use "Multiple organizations" if the breach data literally shows multiple unnamed victims, 
+   but this should be EXTREMELY rare because breach data includes victim names.
 
 6. **common_factors**: Write one paragraph analyzing common factors across the incidents. Include specific percentages
    where possible (e.g., "Exploitation of unpatched systems accounted for 34% of incidents").

@@ -21,7 +21,9 @@ class QuarterlyReportValidator:
         "lab software vendor",
         "healthcare provider",
         "research institute",
-        "life sciences company"
+        "genomics research institute",  # Caught in real report
+        "life sciences company",
+        "clinical research org"
     ]
     
     def __init__(self):
