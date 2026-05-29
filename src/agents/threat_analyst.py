@@ -1918,19 +1918,19 @@ Please provide your STRATEGIC analysis in the following JSON format:
         "type": "Ransomware",
         "current_count": "12",
         "prior_count": "10",
-        "notable_example": "Brief one-sentence description of a notable ransomware incident"
+        "notable_example": "Covenant Health: ransomware attack disrupted hospital operations for 3 weeks, 480K patient records"
       }},
       {{
         "type": "Supply Chain",
         "current_count": "5",
         "prior_count": "3",
-        "notable_example": "Brief one-sentence description of a notable supply chain incident"
+        "notable_example": "LabCorp vendor: credentials exposed affecting 200+ clinical laboratories"
       }},
       {{
         "type": "Data Exposure",
         "current_count": "3",
         "prior_count": "3",
-        "notable_example": "Brief one-sentence description of a notable data exposure incident"
+        "notable_example": "Genomics research institute: 2.3M patient samples accessed via misconfigured database"
       }}
     ],
     "current_quarter_label": "Q2 2026",
@@ -2089,9 +2089,20 @@ CRITICAL - breach_landscape Instructions:
 4. **Quarter labels**: Set current_quarter_label and prior_quarter_label to the actual quarter identifiers (e.g., "Q2 2026", "Q1 2026").
 
 5. **incidents_by_type**: Return a dynamic list of incident types observed in the breach data. Common types include:
-   Ransomware, Supply Chain, Data Exposure, Insider Threat, DDoS, Business Email Compromise, etc.
-   DO NOT hardcode exactly 3 types - return however many distinct types you observe in the data (typically 3-6).
-   For each type, provide current_count, prior_count, and a one-sentence notable_example.
+   Ransomware, Supply Chain, Data Exposure, Insider Threat, DDoS, Business Email Compromise, Manufacturing/OT Disruption, Third-Party/Vendor, Unauthorized Access, etc.
+   DO NOT hardcode exactly 3 types - return however many distinct types you observe in the data (typically 4-7).
+   For each type, provide current_count, prior_count, and a notable_example.
+   
+   **CRITICAL - notable_example formatting**:
+   - MUST include the actual company/organization name from the breach data
+   - Format: "CompanyName: brief description of what happened"
+   - Examples:
+     * "Covenant Health: ransomware attack disrupted operations for 3 weeks"
+     * "Illumina competitor: 2.3M patient samples accessed via vendor breach"
+     * "Medtronic: assembly line shutdown for 8 days following OT compromise"
+   - DO NOT use generic descriptions like "Pharma manufacturer" or "Genomics institute"
+   - If you cannot identify a specific company name for that incident type, use "Multiple organizations" but this should be rare
+   - The notable_example should be the MOST SIGNIFICANT or RELEVANT incident of that type from the quarter
 
 6. **common_factors**: Write one paragraph analyzing common factors across the incidents. Include specific percentages
    where possible (e.g., "Exploitation of unpatched systems accounted for 34% of incidents").
