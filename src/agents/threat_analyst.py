@@ -2140,13 +2140,27 @@ CRITICAL - breach_landscape Instructions:
    **CRITICAL - notable_example formatting**:
    - MUST include the actual company/organization name from the breach data
    - Format: "CompanyName: brief description of what happened"
-   - Examples:
+   - Examples of CORRECT format:
      * "Covenant Health: ransomware attack disrupted operations for 3 weeks"
-     * "Illumina competitor: 2.3M patient samples accessed via vendor breach"
+     * "Memorial Sloan Kettering: 2.3M patient samples accessed via vendor breach"
      * "Medtronic: assembly line shutdown for 8 days following OT compromise"
-   - DO NOT use generic descriptions like "Pharma manufacturer" or "Genomics institute"
-   - If you cannot identify a specific company name for that incident type, use "Multiple organizations" but this should be rare
-   - The notable_example should be the MOST SIGNIFICANT or RELEVANT incident of that type from the quarter
+     * "LabCorp: third-party credentials exposed affecting 200+ customers"
+     * "Regeneron: former employee accessed IP repository post-termination"
+   
+   - **FORBIDDEN - NEVER use these generic terms**:
+     * "Pharma manufacturer" → WRONG - use actual company name like "Pfizer" or "Merck"
+     * "Genomics institute" → WRONG - use actual name like "Broad Institute" or "Sanger Institute"
+     * "Research institute" → WRONG - use actual organization name
+     * "Biotech company" → WRONG - use actual company name like "Genentech" or "Amgen"
+     * "Medical device mfg" → WRONG - use actual manufacturer name
+     * "Lab software vendor" → WRONG - use vendor name like "LabCorp" or "Quest Diagnostics"
+     * "Healthcare provider" → WRONG - use actual hospital/health system name
+     * "Life sciences company" → WRONG - use specific company name
+   
+   - If the breach data includes a SPECIFIC organization name, you MUST use it
+   - Only use "Multiple organizations" if truly no single organization can be identified, but this should be EXTREMELY rare
+   - When in doubt, review the Industry Breaches data above - it contains specific victim organization names
+   - The notable_example should be the MOST SIGNIFICANT or RELEVANT incident of that type from the quarter with a NAMED victim
 
 6. **common_factors**: Write one paragraph analyzing common factors across the incidents. Include specific percentages
    where possible (e.g., "Exploitation of unpatched systems accounted for 34% of incidents").
@@ -2244,11 +2258,11 @@ FINAL VERIFICATION CHECKLIST
 Before returning your JSON, verify each item:
 
 ☐ Every source in osint_sources_used is cited with [N] in executive summary or relevance bullets
-☐ Every notable_example includes an actual company name (not "Pharma manufacturer" or "Genomics institute")
+☐ Every notable_example includes an ACTUAL COMPANY NAME - verify no generic terms like "Pharma manufacturer", "Genomics institute", "Research institute", "Biotech company", "Medical device mfg", or "Lab software vendor"
 ☐ If Illumina context was provided above, it's referenced in relevance bullets with inline citations [N]
 ☐ Executive summary is 3-4 paragraphs covering: threat landscape, geopolitical threats, breach landscape, organizational impact
 ☐ Citation numbers start from 5 and are sequential (5, 6, 7, ...)
-☐ Each incident type has current_count, prior_count, and a specific notable_example with company name
+☐ Each incident type has current_count, prior_count, and a specific notable_example with NAMED company (check the Industry Breaches data above for actual victim names)
 ☐ Geopolitical relevance bullets mention specific Illumina products/platforms/situations when context provided
 
 If any item is unchecked, fix it before returning.
