@@ -2173,12 +2173,17 @@ You MUST verify EVERY breach has a specific company/organization name BEFORE inc
 If the source data shows:
 - "Pharma manufacturer" → SKIP THIS BREACH, find another
 - "Genomics institute" → SKIP THIS BREACH, find another  
+- "Genomics research institute" → SKIP THIS BREACH, find another
 - "Research institute" → SKIP THIS BREACH, find another
 - "Biotech company" → SKIP THIS BREACH, find another
 - ANY generic term → SKIP THIS BREACH, find another
 
 ONLY include breaches where the victim has an actual name like:
 ✓ "Covenant Health" ✓ "Memorial Sloan Kettering" ✓ "Medtronic" ✓ "LabCorp" ✓ "Regeneron"
+
+**CRITICAL DECISION POINT:**
+If you review ALL breaches for "Data Exposure" and find ONLY breaches with generic terms like "Genomics research institute",
+then DO NOT INCLUDE "Data Exposure" as an incident type at all. Skip it completely.
 
 If you cannot find enough named breaches to fill 5-6 incident types, that's FINE.
 Return only 3-4 incident types with NAMED examples. Quality over quantity.
