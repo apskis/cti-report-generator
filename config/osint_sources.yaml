@@ -105,8 +105,8 @@ sources:
 # Lookback in days - only include articles published within this window
 lookback_days: 7
 
-# Maximum articles per source (to avoid flooding the report)
-max_articles_per_source: 5
+# Maximum articles per source (increased to capture more breach news)
+max_articles_per_source: 10
 
-# Maximum total articles across all sources
-max_total_articles: 30
+# Maximum total articles across all sources (increased for better coverage)
+max_total_articles: 50

@@ -140,12 +140,16 @@ def _collect_coverage_gaps(
     actor_links: list[ActorLink],
 ) -> list[str]:
     gaps: list[str] = []
+    
+    # Only report gaps for ENABLED sources
     for r in tier1_sources:
-        if r.status.startswith("GAP"):
+        if r.enabled and r.status.startswith("GAP"):
             gaps.append(f"[NOT IN PROVIDED SOURCES] {r.source_name}: {r.status}")
+    
     for r in osint_sources:
         if r.enabled and r.records_returned == 0:
             gaps.append(f"[NO ARTICLES] {r.source_name}: no articles in lookback window")
+    
     if not iocs:
         gaps.append("[NO IOCs IN SOURCE: all Tier 1 sources]")
     if not any(link.actor_name != "[UNATTRIBUTED]" for link in actor_links):

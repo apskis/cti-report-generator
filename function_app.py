@@ -284,11 +284,21 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
         # Primary sources for strategic analysis
         intel471_data = data_by_source.get("Intel471", [])
         crowdstrike_data = data_by_source.get("CrowdStrike", [])
+        
+        # Extract Illumina context from OSINT collector
+        illumina_osint_data = data_by_source.get("Illumina-OSINT", [])
+        illumina_context = ""
+        if illumina_osint_data and len(illumina_osint_data) > 0:
+            illumina_context = illumina_osint_data[0].get("illumina_context", "")
+        
+        if not illumina_context:
+            logger.warning("Illumina OSINT context is empty - AI will use fallback context")
 
         # Log collection statistics
         logger.info(
             f'Strategic data collected - Intel471: {len(intel471_data)}, '
-            f'CrowdStrike: {len(crowdstrike_data)}'
+            f'CrowdStrike: {len(crowdstrike_data)}, '
+            f'Illumina OSINT: {len(illumina_context)} chars'
         )
 
         # Log any collection failures
@@ -322,7 +332,8 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
         analysis = await agent.analyze_strategic(
             intel471_data=intel471_data,
             crowdstrike_data=crowdstrike_data,
-            breach_data=breach_data if breach_data else None
+            breach_data=breach_data if breach_data else None,
+            illumina_context=illumina_context
         )
 
         # Optional: gate framework validation pass (feature-flagged)

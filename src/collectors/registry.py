@@ -17,6 +17,7 @@ from src.collectors.rapid7_collector import Rapid7Collector
 from src.collectors.rapid7_scan_collector import Rapid7ScanCollector
 from src.collectors.rapid7_bulk_export_collector import Rapid7BulkExportCollector
 from src.collectors.osint_collector import OSINTCollector
+from src.collectors.illumina_osint_collector import IlluminaOSINTCollector
 from src.core.config import get_enabled_collectors
 from src.core.models import CollectorResult
 
@@ -33,6 +34,7 @@ COLLECTOR_REGISTRY: Dict[str, Type[BaseCollector]] = {
     "rapid7-scans": Rapid7ScanCollector,
     "rapid7-bulk-export": Rapid7BulkExportCollector,
     "osint": OSINTCollector,
+    "illumina_osint": IlluminaOSINTCollector,
 }
 
 

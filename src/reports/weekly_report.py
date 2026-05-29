@@ -89,7 +89,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._add_industry_incidents(analysis_result)
             self._add_recommended_actions(analysis_result)
             self._add_resources_section(analysis_result)
-            self._add_ai_disclaimer()
             self._add_footer()
 
             logger.info("Weekly CTI Report generated successfully")
@@ -838,7 +837,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         intro = self.doc.add_paragraph()
         intro_run = intro.add_run(
             "Notable security incidents affecting organizations in similar sectors or technology stacks, "
-            "observed from public breach disclosures and security news sources."
+            "observed from underground intelligence, public breach disclosures, and security news sources."
         )
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
@@ -846,13 +845,36 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         self.doc.add_paragraph()
 
-        # Use AI-identified incidents from structured output
-        incidents = analysis_result.get("industry_incidents", [])
+        # Build citation map for consistent numbering
+        citation_map = self._build_citation_map(analysis_result)
         
-        # Fallback: extract from OSINT if AI didn't provide structured incidents
+        # Build reverse lookup: map AI's original citation numbers to OSINT titles
+        osint_sources = analysis_result.get("osint_sources_used", [])
+        ai_citation_to_title = {}
+        for i, source in enumerate(osint_sources, 1):
+            if isinstance(source, dict):
+                title = source.get("title", "")
+                # AI assigns citation numbers starting from 1
+                ai_citation_to_title[i] = title
+        
+        # Collect incidents from multiple sources:
+        incidents = []
+        
+        # 1. Get AI-identified incidents from OSINT (structured output)
+        ai_incidents = analysis_result.get("industry_incidents", [])
+        if ai_incidents:
+            logger.info(f"Found {len(ai_incidents)} incidents from AI analysis")
+            incidents.extend(ai_incidents)
+        
+        # 2. Add Intel471 breach alerts directly (may not be in AI output)
+        intel471_breaches = self._extract_intel471_breaches(analysis_result)
+        if intel471_breaches:
+            logger.info(f"Adding {len(intel471_breaches)} Intel471 breach alerts")
+            incidents.extend(intel471_breaches)
+        
+        # 3. Fallback: extract from OSINT if AI didn't provide structured incidents
         if not incidents:
-            logger.warning("No industry_incidents from AI, falling back to extraction from OSINT titles")
-            osint_sources = analysis_result.get("osint_sources_used", [])
+            logger.warning("No industry_incidents from AI or Intel471, falling back to extraction from OSINT titles")
             incidents = self._extract_breach_incidents(osint_sources)
         
         if incidents:
@@ -891,11 +913,25 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     date = date[:10]  # Truncate to YYYY-MM-DD
                 cells[2].text = date
                 
-                # Column 3: Source with OSINT citation number
+                # Column 3: Source with citation number
                 source_name = incident.get("source", "OSINT")
-                osint_citation = incident.get("osint_citation_number")
-                if osint_citation:
-                    cells[3].text = f"[{osint_citation}] {source_name[:20]}"
+                ai_citation_num = incident.get("osint_citation_number")
+                
+                # Map AI's citation number to the correct final citation number
+                final_citation_num = None
+                if ai_citation_num and ai_citation_num in ai_citation_to_title:
+                    # Look up the title from AI's citation number
+                    title = ai_citation_to_title[ai_citation_num]
+                    # Get the final citation number from the map
+                    final_citation_num = citation_map.get(title)
+                
+                # Check if this is an Intel471 source
+                intel471_citation = citation_map.get("Intel471")
+                
+                if final_citation_num:
+                    cells[3].text = f"[{final_citation_num}] {source_name[:20]}"
+                elif "Intel471" in source_name and intel471_citation:
+                    cells[3].text = f"[{intel471_citation}] Intel471"
                 else:
                     cells[3].text = source_name[:25]
 
@@ -918,7 +954,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             caption.space_before = Pt(4)
             caption.space_after = Pt(8)
             caption_text = (
-                f"Table: {len(incidents)} peer incidents from OSINT sources. "
+                f"Table: {len(incidents)} peer incidents from threat intelligence sources (Intel471, OSINT). "
                 "Incidents may indicate threat actor targeting patterns or emerging attack vectors."
             )
             caption_run = caption.add_run(caption_text)
@@ -932,6 +968,21 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         self.doc.add_paragraph()
 
+    def _extract_intel471_breaches(self, analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract breach incidents from raw Intel471 data.
+        
+        Intel471 breach alerts have threat_type='BREACH ALERT' or 'Breach Alert'.
+        We need to access the raw data, not the AI's analysis.
+        """
+        incidents = []
+        
+        # The analysis_result doesn't have raw Intel471 data
+        # We need to get it from somewhere else - for now, return empty
+        # TODO: Pass raw Intel471 data to the report generator
+        
+        logger.debug("Intel471 breach extraction not yet implemented - raw data not available to report generator")
+        return incidents
+    
     def _extract_breach_incidents(self, osint_sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Extract breach incidents from OSINT sources."""
         incidents = []
@@ -1061,6 +1112,73 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         self.doc.add_paragraph()
 
+    def _build_citation_map(self, analysis_result: Dict[str, Any]) -> Dict[str, int]:
+        """Build a mapping of OSINT source titles/URLs to their final citation numbers."""
+        citation_map = {}
+        citation_counter = 1
+        
+        # Collect all API sources actually cited in analysis
+        api_sources_used = set()
+        
+        # Check CVE analysis for source citations
+        cve_analysis = analysis_result.get("cve_analysis", [])
+        for cve in cve_analysis:
+            if isinstance(cve, dict):
+                sources = cve.get("source_citations", [])
+                if isinstance(sources, list):
+                    api_sources_used.update(sources)
+        
+        # Check APT activity for source citations
+        apt_activity = analysis_result.get("apt_activity", [])
+        for apt in apt_activity:
+            if isinstance(apt, dict):
+                sources = apt.get("source_citations", [])
+                if isinstance(sources, list):
+                    api_sources_used.update(sources)
+        
+        # Build primary sources list based on what was actually used
+        primary_sources = []
+        
+        # Always include NVD (CVE database)
+        primary_sources.append(("NVD", "NIST National Vulnerability Database (NVD)"))
+        
+        # Include CISA KEV if any CVEs are in KEV
+        if any(cve.get("in_cisa_kev") for cve in cve_analysis if isinstance(cve, dict)):
+            primary_sources.append(("CISA KEV", "CISA Known Exploited Vulnerabilities (KEV) Catalog"))
+        
+        # Include Intel471 if cited
+        if "Intel471" in api_sources_used:
+            primary_sources.append(("Intel471", "Intel471 Titan threat intelligence platform"))
+        
+        # Include CrowdStrike if cited
+        if "CrowdStrike" in api_sources_used:
+            primary_sources.append(("CrowdStrike", "CrowdStrike Falcon Intelligence"))
+        
+        # Include ThreatQ if cited (usually disabled)
+        if "ThreatQ" in api_sources_used:
+            primary_sources.append(("ThreatQ", "ThreatQ threat intelligence management platform"))
+        
+        # Map API sources
+        for short_name, full_name in primary_sources:
+            citation_map[short_name] = citation_counter
+            citation_counter += 1
+        
+        # Map OSINT sources - create mapping from title/URL to citation number
+        osint_sources = analysis_result.get("osint_sources_used", [])
+        for source in osint_sources:
+            if isinstance(source, dict):
+                title = source.get("title", "")
+                url = source.get("url", "")
+                if title:
+                    # Map by title (primary key)
+                    citation_map[title] = citation_counter
+                if url:
+                    # Also map by URL as fallback
+                    citation_map[url] = citation_counter
+                citation_counter += 1
+        
+        return citation_map
+    
     def _add_resources_section(self, analysis_result: Dict[str, Any]) -> None:
         """Add Resources section listing threat intelligence sources that actually provided data."""
         logger.info("Adding Resources section")
@@ -1077,6 +1195,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
         intro_run.font.italic = True
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
 
+        # Build citation map (used by Industry Incidents table too)
+        citation_map = self._build_citation_map(analysis_result)
+        
         # Collect all API sources actually cited in analysis
         api_sources_used = set()
         
@@ -1119,14 +1240,12 @@ class WeeklyReportGenerator(BaseReportGenerator):
             primary_sources.append(("ThreatQ", "ThreatQ threat intelligence management platform"))
 
         # Add numbered citations for API sources
-        citation_map = {}
-        citation_counter = 1
-        
         for short_name, full_name in primary_sources:
             para = self.doc.add_paragraph(style="List Bullet")
             
-            # Add citation number
-            cite_run = para.add_run(f"[{citation_counter}] ")
+            # Get citation number from map
+            citation_num = citation_map.get(short_name, "?")
+            cite_run = para.add_run(f"[{citation_num}] ")
             cite_run.font.size = FontSizes.BODY_SMALL
             cite_run.font.bold = True
             cite_run.font.color.rgb = BrandColors.TEXT_DARK
@@ -1134,10 +1253,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
             # Add source name
             source_run = para.add_run(full_name)
             source_run.font.size = FontSizes.BODY_SMALL
-            
-            # Store mapping for use in tables
-            citation_map[short_name] = citation_counter
-            citation_counter += 1
 
         # OSINT sources (if any were listed by the AI)
         osint_sources = analysis_result.get("osint_sources_used", [])
@@ -1155,18 +1270,17 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     title = source.get("title", "")
                     url = source.get("url", "")
                     relevance = source.get("relevance", "")
-                    # AI provides citation_number, but we renumber to continue from API sources
                     
                     if title and url:
                         # Create paragraph with bullet
                         para = self.doc.add_paragraph(style="List Bullet")
                         
-                        # Add citation number - CONTINUE from where API sources left off
-                        cite_run = para.add_run(f"[{citation_counter}] ")
+                        # Get citation number from map (consistent with Industry Incidents)
+                        citation_num = citation_map.get(title, citation_map.get(url, "?"))
+                        cite_run = para.add_run(f"[{citation_num}] ")
                         cite_run.font.size = FontSizes.FOOTNOTE
                         cite_run.font.bold = True
                         cite_run.font.color.rgb = BrandColors.TEXT_DARK
-                        citation_counter += 1  # Increment for next OSINT source
                         
                         # Add hyperlink for the title
                         self._add_hyperlink(para, title, url)

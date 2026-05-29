@@ -52,3 +52,8 @@ collectors:
   - name: osint
     description: "Curated public news and research feeds (configure in osint_sources.yaml)"
     enabled: true
+
+  - name: illumina_osint
+    description: "Illumina company OSINT - public disclosures, news, and filings (quarterly only)"
+    enabled: true
+    quarterly_only: true  # Only runs for quarterly strategic reports
