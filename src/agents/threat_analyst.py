@@ -1882,6 +1882,8 @@ Please provide your STRATEGIC analysis in the following JSON format:
   
   PARAGRAPH 4 (OPTIONAL) — Direct organizational impact: Note whether any direct threats were identified, and briefly mention 1-2 key watch items for next quarter or critical recommendations.
   
+  CRITICAL - INLINE CITATIONS: If you reference ANY OSINT sources (including Illumina articles) in the executive summary, you MUST add inline citations using the citation_number from osint_sources_used. Format: [5], [6], [7], etc. Example: 'Illumina announced new precision medicine partnerships [5], which may increase...'
+  
   Write in clear, business-focused language. Avoid technical jargon. This is for board members and executives who need the full picture quickly.",
   "risk_assessment": {{
     "nation_state": "HIGH/MEDIUM/LOW",
@@ -2082,6 +2084,11 @@ CRITICAL - geopolitical_threats Instructions:
    (e.g., NovaSeq X, sequencing platforms), market positions (e.g., "~80% global sequencing market share"), regulatory
    situations (e.g., recent SEC filings, FDA approvals), or partnerships mentioned in the context. If the context is empty
    or unparseable, fall back to general life sciences sector exposure and note the limitation in your analysis.
+   
+   **CRITICAL - INLINE CITATIONS IN RELEVANCE BULLETS**: If you reference specific Illumina information from the "Current Illumina Company Context"
+   section in your relevance bullets, you MUST add an inline citation using the source's citation_number from osint_sources_used.
+   Format: "Illumina's focus on precision medicine platforms [5] increases..." or "Recent partnerships in oncology [6] create..."
+   This allows readers to trace Illumina-specific claims back to their sources.
 
 5. **Keep bullets concise**: Each bullet should be one short sentence. Max 3 bullets per section (relevance, activity, risk).
 
@@ -2157,6 +2164,25 @@ Include breach alerts, spot reports, situation reports, and malware reports that
 Respond ONLY with valid JSON. Do not include any markdown formatting or code blocks.
 
 Do not use Hyphens.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CRITICAL - INLINE CITATION REQUIREMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Whenever you reference information from an OSINT source (including Illumina articles from the "Current Illumina Company Context" section):
+
+1. **Add inline citation numbers**: Use square brackets with the citation_number from osint_sources_used
+   - Format: [5], [6], [7], etc.
+   - Example: "Illumina's recent precision medicine partnerships [5] increase exposure to..."
+   - Example: "Q2 saw increased targeting of genomics data [6] by nation-state actors..."
+
+2. **Where to include citations**:
+   - Executive summary paragraphs (when referencing OSINT-sourced information)
+   - Geopolitical threat "relevance" bullets (when using Illumina-specific context)
+   - Any other section where you reference an OSINT article
+
+3. **Citation consistency**: Every source listed in osint_sources_used MUST be cited at least once in the report content.
+   If you list a source but never cite it, remove it from osint_sources_used.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT LENGTH AND CONCISENESS RULES
