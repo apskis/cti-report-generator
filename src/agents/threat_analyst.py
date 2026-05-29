@@ -2167,6 +2167,22 @@ CRITICAL - geopolitical_threats Instructions:
 
 CRITICAL - breach_landscape Instructions:
 
+**BEFORE YOU BEGIN: COMPANY NAME REQUIREMENT**
+
+You MUST verify EVERY breach has a specific company/organization name BEFORE including it.
+If the source data shows:
+- "Pharma manufacturer" → SKIP THIS BREACH, find another
+- "Genomics institute" → SKIP THIS BREACH, find another  
+- "Research institute" → SKIP THIS BREACH, find another
+- "Biotech company" → SKIP THIS BREACH, find another
+- ANY generic term → SKIP THIS BREACH, find another
+
+ONLY include breaches where the victim has an actual name like:
+✓ "Covenant Health" ✓ "Memorial Sloan Kettering" ✓ "Medtronic" ✓ "LabCorp" ✓ "Regeneron"
+
+If you cannot find enough named breaches to fill 5-6 incident types, that's FINE.
+Return only 3-4 incident types with NAMED examples. Quality over quantity.
+
 1. **scope_note**: Generate one sentence describing the data coverage and time period. Use the current quarter from the context.
 
 2. **stat_cards**: Always return exactly 4 cards in this exact order:

@@ -187,19 +187,30 @@ def _validate_geopolitical_threat_levels(report: Dict, crowdstrike_data: List) -
         # MEDIUM: 2-4 actor groups OR opportunistic targeting
         # LOW: ≤1 actor group OR minimal activity
         
-        if threat_level == "HIGH" and actor_count < 2:
-            # Allow HIGH if there are other HIGH indicators in the activity bullets
+        if threat_level == "HIGH":
+            # Check for HIGH justification beyond just actor count
             activity_bullets = threat.get("activity", [])
-            has_high_indicators = any(
-                "intrusion" in str(bullet).lower() or 
-                "ip theft" in str(bullet).lower() or
-                "systematic" in str(bullet).lower()
+            
+            # Look for HIGH indicators in activity bullets
+            high_indicators = [
+                "intrusion", "intrusions", "breached", "compromised",
+                "ip theft", "espionage", "systematic", "campaign",
+                "targeting", "conducted", "multiple"
+            ]
+            
+            has_high_activity = any(
+                any(indicator in str(bullet).lower() for indicator in high_indicators)
                 for bullet in activity_bullets
             )
             
-            if not has_high_indicators:
+            # Only flag as issue if:
+            # - Low actor count (<2) AND
+            # - No HIGH activity indicators AND  
+            # - No specific intrusion/campaign language
+            if actor_count < 2 and not has_high_activity:
                 issues.append(
                     f"{country} rated HIGH but only {actor_count} actor groups observed "
+                    f"and no confirmed intrusions/campaigns in activity bullets "
                     f"(criteria requires 5+ actor groups OR confirmed intrusions for HIGH)"
                 )
         
