@@ -2088,6 +2088,37 @@ CRITICAL - osint_sources_used Instructions:
 5. **When to include zero OSINT**: ONLY if no OSINT articles (including Illumina articles) added unique value beyond what Intel471/CrowdStrike provided.
    However, if Illumina context was provided and you referenced it, you MUST cite those sources.
 
+CRITICAL - risk_assessment Instructions:
+
+Use the following criteria to determine risk levels. Each rating must be defensible based on the threat intelligence data.
+
+**Nation-State Espionage:**
+- HIGH: 3+ APT groups actively targeting sector this quarter, OR direct targeting of genomics/sequencing technology, OR confirmed IP theft incidents from peer organizations
+- MEDIUM: 1-2 APT groups with sector interest, OR general life sciences targeting without genomics-specific focus
+- LOW: Minimal observed activity, OR actors focused on other sectors
+
+**Ransomware & Extortion:**
+- HIGH: 10+ peer incidents this quarter, OR increase >30% from prior quarter, OR targeting of manufacturing/OT environments, OR average impact >$5M
+- MEDIUM: 5-9 peer incidents, OR stable activity levels, OR primarily IT-focused attacks
+- LOW: <5 peer incidents, OR declining activity, OR no sector-specific campaigns
+
+**Supply Chain Compromise:**
+- HIGH: 5+ vendor/third-party incidents this quarter, OR targeting of critical suppliers (lab equipment, software, sequencing reagents), OR confirmed compromise of widely-used platforms
+- MEDIUM: 2-4 vendor incidents, OR general third-party risk observations, OR targeting of non-critical vendors
+- LOW: <2 vendor incidents, OR no sector-specific supply chain activity
+
+**Insider Threat:**
+- HIGH: 3+ confirmed insider incidents in peer organizations, OR insider-as-a-service activity targeting sector, OR recruitment campaigns against industry employees
+- MEDIUM: 1-2 insider incidents, OR general insider risk indicators, OR social engineering campaigns
+- LOW: No observed insider incidents, OR minimal social engineering activity
+
+**When assigning ratings:**
+1. Review the actual Intel471, CrowdStrike, and breach data provided above
+2. Count relevant incidents, actor groups, and campaigns
+3. Compare to prior quarter if historical data available
+4. Err on the side of caution - if uncertain between two levels, choose the higher risk level
+5. Ensure the executive summary and breach landscape data support your chosen risk levels
+
 CRITICAL - geopolitical_threats Instructions:
 
 1. **Identify relevant nation-state actors**: Review all Intel471 and CrowdStrike data from the 90-day lookback period.
