@@ -359,11 +359,20 @@ and vulnerabilities observed are consistent with those historically used against
         current_ransomware = risk_data.get("ransomware", RiskLevel.HIGH).upper()
         current_supply_chain = risk_data.get("supply_chain", RiskLevel.MEDIUM).upper()
         current_insider = risk_data.get("insider", RiskLevel.LOW).upper()
-        
+
+        # Get AI's trend assessments from analysis
+        ai_nation_state_trend = risk_data.get("nation_state_trend", RiskLevel.UNCHANGED)
+        ai_ransomware_trend = risk_data.get("ransomware_trend", RiskLevel.UNCHANGED)
+        ai_supply_chain_trend = risk_data.get("supply_chain_trend", RiskLevel.UNCHANGED)
+        ai_insider_trend = risk_data.get("insider_trend", RiskLevel.UNCHANGED)
+
         # Calculate trends by comparing with previous quarter
-        if previous_assessment:
+        # ONLY use historical comparison if we have prior quarter data AND the AI didn't provide trends
+        # Otherwise, trust the AI's analysis which considers breach statistics
+        if previous_assessment and ai_nation_state_trend == RiskLevel.UNCHANGED and ai_ransomware_trend == RiskLevel.UNCHANGED:
+            # Historical comparison mode - calculate trends from stored risk levels
             nation_state_trend = self._compare_with_previous_quarter(
-                current_nation_state, 
+                current_nation_state,
                 previous_assessment.get("nation_state", "MEDIUM")
             )
             ransomware_trend = self._compare_with_previous_quarter(
@@ -378,14 +387,14 @@ and vulnerabilities observed are consistent with those historically used against
                 current_insider,
                 previous_assessment.get("insider", "LOW")
             )
-            logger.info(f"Compared with previous quarter {prev_quarter_key}: trends calculated")
+            logger.info(f"Using historical comparison with {prev_quarter_key}: trends calculated from stored risk levels")
         else:
-            # No previous data available, default to unchanged
-            nation_state_trend = RiskLevel.UNCHANGED
-            ransomware_trend = RiskLevel.UNCHANGED
-            supply_chain_trend = RiskLevel.UNCHANGED
-            insider_trend = RiskLevel.UNCHANGED
-            logger.info(f"No historical data for {prev_quarter_key}, using 'Unchanged' for all trends")
+            # Use AI's trend assessment (which considers breach statistics, not just risk level changes)
+            nation_state_trend = ai_nation_state_trend
+            ransomware_trend = ai_ransomware_trend
+            supply_chain_trend = ai_supply_chain_trend
+            insider_trend = ai_insider_trend
+            logger.info(f"Using AI's trend assessment based on breach statistics and threat intelligence")
         
         # Save current assessment for future comparisons
         self._save_current_risk_assessment({
