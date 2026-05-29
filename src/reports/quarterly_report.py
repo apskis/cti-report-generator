@@ -344,6 +344,63 @@ and vulnerabilities observed are consistent with those historically used against
         risk_heading.paragraph_format.space_before = Pt(12)
         risk_heading.paragraph_format.space_after = Pt(6)
 
+        # Add explanatory paragraph for risk ratings
+        explanation = self.doc.add_paragraph()
+        explanation.paragraph_format.space_before = Pt(0)
+        explanation.paragraph_format.space_after = Pt(12)
+        explanation.paragraph_format.line_spacing = 1.15
+        
+        exp_text = (
+            "Risk levels are assessed based on observed threat actor activity, peer organization incidents, "
+            "and potential business impact. "
+        )
+        exp_run = explanation.add_run(exp_text)
+        exp_run.font.name = "Arial"
+        exp_run.font.size = Pt(11)
+        exp_run.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
+        
+        # Add HIGH definition
+        high_run = explanation.add_run("HIGH")
+        high_run.font.name = "Arial"
+        high_run.font.size = Pt(11)
+        high_run.font.bold = True
+        high_run.font.color.rgb = RGBColor(0xDC, 0x35, 0x45)  # Red
+        
+        high_def = explanation.add_run(
+            " indicates active targeting with multiple incidents; "
+        )
+        high_def.font.name = "Arial"
+        high_def.font.size = Pt(11)
+        high_def.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
+        
+        # Add MEDIUM definition
+        medium_run = explanation.add_run("MEDIUM")
+        medium_run.font.name = "Arial"
+        medium_run.font.size = Pt(11)
+        medium_run.font.bold = True
+        medium_run.font.color.rgb = RGBColor(0xFF, 0x8C, 0x00)  # Orange
+        
+        medium_def = explanation.add_run(
+            " reflects ongoing activity with moderate incident levels; "
+        )
+        medium_def.font.name = "Arial"
+        medium_def.font.size = Pt(11)
+        medium_def.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
+        
+        # Add LOW definition
+        low_run = explanation.add_run("LOW")
+        low_run.font.name = "Arial"
+        low_run.font.size = Pt(11)
+        low_run.font.bold = True
+        low_run.font.color.rgb = RGBColor(0x28, 0xA7, 0x45)  # Green
+        
+        low_def = explanation.add_run(
+            " represents minimal observed activity or limited sector-specific targeting."
+        )
+        low_def.font.name = "Arial"
+        low_def.font.size = Pt(11)
+        low_def.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
+
         risk_data = analysis_result.get("risk_assessment", {})
         breach_data = analysis_result.get("breach_landscape", {})
         
