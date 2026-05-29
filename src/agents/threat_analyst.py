@@ -2192,9 +2192,9 @@ CRITICAL - breach_landscape Instructions:
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    CRITICAL - notable_example MUST USE ACTUAL COMPANY NAMES
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   
+
    THIS IS MANDATORY - NOT OPTIONAL:
-   
+
    ✓ CORRECT - Use actual company/organization names:
      • "Covenant Health: ransomware attack disrupted operations for 3 weeks"
      • "Memorial Sloan Kettering: 2.3M patient samples accessed via vendor breach"
@@ -2202,7 +2202,7 @@ CRITICAL - breach_landscape Instructions:
      • "LabCorp: third-party credentials exposed affecting 200+ customers"
      • "Regeneron: former employee accessed IP repository post-termination"
      • "Broad Institute: genomics database misconfiguration exposed research data"
-   
+
    ✗ WRONG - Generic terms are STRICTLY FORBIDDEN:
      • "Pharma manufacturer" ← NO - find the actual company name in the breach data
      • "Genomics institute" ← NO - use "Broad Institute", "Sanger Institute", etc.
@@ -2214,15 +2214,25 @@ CRITICAL - breach_landscape Instructions:
      • "Healthcare provider" ← NO - use "Kaiser Permanente", "Mayo Clinic", etc.
      • "Life sciences company" ← NO - use the specific company name
      • "Clinical research org" ← NO - use the actual CRO name
-   
+
    INSTRUCTIONS:
-   1. Review the Industry Breaches data provided above - it contains SPECIFIC victim organization names
-   2. For EACH notable_example, find the ACTUAL company/organization name from the breach data
-   3. If you cannot find a specific name in the data, you MUST NOT make up a generic placeholder
-   4. Format MUST be: "ActualCompanyName: what happened"
-   5. The validation system WILL REJECT generic terms - this is your FINAL warning before rejection
+   1. Review the Industry Breaches data provided above - look for breaches with SPECIFIC victim names
+   2. **FILTER OUT breaches with generic descriptions** - if a breach record says "pharma manufacturer", 
+      "genomics institute", "biotech company", or any generic term, SKIP IT and find a different breach
+   3. For EACH notable_example, you MUST find a breach record that has:
+      - An actual company name (e.g., "Covenant Health", "Medtronic", "LabCorp")
+      - NOT a generic description (e.g., "pharma manufacturer", "genomics institute")
+   4. If multiple breaches exist for an incident type, choose the one with the MOST SPECIFIC company name
+   5. Format MUST be: "ActualCompanyName: what happened"
+   6. The validation system WILL REJECT generic terms - this is your FINAL warning before rejection
    
-   Only use "Multiple organizations" if the breach data literally shows multiple unnamed victims, 
+   **IF YOU CANNOT FIND A BREACH WITH A SPECIFIC COMPANY NAME:**
+   - Do NOT use a generic placeholder
+   - Do NOT copy generic descriptions from the source data
+   - Skip that incident type entirely and only include types where you have named examples
+   - It is better to have 4 incident types with named companies than 6 types with generic placeholders
+
+   Only use "Multiple organizations" if the breach data literally shows multiple unnamed victims,
    but this should be EXTREMELY rare because breach data includes victim names.
 
 6. **common_factors**: Write one paragraph analyzing common factors across the incidents. Include specific percentages
