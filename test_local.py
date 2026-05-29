@@ -978,15 +978,12 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
         illumina_osint = data_by_source.get("Illumina-OSINT", [])
         illumina_context = ""
         if illumina_osint:
-            # Concatenate all Illumina OSINT articles into context
-            context_parts = []
-            for article in illumina_osint:
-                title = article.get("title", "")
-                summary = article.get("summary", "")
-                url = article.get("url", "")
-                if title or summary:
-                    context_parts.append(f"- {title}: {summary} ({url})")
-            illumina_context = "\n".join(context_parts) if context_parts else ""
+            # The Illumina OSINT collector returns a single record with "illumina_context" field
+            if len(illumina_osint) > 0 and "illumina_context" in illumina_osint[0]:
+                illumina_context = illumina_osint[0]["illumina_context"]
+                logger.info(f"Using Illumina OSINT context ({len(illumina_context)} chars)")
+            else:
+                logger.warning("Illumina-OSINT data found but no illumina_context field present")
         
         result = await agent.analyze_strategic(
             intel471_data=intel471_data,

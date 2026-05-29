@@ -1489,6 +1489,15 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
 
             if analysis_result:
                 logger.info("Successfully parsed strategic analysis results")
+                
+                # Debug: Log if osint_sources_used is present
+                osint_sources = analysis_result.get("osint_sources_used", [])
+                logger.info(f"AI returned {len(osint_sources)} OSINT sources")
+                if osint_sources:
+                    logger.info(f"OSINT sources: {osint_sources}")
+                else:
+                    logger.warning("AI did not return any osint_sources_used - may need prompt adjustment")
+                
                 analysis_result = self._fill_strategic_gaps(
                     analysis_result, intel471_data, crowdstrike_data, breach_data
                 )
@@ -1814,6 +1823,8 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
         # Build Illumina context section if available
         illumina_context_section = ""
         if illumina_context:
+            logger.info(f"Including Illumina context in prompt ({len(illumina_context)} chars)")
+            logger.debug(f"Illumina context: {illumina_context[:200]}...")
             illumina_context_section = f"""
 ## Current Illumina Company Context (sourced from public disclosures this quarter)
 
@@ -1822,14 +1833,15 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
 IMPORTANT: Use the above Illumina context to ground your geopolitical_threats "relevance" bullets.
 Reference specific Illumina products, platforms, market position, or regulatory situations that are
 directly relevant to why each threat actor poses a risk to Illumina. Draw on current, public facts.
-"""
+
+CRITICAL: If you reference any Illumina articles from the context above in your analysis, you MUST include them in osint_sources_used with proper citation."""
         else:
+            logger.warning("No Illumina context available - AI will use generic life sciences context")
             illumina_context_section = """
 ## Current Illumina Company Context
 
 No current context available from public sources. Fall back to general life sciences sector exposure
-when writing "relevance" bullets, and note this limitation.
-"""
+when writing "relevance" bullets, and note this limitation."""
         
         return f"""Analyze this threat intelligence data and provide a QUARTERLY STRATEGIC BRIEF for executive leadership.
 
@@ -2035,19 +2047,23 @@ CRITICAL - osint_sources_used Instructions:
    - Offer peer breach intelligence with named victim organizations
    - Discuss specific threat actors, vulnerabilities, or incidents relevant to the quarterly analysis
    
-2. **Illumina-Specific OSINT**: If the Illumina context section above contains articles from Illumina OSINT collector,
-   AND you reference them in your relevance bullets or executive summary, MUST include them in osint_sources_used with:
+2. **Illumina-Specific OSINT**: If the "Current Illumina Company Context" section above contains articles,
+   you MUST review them for relevance. If you use ANY of that Illumina context in your:
+   - Geopolitical threat "relevance" bullets (mentioning specific Illumina products, markets, or situations)
+   - Executive summary (referencing Illumina's business context)
+   - Risk assessment considerations
+   THEN you MUST include those Illumina articles in osint_sources_used with:
    - Short title (2-5 words)
-   - Original URL
+   - Original URL from the context
    - Description of what intelligence it provided (1 sentence)
    - Citation number starting from 5 (after the 4 primary intelligence sources)
-
+   
 3. **Citation numbering**: Start from 5 (sources [1]-[4] are reserved for NVD, CISA KEV, Intel471, CrowdStrike)
 
 4. **Quality over quantity**: It's better to have 0-3 highly relevant OSINT sources than to list 10+ that weren't actually used
 
-5. **When to include zero OSINT**: If no OSINT articles added unique value beyond what Intel471/CrowdStrike provided,
-   return an empty array: []
+5. **When to include zero OSINT**: ONLY if no OSINT articles (including Illumina articles) added unique value beyond what Intel471/CrowdStrike provided.
+   However, if Illumina context was provided and you referenced it, you MUST cite those sources.
 
 CRITICAL - geopolitical_threats Instructions:
 
