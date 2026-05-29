@@ -408,14 +408,13 @@ Immediate attention is recommended for CVE-2026-22907 (Grafana) which has active
 def get_mock_quarterly_analysis() -> dict:
     """Generate mock data for quarterly report testing."""
     return {
-        "executive_summary": """The threat landscape for the genomics, life sciences, and precision manufacturing \
-sectors remained elevated throughout Q1 2026, with 47 publicly disclosed breaches affecting peer organizations \
-in the industry. Estimated aggregate impact exceeded $127M in direct costs and regulatory penalties.
+        "executive_summary": """The threat landscape for the genomics, life sciences, and precision manufacturing sectors remained elevated throughout Q1 2026, with 47 publicly disclosed breaches affecting peer organizations in the industry. Estimated aggregate impact exceeded $127M in direct costs and regulatory penalties, representing a 43% increase from Q4 2025.
 
-No direct threats to the organization were identified this quarter; however, the threat actors, techniques, \
-and vulnerabilities observed are consistent with those historically used against genomics companies. \
-Nation-state espionage activity, particularly from China-linked actors, showed increased focus on \
-biomanufacturing IP and clinical trial data.""",
+China-linked threat actors showed particularly elevated activity this quarter [5], with systematic targeting of biomanufacturing IP and clinical trial data. APT41 and GENESIS PANDA conducted multiple intrusions via compromised software updates and spearphishing campaigns targeting research coordinators. Russian-speaking ransomware groups maintained high activity levels, with LockBit and ALPHV/BlackCat accounting for the majority of healthcare sector incidents.
+
+Ransomware attacks increased 50% quarter-over-quarter, with notable incidents at Covenant Health (480K patient records) and Memorial Sloan Kettering (2.3M patient samples accessed). Manufacturing disruptions averaged 23 days recovery time due to OT system complexity [6]. Exploitation of unpatched internet-facing systems accounted for 34% of incidents, followed by compromised credentials without MFA at 28%.
+
+No direct threats to the organization were identified this quarter; however, the threat actors, techniques, and vulnerabilities observed are consistent with those historically used against genomics companies [7]. Continued vigilance and proactive defense measures remain essential given the elevated threat environment.""",
         "risk_assessment": {
             "nation_state": "HIGH",
             "nation_state_trend": "↑",
@@ -461,12 +460,12 @@ biomanufacturing IP and clinical trial data.""",
                 }
             ],
             "incidents_by_type": [
-                {"type": "Ransomware", "current_count": "18", "prior_count": "12", "notable_example": "Pharma manufacturer: 12-day production halt, FDA notification"},
-                {"type": "Data Theft / Exfiltration", "current_count": "11", "prior_count": "9", "notable_example": "Genomics institute: 2.3M patient samples accessed"},
-                {"type": "Manufacturing / OT Disruption", "current_count": "5", "prior_count": "3", "notable_example": "Medical device mfg: assembly line shutdown, 8-day recovery"},
-                {"type": "Business Email Compromise", "current_count": "6", "prior_count": "5", "notable_example": "CRO: $3.8M fraudulent wire transfers"},
-                {"type": "Third-Party / Vendor", "current_count": "4", "prior_count": "4", "notable_example": "Lab software vendor: credentials exposed for 200+ customers"},
-                {"type": "Unauthorized Access", "current_count": "3", "prior_count": "3", "notable_example": "Biotech: former employee accessed IP post-termination"},
+                {"type": "Ransomware", "current_count": "18", "prior_count": "12", "notable_example": "Covenant Health: 12-day production halt, FDA notification for 480K patient records"},
+                {"type": "Data Theft / Exfiltration", "current_count": "11", "prior_count": "9", "notable_example": "Memorial Sloan Kettering: 2.3M patient samples accessed via vendor breach"},
+                {"type": "Manufacturing / OT Disruption", "current_count": "5", "prior_count": "3", "notable_example": "Medtronic supplier: assembly line shutdown, 8-day recovery period"},
+                {"type": "Business Email Compromise", "current_count": "6", "prior_count": "5", "notable_example": "Pharmaceutical CRO: $3.8M fraudulent wire transfers over 3-week period"},
+                {"type": "Third-Party / Vendor", "current_count": "4", "prior_count": "4", "notable_example": "LabCorp vendor: credentials exposed for 200+ clinical laboratory customers"},
+                {"type": "Unauthorized Access", "current_count": "3", "prior_count": "3", "notable_example": "Regeneron: former employee accessed IP repository post-termination"},
             ],
             "common_factors": "Exploitation of unpatched internet-facing systems accounted for 34% of incidents, followed by compromised credentials without MFA (28%). Third-party vendor compromise represented 19% of cases, with social engineering accounting for the remaining 19%. Manufacturing environments faced extended recovery timelines averaging 23 days due to OT system complexity."
         },

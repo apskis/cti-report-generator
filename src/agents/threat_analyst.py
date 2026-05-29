@@ -1498,6 +1498,16 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                 else:
                     logger.warning("AI did not return any osint_sources_used - may need prompt adjustment")
                 
+                # Validate AI output quality
+                from src.validation import QuarterlyReportValidator
+                validator = QuarterlyReportValidator()
+                is_valid = validator.validate(analysis_result, illumina_context)
+                
+                if not is_valid:
+                    logger.error("AI output failed validation checks")
+                    logger.error(f"Validation summary: {validator.get_summary()}")
+                    # Continue anyway but log the issues
+                
                 analysis_result = self._fill_strategic_gaps(
                     analysis_result, intel471_data, crowdstrike_data, breach_data
                 )
@@ -1825,6 +1835,17 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
         if illumina_context:
             logger.info(f"Including Illumina context in prompt ({len(illumina_context)} chars)")
             logger.debug(f"Illumina context: {illumina_context[:200]}...")
+            
+            # Pre-flight checklist
+            logger.info("=" * 60)
+            logger.info("PRE-FLIGHT CHECKLIST - AI Should:")
+            logger.info("  ✓ Use Illumina context for geopolitical relevance bullets")
+            logger.info("  ✓ Cite Illumina sources with [5], [6], [7] in relevance bullets")
+            logger.info("  ✓ Add inline citations in executive summary")
+            logger.info("  ✓ Include actual company names in notable_example fields")
+            logger.info("  ✓ List cited sources in osint_sources_used array")
+            logger.info("=" * 60)
+            
             illumina_context_section = f"""
 ## Current Illumina Company Context (sourced from public disclosures this quarter)
 
@@ -2214,6 +2235,23 @@ BREACH LANDSCAPE COMMON FACTORS:
 
 These are HARD LIMITS. Exceeding them will cause display overflow and formatting issues.
 Review your output before returning and trim to meet these constraints.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FINAL VERIFICATION CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Before returning your JSON, verify each item:
+
+☐ Every source in osint_sources_used is cited with [N] in executive summary or relevance bullets
+☐ Every notable_example includes an actual company name (not "Pharma manufacturer" or "Genomics institute")
+☐ If Illumina context was provided above, it's referenced in relevance bullets with inline citations [N]
+☐ Executive summary is 3-4 paragraphs covering: threat landscape, geopolitical threats, breach landscape, organizational impact
+☐ Citation numbers start from 5 and are sequential (5, 6, 7, ...)
+☐ Each incident type has current_count, prior_count, and a specific notable_example with company name
+☐ Geopolitical relevance bullets mention specific Illumina products/platforms/situations when context provided
+
+If any item is unchecked, fix it before returning.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
     def _is_china_related(self, actor: Dict) -> bool:
