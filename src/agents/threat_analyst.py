@@ -201,8 +201,8 @@ class ThreatAnalystAgent:
             # Configure execution settings
             settings = AzureChatPromptExecutionSettings(
                 response_format={"type": "json_object"},
-                temperature=0,  # Zero temperature for deterministic output
-                seed=123,  # Changed seed to force AI to reconsider breach selections
+                temperature=0.1,  # Slightly higher temperature for more variation in breach selection
+                seed=789,  # New seed for different selections
             )
 
             # Get response from GPT
@@ -1472,8 +1472,8 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
             # Configure execution settings
             settings = AzureChatPromptExecutionSettings(
                 response_format={"type": "json_object"},
-                temperature=0,  # Zero temperature for deterministic output
-                seed=123,  # Changed seed to force AI to reconsider breach selections
+                temperature=0.1,  # Slightly higher temperature for more variation in breach selection
+                seed=789,  # New seed for different selections
             )
 
             # Get response from GPT
