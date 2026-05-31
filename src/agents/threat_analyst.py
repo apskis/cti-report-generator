@@ -1508,7 +1508,15 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                 if not is_valid:
                     logger.error("AI output failed validation checks")
                     logger.error(f"Validation summary: {validator.get_summary()}")
-                    # Continue anyway but log the issues
+                    
+                    # Check if validation failed due to generic company names
+                    if validator.issues and any('generic term' in issue.lower() for issue in validator.issues):
+                        logger.warning("Validation failed due to generic company names in breach examples")
+                        logger.warning("Filtering problematic breaches from incidents_by_type to fix the report")
+                        
+                        # Remove incidents with generic terms
+                        analysis_result = self._filter_generic_breaches(analysis_result, validator.issues)
+                        logger.info("Filtered out breaches with generic terms - report should now pass validation")
                 
                 analysis_result = self._fill_strategic_gaps(
                     analysis_result, intel471_data, crowdstrike_data, breach_data
@@ -1524,6 +1532,63 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
             return self._get_default_strategic_analysis(
                 intel471_data, crowdstrike_data, breach_data
             )
+
+    def _filter_generic_breaches(
+        self,
+        analysis_result: Dict[str, Any],
+        validation_issues: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Remove incidents with generic company names from the breach landscape.
+        
+        Args:
+            analysis_result: The AI analysis result
+            validation_issues: List of validation issue messages
+            
+        Returns:
+            Updated analysis_result with generic breaches filtered out
+        """
+        breach_landscape = analysis_result.get("breach_landscape", {})
+        incidents = breach_landscape.get("incidents_by_type", [])
+        
+        if not incidents:
+            return analysis_result
+        
+        # Extract incident types to remove from validation issues
+        types_to_remove = set()
+        for issue in validation_issues:
+            if 'generic term' in issue.lower():
+                # Issue format: "Data Exposure notable_example uses generic term..."
+                # Extract the incident type (first word/phrase before "notable_example" or " uses")
+                if 'notable_example' in issue:
+                    incident_type = issue.split(' notable_example')[0].strip()
+                elif ' uses ' in issue:
+                    incident_type = issue.split(' uses ')[0].strip()
+                else:
+                    # Fallback: try to extract first phrase
+                    parts = issue.split(':')
+                    if parts:
+                        incident_type = parts[0].strip()
+                    else:
+                        continue
+                
+                types_to_remove.add(incident_type)
+                logger.info(f"Will remove incident type: {incident_type}")
+        
+        # Filter out problematic incidents
+        filtered_incidents = [
+            incident for incident in incidents
+            if incident.get('type') not in types_to_remove
+        ]
+        
+        removed_count = len(incidents) - len(filtered_incidents)
+        if removed_count > 0:
+            logger.info(f"Removed {removed_count} incident type(s) with generic company names")
+            logger.info(f"Kept {len(filtered_incidents)} incident types with actual company names")
+            breach_landscape["incidents_by_type"] = filtered_incidents
+            analysis_result["breach_landscape"] = breach_landscape
+        
+        return analysis_result
 
     def _fill_strategic_gaps(
         self,
