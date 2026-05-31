@@ -167,10 +167,10 @@ class IlluminaOSINTCollector(BaseCollector):
 
     async def _fetch_news_center(self) -> str:
         """
-        Fetch headlines from Illumina news center.
+        Fetch headlines and validate URLs from Illumina news center.
         
         Returns:
-            Formatted string of news headlines
+            Formatted string of news headlines with validated URLs
         """
         url = "https://www.illumina.com/company/news-center.html"
         
@@ -187,42 +187,67 @@ class IlluminaOSINTCollector(BaseCollector):
                 html = await response.text()
                 soup = BeautifulSoup(html, 'html.parser')
                 
-                # Try to find news items - structure may vary
-                # Common patterns: article tags, news-item classes, etc.
-                headlines = []
+                # Try to find news items with links
+                news_items = []
                 
-                # Try various selectors
+                # Try various selectors for article containers
                 selectors = [
-                    'article h3',
-                    '.news-item h3',
-                    '.press-release h3',
-                    'h3.title',
-                    '.headline'
+                    'article',
+                    '.news-item',
+                    '.press-release',
+                    '.news-card'
                 ]
                 
                 for selector in selectors:
                     items = soup.select(selector)
                     if items:
-                        headlines = [self._clean_text(item.get_text()) for item in items[:10]]
-                        break
+                        for item in items[:10]:
+                            # Extract headline
+                            headline_elem = item.find(['h3', 'h2', 'h4', 'a'])
+                            headline = self._clean_text(headline_elem.get_text()) if headline_elem else None
+                            
+                            # Extract URL
+                            link_elem = item.find('a', href=True)
+                            article_url = None
+                            if link_elem:
+                                href = link_elem['href']
+                                # Handle relative URLs
+                                if href.startswith('/'):
+                                    article_url = f"https://www.illumina.com{href}"
+                                elif href.startswith('http'):
+                                    article_url = href
+                            
+                            if headline and article_url:
+                                news_items.append((headline, article_url))
+                        
+                        if news_items:
+                            break
                 
-                if not headlines:
-                    # Fallback: get any h3 tags as potential headlines
-                    h3_tags = soup.find_all('h3')
-                    headlines = [self._clean_text(tag.get_text()) for tag in h3_tags[:10]]
-                
-                if not headlines:
+                if not news_items:
                     logger.warning("Could not parse Illumina news center - page structure may have changed")
                     return "Unable to parse news center (page structure changed)"
                 
-                return "\n".join([f"- {headline}" for headline in headlines if headline])
+                # Validate URLs and format output
+                validated_items = []
+                for headline, article_url in news_items[:8]:  # Limit to 8 items
+                    # Validate URL is accessible
+                    is_valid = await self._validate_url(article_url, session)
+                    if is_valid:
+                        validated_items.append(f"- {headline}\n  URL: {article_url}")
+                    else:
+                        logger.warning(f"Skipping broken link: {article_url}")
+                
+                if not validated_items:
+                    return "News center accessible but all article links are broken"
+                
+                return "\n".join(validated_items)
 
     async def _fetch_investor_relations(self) -> str:
         """
-        Fetch press releases from Illumina investor relations.
+        Fetch press releases and validate URLs from Illumina investor relations.
         
         Returns:
-            Formatted string of press release headlines
+            Formatted string of press release headlines with validated URLs
         """
         # Try the main investor page which should have press releases
         url = "https://investor.illumina.com/investors/default.aspx"
@@ -263,8 +288,19 @@ class IlluminaOSINTCollector(BaseCollector):
                             headline = self._clean_text(headline_elem.get_text()) if headline_elem else "No title"
                             date = self._clean_text(date_elem.get_text()) if date_elem else ""
                             
-                            if headline and headline != "No title":
-                                press_releases.append(f"- {date + ': ' if date else ''}{headline}")
+                            # Extract URL
+                            link_elem = item.find('a', href=True)
+                            article_url = None
+                            if link_elem:
+                                href = link_elem['href']
+                                # Handle relative URLs
+                                if href.startswith('/'):
+                                    article_url = f"https://investor.illumina.com{href}"
+                                elif href.startswith('http'):
+                                    article_url = href
+                            
+                            if headline and headline != "No title" and article_url:
+                                press_releases.append((headline, date, article_url))
                         break
                 
                 if not press_releases:
@@ -272,14 +308,63 @@ class IlluminaOSINTCollector(BaseCollector):
                     links = soup.find_all('a', href=re.compile(r'press-release|news'))
                     for link in links[:8]:
                         text = self._clean_text(link.get_text())
-                        if text and len(text) > 10:  # Skip short navigation links
-                            press_releases.append(f"- {text}")
+                        href = link.get('href', '')
+                        
+                        if text and len(text) > 10 and href:  # Skip short navigation links
+                            # Handle relative URLs
+                            if href.startswith('/'):
+                                article_url = f"https://investor.illumina.com{href}"
+                            elif href.startswith('http'):
+                                article_url = href
+                            else:
+                                continue
+                            
+                            press_releases.append((text, "", article_url))
                 
                 if not press_releases:
                     logger.warning("Could not parse Illumina IR page - page structure may have changed")
                     return "Unable to parse investor relations page (page structure changed)"
                 
-                return "\n".join(press_releases)
+                # Validate URLs and format output
+                validated_items = []
+                for headline, date, article_url in press_releases[:6]:  # Limit to 6 items
+                    # Validate URL is accessible
+                    is_valid = await self._validate_url(article_url, session)
+                    if is_valid:
+                        date_str = f"{date}: " if date else ""
+                        validated_items.append(f"- {date_str}{headline}\n  URL: {article_url}")
+                    else:
+                        logger.warning(f"Skipping broken IR link: {article_url}")
+                
+                if not validated_items:
+                    return "Investor relations page accessible but all press release links are broken"
+                
+                return "\n".join(validated_items)
+
+    async def _validate_url(self, url: str, session: aiohttp.ClientSession) -> bool:
+        """
+        Validate that a URL is accessible (returns 200 OK).
+        
+        Args:
+            url: URL to validate
+            session: aiohttp session to use
+            
+        Returns:
+            True if URL is accessible, False otherwise
+        """
+        try:
+            async with session.head(url, allow_redirects=True, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.status == 200:
+                    return True
+                elif response.status == 405:  # HEAD not allowed, try GET
+                    async with session.get(url, allow_redirects=True, timeout=aiohttp.ClientTimeout(total=10)) as get_response:
+                        return get_response.status == 200
+                else:
+                    logger.debug(f"URL validation failed for {url}: status {response.status}")
+                    return False
+        except Exception as e:
+            logger.debug(f"URL validation error for {url}: {e}")
+            return False
 
     @staticmethod
     def _clean_text(text: str) -> str:
