@@ -161,6 +161,8 @@ def _print_gate_summary(session: dict, gate_info: dict, report_type: str) -> Non
         "1": "Tier 1 Source Inventory",
         "1A": "Statistics Validation",
         "1B": "OSINT Article Triage",
+        "1E": "AI Output Quality",
+        "1F": "Source Audit",
         "2": "IOC Extraction",
         "3": "Actor Linkage",
         "4": "Structured Assembly",
@@ -172,8 +174,8 @@ def _print_gate_summary(session: dict, gate_info: dict, report_type: str) -> Non
     
     # Gate sequences per report type
     gate_sequences = {
-        "weekly": ["1", "1A", "1B", "2", "3", "4", "5", "6"],  # No Gate 1C
-        "quarterly": ["1", "1A", "1B", "2", "3", "4", "5", "1C", "1D", "6"],
+        "weekly": ["1", "1A", "1B", "2", "3", "4", "5", "6"],
+        "quarterly": ["1", "1A", "1B", "2", "3", "4", "5", "1F", "1E", "1C", "1D", "6"],
     }
     sequence = gate_sequences.get(report_type.lower(), gate_sequences["weekly"])
     
