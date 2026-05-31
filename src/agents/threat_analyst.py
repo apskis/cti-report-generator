@@ -1966,9 +1966,11 @@ Please provide your STRATEGIC analysis in the following JSON format:
   
   PARAGRAPH 2 — Geopolitical threats: Highlight the top 2-3 geopolitical threats identified this quarter, including which countries/actors and what they're targeting (e.g., 'China-linked actors showed elevated focus on biomanufacturing IP...')
   
-  PARAGRAPH 3 — Industry breach landscape: Provide specific examples of peer breaches by company name where relevant, common attack vectors, and what incident types dominated (e.g., 'Ransomware attacks increased 50%, with notable incidents at [Company A] and [Company B]...')
+  PARAGRAPH 3 — Industry breach landscape: Provide specific examples of peer breaches by company name where relevant, common attack vectors, and what incident types dominated. Use absolute numbers, NOT percentages or quarter-over-quarter comparisons (e.g., 'The quarter saw 18 ransomware incidents, with notable disruptions at Covenant Health and LabCorp...')
   
   PARAGRAPH 4 (OPTIONAL) — Direct organizational impact: Note whether any direct threats were identified, and briefly mention 1-2 key watch items for next quarter or critical recommendations.
+  
+  CRITICAL - DO NOT INVENT COMPARISONS: Do NOT use percentage increases/decreases like 'increased 20%' or 'rose 50%' unless you have ACTUAL prior quarter data. You are NOT being provided historical data - stick to absolute numbers from the current quarter's data only. Say '20 ransomware incidents this quarter' NOT 'ransomware increased 20%'.
   
   CRITICAL - INLINE CITATIONS: If you reference ANY OSINT sources (including Illumina articles) in the executive summary, you MUST add inline citations using the citation_number from osint_sources_used. Format: [5], [6], [7], etc. Example: 'Illumina announced new precision medicine partnerships [5], which may increase...'
   
