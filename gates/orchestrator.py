@@ -18,6 +18,7 @@ from . import (
     gate1c_technology_coherence,
     gate1d_source_attribution,
     gate1e_ai_quality,
+    gate1f_source_audit,
     gate2_ioc_extraction,
     gate3_actor_linkage,
     gate4_assembly,
@@ -34,10 +35,10 @@ logger = logging.getLogger(__name__)
 
 # Gate sequences per report type
 # Weekly Tactical: Fast operational intelligence with threat actor focus (no environment data)
-# Quarterly Geopolitical: Strategic threat landscape with AI quality validation and source attribution
+# Quarterly Geopolitical: Strategic threat landscape with comprehensive source audit
 _GATE_SEQUENCES = {
     "weekly": ["1", "1A", "1B", "2", "3", "4", "5", "6"],  # Removed 1C - no environment/technology data
-    "quarterly": ["1", "1A", "1B", "2", "3", "4", "5", "1E", "1C", "1D", "6"],  # Strategic - includes AI quality, tech coherence + attribution
+    "quarterly": ["1", "1A", "1B", "2", "3", "4", "5", "1E", "1F", "1C", "1D", "6"],  # Strategic - includes AI quality, source audit, tech coherence + attribution
 }
 
 _GATE_RUNNERS = {
@@ -47,6 +48,7 @@ _GATE_RUNNERS = {
     "1C": gate1c_technology_coherence.run,
     "1D": gate1d_source_attribution.run,
     "1E": gate1e_ai_quality.run,
+    "1F": gate1f_source_audit.run,
     "2": gate2_ioc_extraction.run,
     "3": gate3_actor_linkage.run,
     "4": gate4_assembly.run,
