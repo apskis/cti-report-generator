@@ -36,9 +36,10 @@ logger = logging.getLogger(__name__)
 # Gate sequences per report type
 # Weekly Tactical: Fast operational intelligence with threat actor focus (no environment data)
 # Quarterly Geopolitical: Strategic threat landscape with comprehensive source audit
+# Note: Gate 1F (Source Audit) runs BEFORE Gate 1E (AI Quality) so audit logs are always visible
 _GATE_SEQUENCES = {
     "weekly": ["1", "1A", "1B", "2", "3", "4", "5", "6"],  # Removed 1C - no environment/technology data
-    "quarterly": ["1", "1A", "1B", "2", "3", "4", "5", "1E", "1F", "1C", "1D", "6"],  # Strategic - includes AI quality, source audit, tech coherence + attribution
+    "quarterly": ["1", "1A", "1B", "2", "3", "4", "5", "1F", "1E", "1C", "1D", "6"],  # Source audit shows "work", then quality gates enforce standards
 }
 
 _GATE_RUNNERS = {

@@ -69,6 +69,7 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
     
     logger.info("=" * 80)
     logger.info("SOURCE AUDIT - COMPREHENSIVE VERIFICATION")
+    logger.info(f"This audit shows exactly where every source is used.")
     logger.info("=" * 80)
     
     # AUDIT 1: Breach Landscape Sources
