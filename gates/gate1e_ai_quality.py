@@ -57,7 +57,7 @@ def _validate_company_names(report: Dict) -> List[str]:
 
 
 def _validate_osint_citations(report: Dict) -> List[str]:
-    """Validate OSINT sources are actually cited in report content."""
+    """Validate OSINT sources are actually cited in report content and URLs are valid."""
     issues = []
     
     osint_sources = report.get("osint_sources_used", [])
@@ -77,18 +77,39 @@ def _validate_osint_citations(report: Dict) -> List[str]:
     
     citations_found = set(citations_found)
     
-    # Check each source is cited
+    # Check each source is cited AND has a valid URL
     uncited_sources = []
+    invalid_urls = []
+    
     for source in osint_sources:
         citation_num = str(source.get("citation_number", 0))
+        url = source.get("url", "")
+        title = source.get("title", "Unknown")
+        
+        # Check if cited
         if citation_num not in citations_found:
-            uncited_sources.append(source.get("title", "Unknown"))
+            uncited_sources.append(title)
+        
+        # Check if URL is provided and looks valid
+        if not url:
+            invalid_urls.append(f"{title}: No URL provided")
+        elif not url.startswith(('http://', 'https://')):
+            invalid_urls.append(f"{title}: Invalid URL format '{url}'")
+        elif 'news.illumina.com' in url:
+            # Special check: news.illumina.com doesn't exist - likely hallucinated
+            invalid_urls.append(f"{title}: URL uses non-existent domain 'news.illumina.com' (actual domain is www.illumina.com)")
     
     if uncited_sources:
         issues.append(
             f"{len(uncited_sources)} OSINT sources listed but never cited: {', '.join(uncited_sources[:3])}"
         )
         logger.warning(f"Uncited OSINT sources: {uncited_sources}")
+    
+    if invalid_urls:
+        issues.append(
+            f"{len(invalid_urls)} OSINT sources have invalid/hallucinated URLs: {'; '.join(invalid_urls[:2])}"
+        )
+        logger.error(f"Invalid OSINT URLs detected: {invalid_urls}")
     
     return issues
 
