@@ -55,5 +55,10 @@ deploy.zip
 # Local cache for testing
 .cache/
 
+# Test output directories
+test_skip/
+test_output/
+test_final_success/
+
 # Cursor IDE
 .cursor/
