@@ -618,7 +618,10 @@ async def generate_report_local(
     credentials = None  # Will hold Azure credentials for gate framework
     
     if use_mock:
-        print_section("📋 Using Mock Data")
+        try:
+            print_section("📋 Using Mock Data")
+        except UnicodeEncodeError:
+            print_section("Using Mock Data")
         if report_type == "weekly":
             analysis = get_mock_weekly_analysis()
         else:
@@ -634,7 +637,10 @@ async def generate_report_local(
         vault_url = azure_config.get_key_vault_url()
         credentials = get_all_api_keys(vault_url)
     else:
-        print_section("📋 Using Mock Data (default)")
+        try:
+            print_section("📋 Using Mock Data (default)")
+        except UnicodeEncodeError:
+            print_section("Using Mock Data (default)")
         if report_type == "weekly":
             analysis = get_mock_weekly_analysis()
         else:
@@ -644,7 +650,10 @@ async def generate_report_local(
 
     # Optional: gate framework validation pass (feature-flagged)
     if _gate_framework_enabled():
-        print_section("🔒 Gate Framework Validation")
+        try:
+            print_section("🔒 Gate Framework Validation")
+        except UnicodeEncodeError:
+            print_section("Gate Framework Validation")
         from gates.pipeline_hook import run_gate_framework_over_collected_data
         from src.core.config import get_feature_config
         
@@ -746,7 +755,10 @@ async def generate_report_local(
                 sys.exit(1)
 
     # Generate the document
-    print_section("📄 Generating Report")
+    try:
+        print_section("📄 Generating Report")
+    except UnicodeEncodeError:
+        print_section("Generating Report")
     print_status("Creating document...", "progress")
     doc = generator.generate(analysis)
     print_status("Document created", "success")
@@ -761,7 +773,10 @@ async def generate_report_local(
 
     # Upload to Azure if requested
     if use_azure:
-        print_section("☁️  Uploading to Azure")
+        try:
+            print_section("☁️  Uploading to Azure")
+        except UnicodeEncodeError:
+            print_section("Uploading to Azure")
         from src.core.keyvault import get_all_api_keys
         from src.reports.blob_storage import upload_to_blob
         from src.core.config import azure_config
@@ -858,10 +873,16 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
 
     if not ai_available:
         print()
-        print(f"{Fore.YELLOW}{Style.BRIGHT}{'=' * 60}")
-        print(f"  ⚠  Azure OpenAI is NOT reachable")
-        print(f"  Are you connected to the VPN?")
-        print(f"{'=' * 60}{Style.RESET_ALL}")
+        try:
+            print(f"{Fore.YELLOW}{Style.BRIGHT}{'=' * 60}")
+            print(f"  ⚠  Azure OpenAI is NOT reachable")
+            print(f"  Are you connected to the VPN?")
+            print(f"{'=' * 60}{Style.RESET_ALL}")
+        except UnicodeEncodeError:
+            print(f"{Fore.YELLOW}{Style.BRIGHT}{'=' * 60}")
+            print(f"  WARNING: Azure OpenAI is NOT reachable")
+            print(f"  Are you connected to the VPN?")
+            print(f"{'=' * 60}{Style.RESET_ALL}")
         print()
         print(f"  {Fore.WHITE}[1] Stop - I'll connect to VPN first")
         print(f"  [2] Continue without AI (use Rapid7/NVD data directly){Style.RESET_ALL}")
@@ -880,7 +901,10 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
         print_status("Azure OpenAI is reachable", "success")
 
     # Collect data
-    print_section("📊 Collecting Threat Intelligence")
+    try:
+        print_section("📊 Collecting Threat Intelligence")
+    except UnicodeEncodeError:
+        print_section("Collecting Threat Intelligence")
     collector_results = await collect_all(credentials, report_type=report_type)
     data_by_source = get_data_by_source(collector_results)
 
@@ -893,7 +917,10 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
             print_status(f"{source}: No data", "warning")
     
     # Enrich data
-    print_section("🔍 Enriching CVE Data")
+    try:
+        print_section("🔍 Enriching CVE Data")
+    except UnicodeEncodeError:
+        print_section("Enriching CVE Data")
     from src.enrichment import CVEEnricher, ThreatActorMonitoringEnricher
     
     cve_enricher = CVEEnricher()
@@ -905,7 +932,10 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
         print_status(f"Enriched {len(data_by_source['NVD'])} CVEs", "success")
 
     # Initialize agent
-    print_section("🤖 AI-Powered Analysis")
+    try:
+        print_section("🤖 AI-Powered Analysis")
+    except UnicodeEncodeError:
+        print_section("AI-Powered Analysis")
     
     if not ai_available:
         print_status("Skipping AI (not reachable) - using backup data", "warning")
@@ -1108,7 +1138,10 @@ Examples:
             use_azure=args.azure
         ))
 
-        print_header("✓ SUCCESS")
+        try:
+            print_header("✓ SUCCESS")
+        except UnicodeEncodeError:
+            print_header("SUCCESS")
         print(f"{Fore.GREEN}Report Type: {args.report_type.upper()}")
         print(f"Data Source: {data_source}")
         if args.azure:
@@ -1117,7 +1150,10 @@ Examples:
             print(f"File: {result}{Style.RESET_ALL}\n")
 
     except Exception as e:
-        print_header("✗ ERROR")
+        try:
+            print_header("✗ ERROR")
+        except UnicodeEncodeError:
+            print_header("ERROR")
         print(f"{Fore.RED}Failed to generate report: {e}{Style.RESET_ALL}\n")
         sys.exit(1)
 

@@ -185,6 +185,24 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         # Body: left-aligned, dark text on white, tight paragraph spacing
         summary = analysis_result.get("executive_summary", "No executive summary available.")
+        
+        # Add trend context if available
+        cve_trends = analysis_result.get("cve_trends", {})
+        actor_trends = analysis_result.get("actor_trends", {})
+        
+        if cve_trends or actor_trends:
+            # Prepend trend summary to executive summary
+            trend_intro = []
+            
+            if cve_trends and cve_trends.get("trend_summary"):
+                trend_intro.append(f"Trend Analysis: {cve_trends['trend_summary']}")
+            
+            if actor_trends and actor_trends.get("trend_summary"):
+                trend_intro.append(f"Actor Trends: {actor_trends['trend_summary']}")
+            
+            if trend_intro:
+                summary = "\n\n".join(trend_intro) + "\n\n" + summary
+        
         para = self.doc.add_paragraph(summary)
         para.paragraph_format.space_before = Pt(0)
         para.paragraph_format.space_after = Pt(4)
@@ -412,10 +430,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
             if cve.get("actively_exploited") or cve.get("targeted_by_actors")
         )
         
-        # Metric 4: Peer Incidents (from OSINT - company breaches)
-        osint_sources = analysis_result.get("osint_sources_used", [])
-        breach_incidents = self._extract_breach_incidents(osint_sources)
-        peer_incidents_count = len(breach_incidents)
+        # Metric 4: Peer Incidents (from industry_incidents - includes both OSINT and Intel471)
+        industry_incidents = analysis_result.get("industry_incidents", [])
+        peer_incidents_count = len(industry_incidents)
         
         return {
             "threat_actors": threat_actors_count,
