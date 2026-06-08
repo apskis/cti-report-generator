@@ -140,6 +140,131 @@ class ThreatAnalystAgent:
         self.kernel.add_service(self.chat_service)
         logger.info("ThreatAnalystAgent initialized successfully")
 
+    async def analyze_threats_with_context(
+        self,
+        cve_data: List[Dict],
+        intel471_data: List[Dict],
+        crowdstrike_data: List[Dict],
+        threatq_data: List[Dict],
+        rapid7_data: List[Dict],
+        rapid7_scans_data: List[Dict] = None,
+        osint_data: List[Dict] = None,
+        previous_contexts: List[Dict[str, Any]] = None,
+        cve_trends: Dict[str, Any] = None,
+        actor_trends: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Analyze threat intelligence data with historical context awareness.
+        
+        This is the context-aware version that includes historical trends.
+        Falls back to standard analysis if no context is provided.
+        
+        Args:
+            cve_data: List of CVE records from NVD
+            intel471_data: List of threat intelligence from Intel471
+            crowdstrike_data: List of APT intelligence from CrowdStrike
+            threatq_data: List of indicators from ThreatQ
+            rapid7_data: List of vulnerability data from Rapid7
+            rapid7_scans_data: List of scan-based exposure data from Rapid7
+            osint_data: List of articles from curated OSINT sources
+            previous_contexts: Historical analysis contexts for trend analysis
+            cve_trends: Pre-calculated CVE trends (new, persistent, resolved)
+            actor_trends: Pre-calculated threat actor trends
+            
+        Returns:
+            Dictionary containing analysis results with trend information
+        """
+        # If no context provided, fall back to standard analysis
+        if not previous_contexts and not cve_trends and not actor_trends:
+            return await self.analyze_threats(
+                cve_data, intel471_data, crowdstrike_data,
+                threatq_data, rapid7_data, rapid7_scans_data, osint_data
+            )
+        
+        try:
+            logger.info("Starting context-aware threat analysis")
+            logger.info(
+                f"Data counts - CVEs: {len(cve_data)}, Intel471: {len(intel471_data)}, "
+                f"CrowdStrike: {len(crowdstrike_data)}, ThreatQ: {len(threatq_data)}, "
+                f"Rapid7: {len(rapid7_data)}, Rapid7-Scans: {len(rapid7_scans_data or [])}, "
+                f"OSINT: {len(osint_data or [])}"
+            )
+            
+            if previous_contexts:
+                logger.info(f"Using {len(previous_contexts)} previous contexts for trend analysis")
+            
+            # Fetch public exploit intelligence (CISA KEV + EPSS)
+            all_cve_ids = self._collect_all_cve_ids(
+                cve_data, rapid7_scans_data or []
+            )
+            kev_lookup = await fetch_kev_cves()
+            epss_lookup = await fetch_epss_scores(list(all_cve_ids))
+            
+            # Prepare data for analysis
+            data_summary = self._prepare_data_for_analysis(
+                cve_data, intel471_data, crowdstrike_data, threatq_data, rapid7_data
+            )
+            
+            # Build context-enhanced prompt
+            analysis_prompt = self._build_context_aware_prompt(
+                data_summary, cve_data, intel471_data, crowdstrike_data,
+                threatq_data, rapid7_data, rapid7_scans_data or [],
+                osint_data or [], cve_trends, actor_trends, previous_contexts
+            )
+            
+            # Create chat history
+            chat_history = ChatHistory()
+            chat_history.add_system_message(self.system_prompt)
+            chat_history.add_user_message(analysis_prompt)
+            
+            # Configure execution settings
+            settings = AzureChatPromptExecutionSettings(
+                response_format={"type": "json_object"},
+                temperature=0.1,
+                seed=789,
+            )
+            
+            # Get response from GPT
+            logger.info("Sending context-aware request to Azure OpenAI")
+            response = await self.chat_service.get_chat_message_content(
+                chat_history=chat_history,
+                settings=settings
+            )
+            
+            # Parse response
+            response_text = str(response)
+            logger.info("Received response from Azure OpenAI")
+            
+            analysis_result = self._parse_response(response_text)
+            
+            if analysis_result:
+                logger.info("Successfully parsed context-aware analysis results")
+                
+                # Add trend information to result
+                if cve_trends:
+                    analysis_result["cve_trends"] = cve_trends
+                if actor_trends:
+                    analysis_result["actor_trends"] = actor_trends
+                
+                analysis_result = self._fill_gaps_from_backup(
+                    analysis_result, cve_data, rapid7_data, rapid7_scans_data,
+                    kev_lookup, epss_lookup, intel471_data, crowdstrike_data,
+                )
+                return analysis_result
+            else:
+                return self._get_default_analysis(
+                    cve_data, intel471_data, crowdstrike_data,
+                    threatq_data, rapid7_data, rapid7_scans_data,
+                    kev_lookup, epss_lookup,
+                )
+        
+        except Exception as e:
+            logger.error(f"Error during context-aware threat analysis: {e}", exc_info=True)
+            return self._get_default_analysis(
+                cve_data, intel471_data, crowdstrike_data,
+                threatq_data, rapid7_data, rapid7_scans_data,
+            )
+    
     async def analyze_threats(
         self,
         cve_data: List[Dict],
@@ -699,6 +824,113 @@ Weeks Detected Guidelines:
 Respond ONLY with valid JSON. Do not include any markdown formatting or code blocks.
 
 Do not use Hyphens."""
+
+    def _build_context_aware_prompt(
+        self,
+        data_summary: Dict[str, List],
+        cve_data: List,
+        intel471_data: List,
+        crowdstrike_data: List,
+        threatq_data: List,
+        rapid7_data: List,
+        rapid7_scans_data: List = None,
+        osint_data: List = None,
+        cve_trends: Dict[str, Any] = None,
+        actor_trends: Dict[str, Any] = None,
+        previous_contexts: List[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Build context-aware analysis prompt with historical trends.
+        
+        This extends the standard prompt with trend information from previous reports.
+        """
+        # Start with the standard prompt
+        base_prompt = self._build_analysis_prompt(
+            data_summary, cve_data, intel471_data, crowdstrike_data,
+            threatq_data, rapid7_data, rapid7_scans_data, osint_data
+        )
+        
+        # Add historical context section
+        context_section = "\n\n=== HISTORICAL CONTEXT & TRENDS ===\n"
+        
+        if cve_trends:
+            trend_summary = cve_trends.get("trend_summary", "")
+            new_cves = cve_trends.get("new_cves", [])
+            persistent_cves = cve_trends.get("persistent_cves", [])
+            resolved_cves = cve_trends.get("resolved_cves", [])
+            recurrent_cves = cve_trends.get("recurrent_cves", [])
+            weeks_analyzed = cve_trends.get("weeks_analyzed", 1)
+            
+            context_section += f"""
+CVE TRENDS (analyzing {weeks_analyzed} report periods):
+Summary: {trend_summary}
+
+NEW CVEs ({len(new_cves)}): {', '.join(new_cves[:10])}{'...' if len(new_cves) > 10 else ''}
+PERSISTENT CVEs ({len(persistent_cves)}): {', '.join(persistent_cves[:10])}{'...' if len(persistent_cves) > 10 else ''}
+RESOLVED CVEs ({len(resolved_cves)}): {', '.join(resolved_cves[:10])}{'...' if len(resolved_cves) > 10 else ''}
+"""
+            if recurrent_cves:
+                context_section += f"RECURRENT CVEs ({len(recurrent_cves)}): {', '.join(recurrent_cves[:5])}\n"
+            
+            context_section += """
+ANALYSIS INSTRUCTIONS FOR TRENDS:
+- Highlight NEW CVEs as emerging threats requiring immediate attention
+- Mark PERSISTENT CVEs with weeks_detected >= 2 to indicate ongoing exposure
+- Mention RESOLVED CVEs in executive summary as positive progress
+- Flag RECURRENT CVEs as potential patching/remediation issues
+- Use trend data to provide week-over-week context in your executive summary
+"""
+        
+        if actor_trends:
+            trend_summary = actor_trends.get("trend_summary", "")
+            new_actors = actor_trends.get("new_actors", [])
+            persistent_actors = actor_trends.get("persistent_actors", [])
+            inactive_actors = actor_trends.get("inactive_actors", [])
+            
+            context_section += f"""
+THREAT ACTOR TRENDS:
+Summary: {trend_summary}
+
+NEW threat actors identified: {', '.join(new_actors[:10]) if new_actors else 'None'}
+PERSISTENT threat actors (active in previous report): {', '.join(persistent_actors[:10]) if persistent_actors else 'None'}
+INACTIVE actors (reduced activity): {', '.join(inactive_actors[:10]) if inactive_actors else 'None'}
+
+ANALYSIS INSTRUCTIONS FOR ACTOR TRENDS:
+- Highlight NEW actors as emerging threats to monitor
+- Note PERSISTENT actors as sustained threats requiring ongoing vigilance
+- Mention INACTIVE actors if they represent reduced risk
+- Use actor trends to show threat landscape evolution
+"""
+        
+        if previous_contexts:
+            context_section += f"""
+HISTORICAL BASELINE:
+- Analyzing {len(previous_contexts)} previous reports for trend context
+- Use this data to identify patterns, escalations, or improvements
+- Reference week-over-week changes in your executive summary
+- Show metric trends (CVE counts, actor activity, incidents) if significant
+"""
+        
+        # Add enhanced output requirements
+        context_section += """
+ENHANCED OUTPUT REQUIREMENTS WITH TRENDS:
+- Include trend insights in your executive_summary (e.g., "CVE count decreased 15% from last week", "3 new threat actors identified")
+- Set weeks_detected accurately: 1 for NEW CVEs, 2+ for PERSISTENT CVEs
+- Prioritize PERSISTENT CVEs (unresolved for multiple weeks) higher in your analysis
+- Mention RESOLVED CVEs as positive security outcomes if count is significant
+- Reference actor trends in your APT activity analysis
+- Use historical context to show whether threat landscape is improving or deteriorating
+
+IMPORTANT: Continue to follow all standard JSON schema requirements from the base prompt above.
+"""
+        
+        # Combine base prompt with context section
+        enhanced_prompt = base_prompt.replace(
+            "Respond ONLY with valid JSON",
+            context_section + "\n\nRespond ONLY with valid JSON"
+        )
+        
+        return enhanced_prompt
 
     def _parse_response(self, response_text: str) -> Dict[str, Any]:
         """

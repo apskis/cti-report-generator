@@ -208,3 +208,119 @@ class CacheManager:
         except Exception as e:
             logger.error(f"Error listing cache keys: {e}")
             return []
+    
+    def cache_collector_data(
+        self,
+        collector_name: str,
+        data: list[Dict[str, Any]],
+        ttl_hours: int = 6
+    ) -> bool:
+        """
+        Cache data from any collector with metadata.
+        
+        Args:
+            collector_name: Name of the collector (e.g., "Intel471", "CrowdStrike")
+            data: Data to cache (list of records)
+            ttl_hours: Cache time-to-live in hours (for documentation only)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        cache_key = f"collector-{collector_name}-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+        
+        try:
+            cache_payload = {
+                "collected_at": datetime.now(timezone.utc).isoformat(),
+                "source": collector_name,
+                "record_count": len(data) if data else 0,
+                "ttl_hours": ttl_hours,
+                "data": data
+            }
+            
+            success = self.set_cache(cache_key, cache_payload)
+            
+            if success:
+                logger.info(
+                    f"Cached {len(data) if data else 0} records from {collector_name} "
+                    f"(TTL: {ttl_hours}h)"
+                )
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error caching collector data for {collector_name}: {e}")
+            return False
+    
+    def get_collector_cache(
+        self,
+        collector_name: str,
+        max_age_hours: int = 6
+    ) -> Optional[list[Dict[str, Any]]]:
+        """
+        Retrieve cached collector data if fresh.
+        
+        Args:
+            collector_name: Name of the collector
+            max_age_hours: Maximum age of cache in hours
+            
+        Returns:
+            List of cached records or None if not found/expired
+        """
+        cache_key = f"collector-{collector_name}-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+        
+        try:
+            cached = self.get_cache(cache_key, max_age_hours)
+            
+            if cached:
+                data = cached.get("data", [])
+                record_count = cached.get("record_count", len(data))
+                collected_at = cached.get("collected_at", "unknown")
+                
+                logger.info(
+                    f"Retrieved {record_count} cached records from {collector_name} "
+                    f"(collected: {collected_at})"
+                )
+                
+                return data
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error retrieving collector cache for {collector_name}: {e}")
+            return None
+    
+    def clear_old_caches(self, days_old: int = 7) -> int:
+        """
+        Clear cache entries older than specified days.
+        
+        Args:
+            days_old: Delete caches older than this many days
+            
+        Returns:
+            Number of caches deleted
+        """
+        try:
+            container_client = self.blob_service_client.get_container_client(self.container_name)
+            blobs = container_client.list_blobs()
+            
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)
+            deleted_count = 0
+            
+            for blob in blobs:
+                if blob.last_modified < cutoff_date:
+                    blob_client = self.blob_service_client.get_blob_client(
+                        container=self.container_name,
+                        blob=blob.name
+                    )
+                    blob_client.delete_blob()
+                    deleted_count += 1
+                    logger.debug(f"Deleted old cache: {blob.name}")
+            
+            if deleted_count > 0:
+                logger.info(f"Cleared {deleted_count} cache entries older than {days_old} days")
+            
+            return deleted_count
+            
+        except Exception as e:
+            logger.error(f"Error clearing old caches: {e}")
+            return 0

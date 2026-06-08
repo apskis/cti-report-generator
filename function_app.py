@@ -13,8 +13,10 @@ from datetime import date, timedelta
 from src.core.keyvault import get_all_api_keys
 from src.collectors import collect_all, get_data_by_source
 from src.agents.threat_analyst import ThreatAnalystAgent
+from src.agents.context_manager import AgentContextManager
 from src.reports.blob_storage import create_and_upload_report
 from src.core.config import azure_config, analysis_config, feature_config
+from src.utils.cache_manager import CacheManager
 
 from gates.pipeline_hook import run_gate_framework_over_collected_data
 
@@ -146,9 +148,9 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
             if not result.success:
                 logger.warning(f"Collection failed for {source}: {result.error}")
 
-        # Step 3: Analyze threats with AI agent (tactical mode)
+        # Step 3: Analyze threats with AI agent (tactical mode) + historical context
         deployment_name = analysis_config.deployment_name
-        logger.info(f'Analyzing threat data with {deployment_name} (tactical mode)...')
+        logger.info(f'Analyzing threat data with {deployment_name} (tactical mode with context)...')
 
         agent = ThreatAnalystAgent(
             credentials['openai_endpoint'],
@@ -156,18 +158,54 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
             deployment_name=deployment_name
         )
 
-        analysis = await agent.analyze_threats(
+        # Initialize context manager for historical tracking
+        storage_account_name = credentials['storage_account_name']
+        storage_account_key = credentials['storage_account_key']
+        
+        cache_manager = CacheManager(storage_account_name, storage_account_key)
+        context_mgr = AgentContextManager(cache_manager)
+        
+        # Get previous 4 weeks of context for trend analysis
+        logger.info('Retrieving historical contexts for trend analysis...')
+        previous_contexts = context_mgr.get_previous_context("weekly", lookback_weeks=4)
+        
+        # Calculate CVE trends
+        current_cve_data = cve_data + rapid7_scans_data  # Combined CVE sources
+        cve_trends = context_mgr.calculate_cve_trends(current_cve_data, previous_contexts)
+        logger.info(f'CVE Trends: {cve_trends.get("trend_summary", "N/A")}')
+        
+        # Calculate threat actor trends
+        # Note: We'll extract actors from the analysis, so pass empty list for now
+        actor_trends = None  # Will be calculated after initial analysis
+        
+        # Run context-aware analysis
+        analysis = await agent.analyze_threats_with_context(
             cve_data,
             intel471_data,
             crowdstrike_data,
             threatq_data,
             rapid7_data,
             rapid7_scans_data,
-            osint_data
+            osint_data,
+            previous_contexts=previous_contexts,
+            cve_trends=cve_trends,
+            actor_trends=actor_trends
         )
 
         # Merge Rapid7 and CrowdStrike (Spotlight) asset/device counts into CVE analysis for Exposure column
         _merge_exposure_into_analysis(analysis, rapid7_data, crowdstrike_data)
+
+        # Save analysis context for next week's report
+        logger.info('Saving analysis context for historical tracking...')
+        context_save_success = context_mgr.save_analysis_context(
+            "weekly",
+            date.today(),
+            analysis
+        )
+        if context_save_success:
+            logger.info('Analysis context saved successfully')
+        else:
+            logger.warning('Failed to save analysis context - future reports will lack trend data')
 
         # Optional: gate framework validation pass (feature-flagged)
         if _gate_framework_enabled():
@@ -306,15 +344,29 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
             if not result.success:
                 logger.warning(f"Collection failed for {source}: {result.error}")
 
-        # Step 3: Analyze threats with AI agent (strategic mode)
+        # Step 3: Analyze threats with AI agent (strategic mode) + historical context
         deployment_name = analysis_config.deployment_name
-        logger.info(f'Analyzing threat data with {deployment_name} (strategic mode)...')
+        logger.info(f'Analyzing threat data with {deployment_name} (strategic mode with context)...')
 
         agent = ThreatAnalystAgent(
             credentials['openai_endpoint'],
             credentials['openai_key'],
             deployment_name=deployment_name
         )
+
+        # Initialize context manager for historical tracking
+        storage_account_name = credentials['storage_account_name']
+        storage_account_key = credentials['storage_account_key']
+        
+        cache_manager = CacheManager(storage_account_name, storage_account_key)
+        context_mgr = AgentContextManager(cache_manager)
+        
+        # Get previous quarters for trend analysis (look back 1 year = 4 quarters)
+        logger.info('Retrieving historical quarterly contexts for trend analysis...')
+        previous_contexts = context_mgr.get_previous_context("quarterly", lookback_weeks=52)  # ~1 year
+        
+        # Note: Quarterly reports focus on strategic trends, not individual CVEs
+        # So CVE trends are less relevant, but we can still track high-level metrics
 
         # Use strategic analysis for quarterly reports
         # Extract breach reports from Intel471 data
@@ -335,6 +387,18 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
             breach_data=breach_data if breach_data else None,
             illumina_context=illumina_context
         )
+
+        # Save analysis context for next quarter's report
+        logger.info('Saving quarterly analysis context for historical tracking...')
+        context_save_success = context_mgr.save_analysis_context(
+            "quarterly",
+            date.today(),
+            analysis
+        )
+        if context_save_success:
+            logger.info('Quarterly analysis context saved successfully')
+        else:
+            logger.warning('Failed to save quarterly analysis context - future reports will lack trend data')
 
         # Optional: gate framework validation pass (feature-flagged)
         if _gate_framework_enabled():

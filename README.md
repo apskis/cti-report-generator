@@ -13,6 +13,12 @@ An Azure Functions-based Cyber Threat Intelligence (CTI) reporting system that a
   - OSINT (curated public news and research feeds you control)
 
 - **AI-powered analysis** using Azure OpenAI and Semantic Kernel
+- **🆕 Historical Context Management & Trend Analysis**
+  - Week-over-week CVE tracking (new, persistent, resolved)
+  - Threat actor activity timeline
+  - Quarter-over-quarter strategic trends
+  - Azure Blob Storage for context persistence
+  - See [CONTEXT_MANAGEMENT.md](CONTEXT_MANAGEMENT.md) for details
 - **Automatic AI gap-filling** from Rapid7/NVD backup when AI output is incomplete
 - **Local file caching** for instant testing - automatic, zero configuration
 - **Background data sync** with Azure Timer Functions for instant production reports (optional)
@@ -53,7 +59,8 @@ cti-report-generator/
 │   │   ├── osint_collector.py      # Curated OSINT RSS feeds
 │   │   └── registry.py             # Collector registry
 │   ├── agents/
-│   │   └── threat_analyst.py       # AI analysis engine
+│   │   ├── threat_analyst.py       # AI analysis engine
+│   │   └── context_manager.py      # 🆕 Historical context & trend analysis
 │   ├── reports/
 │   │   ├── base.py                 # Report base class
 │   │   ├── weekly_report.py        # Weekly report generator
@@ -62,7 +69,7 @@ cti-report-generator/
 │   ├── functions/
 │   │   └── rapid7_sync_function.py # Background timer for data sync (optional)
 │   ├── utils/
-│   │   └── cache_manager.py        # Blob Storage cache manager
+│   │   └── cache_manager.py        # 🆕 Enhanced blob storage cache manager
 │   ├── core/
 │   │   ├── config.py               # Application configuration
 │   │   ├── models.py               # Data type definitions
@@ -77,9 +84,12 @@ cti-report-generator/
 ├── .cache/                          # Local file cache (auto-created, git-ignored)
 ├── function_app.py                  # Azure Function entry point
 ├── test_local.py                    # Local testing CLI
+├── test_context_management.py       # 🆕 Context management tests
 ├── cache_rapid7_local.py            # Local cache management (optional manual use)
 ├── requirements.txt
-└── local.settings.json.template
+├── local.settings.json.template
+├── README.md                        # Main documentation
+└── CONTEXT_MANAGEMENT.md            # 🆕 Historical tracking documentation
 ```
 
 ## Installation
