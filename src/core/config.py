@@ -130,6 +130,11 @@ class ReportConfig:
     # Blob storage settings
     container_name: str = "reports"
     sas_expiry_days: int = 7
+    # When True, sign SAS URLs with an AAD user-delegation key (revocable, no
+    # account key needed) instead of the storage account key. Requires the
+    # function's identity to hold a role such as "Storage Blob Data Contributor".
+    # Defaults False to preserve the existing account-key behavior.
+    use_user_delegation_sas: bool = os.getenv("USE_USER_DELEGATION_SAS", "false").lower() == "true"
 
     # Document styling
     table_style: str = "Light Grid Accent 1"
