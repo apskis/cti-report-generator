@@ -158,6 +158,6 @@ class TestThreatAnalystAgent:
         agent = ThreatAnalystAgent("https://test.openai.azure.com", "key")
         agent.chat_service = mock_service
 
-        result = await agent.analyze_threats([], [], [], [], [])
+        result = await agent.analyze_threats([], [], [], [])
         assert "executive_summary" in result
         assert "recommendations" in result
