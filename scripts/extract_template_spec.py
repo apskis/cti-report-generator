@@ -201,13 +201,13 @@ def extract_template_spec(docx_path: Path) -> dict:
 
 
 def main() -> None:
-    template_path = REPO_ROOT / "CTI_Weekly_Report_Template_Example.docx"
+    template_path = REPO_ROOT / "assets" / "CTI_Weekly_Report_Template_Example.docx"
     if not template_path.exists():
         print(f"Template not found: {template_path}", file=sys.stderr)
         sys.exit(1)
 
     spec = extract_template_spec(template_path)
-    out_path = REPO_ROOT / "CTI_Weekly_Report_Template_Spec.json"
+    out_path = REPO_ROOT / "assets" / "CTI_Weekly_Report_Template_Spec.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(spec, f, indent=2, ensure_ascii=False)
 

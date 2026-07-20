@@ -468,17 +468,17 @@ class BaseReportGenerator(ABC):
         Returns:
             Path to Bulletin_banner.jpg if found, None otherwise
         """
-        # Try root directory first
-        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        banner_path = os.path.join(root_dir, "Bulletin_banner.jpg")
+        # Try the repo's assets/ directory first (src/reports/base.py -> repo root)
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        banner_path = os.path.join(repo_root, "assets", "Bulletin_banner.jpg")
 
         if os.path.exists(banner_path):
             return banner_path
 
-        # Try current working directory
-        alt_path = "Bulletin_banner.jpg"
-        if os.path.exists(alt_path):
-            return alt_path
+        # Try current working directory (assets/ then bare filename)
+        for alt_path in (os.path.join("assets", "Bulletin_banner.jpg"), "Bulletin_banner.jpg"):
+            if os.path.exists(alt_path):
+                return alt_path
 
         return None
 
