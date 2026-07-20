@@ -4,6 +4,7 @@ Intel471 collector.
 Fetches threat intelligence reports and indicators from Intel471 Titan API.
 """
 import logging
+import re
 from datetime import datetime
 from typing import List, Dict, Any
 
@@ -107,6 +108,15 @@ class Intel471Collector(BaseCollector):
                 indicators = await self._fetch_indicators(client, auth, start_date, end_date)
                 threats.extend(indicators)
 
+            # DEBUG: Log what we collected
+            logger.info(f"Intel471 collection breakdown:")
+            logger.info(f"  - Regular reports: {len([t for t in threats if t.get('threat_type', '').upper() not in ['BREACH ALERT', 'INDICATOR']])}")
+            logger.info(f"  - Breach alerts: {len([t for t in threats if 'BREACH' in t.get('threat_type', '').upper()])}")
+            logger.info(f"  - Indicators: {len([t for t in threats if 'INDICATOR' in t.get('threat_type', '').upper()])}")
+            logger.info(f"Sample Intel471 subjects:")
+            for threat in threats[:5]:
+                logger.info(f"  - [{threat.get('threat_type')}] {threat.get('summary', 'No subject')[:100]}")
+
             logger.info(f"Retrieved {len(threats)} total items from Intel471")
             return CollectorResult(
                 source=self.source_name,
@@ -131,6 +141,41 @@ class Intel471Collector(BaseCollector):
                 error=str(e),
                 record_count=0
             )
+
+    async def _fetch_report_details(
+        self,
+        client: HTTPClient,
+        auth: aiohttp.BasicAuth,
+        uid: str
+    ) -> Dict[str, Any]:
+        """
+        Fetch full details for a single report by UID.
+        
+        The list endpoint (/reports) only returns metadata. To get the full report text,
+        we need to fetch each report individually by UID.
+        
+        Args:
+            client: HTTP client
+            auth: Basic auth credentials
+            uid: Report UID
+            
+        Returns:
+            Full report data with rawText, executiveSummary, etc.
+        """
+        url = f"{self.BASE_URL}/reports/{uid}"
+        
+        try:
+            response = await client.get_raw_response(url, auth=auth)
+            
+            if response.status == 200:
+                return await response.json()
+            else:
+                logger.warning(f"Failed to fetch report {uid}: status {response.status}")
+                return {}
+                
+        except Exception as e:
+            logger.warning(f"Error fetching report details for {uid}: {e}")
+            return {}
 
     async def _fetch_reports(
         self,
@@ -168,20 +213,33 @@ class Intel471Collector(BaseCollector):
 
             if response.status == 200:
                 data = await response.json()
+                report_list = data.get("reports", [])
 
-                for report in data.get("reports", []):
+                logger.info(f"Retrieved {len(report_list)} reports from Intel471 list endpoint")
+
+                # Filter and fetch full details for each report
+                for report_metadata in report_list:
                     # For quarterly reports, include all reports (OpenAI will filter by industry)
                     # For weekly reports, filter by biotech keywords
                     if self.report_type != "quarterly":
-                        subject = report.get("subject", "").lower()
-                        tags = report.get("tags", [])
+                        subject = report_metadata.get("subject", "").lower()
+                        tags = report_metadata.get("tags", [])
                         if not self._is_relevant_biotech(subject, tags):
                             continue
 
-                    threat = self._parse_report(report)
-                    threats.append(threat)
+                    # Fetch full report details by UID to get rawText, executiveSummary, etc.
+                    uid = report_metadata.get("uid")
+                    if uid:
+                        full_report = await self._fetch_report_details(client, auth, uid)
+                        if full_report:
+                            threat = self._parse_report(full_report)
+                            threats.append(threat)
+                    else:
+                        # Fallback: use metadata only (no full text)
+                        threat = self._parse_report(report_metadata)
+                        threats.append(threat)
 
-                logger.info(f"Retrieved {len(threats)} relevant items from Intel471 reports")
+                logger.info(f"Retrieved {len(threats)} relevant items with full text from Intel471 reports")
             else:
                 response_text = await response.text()
                 logger.error(f"Intel471 reports API returned status {response.status}: {response_text[:500]}")
@@ -323,11 +381,21 @@ class Intel471Collector(BaseCollector):
                 threat_type = "MALWARE REPORT"
             
             if is_target_type:
-                threat = self._parse_report(report)
-                threat["threat_type"] = threat_type
-                filtered_threats.append(threat)
+                # Fetch full report details by UID
+                uid = report.get("uid")
+                if uid:
+                    full_report = await self._fetch_report_details(client, auth, uid)
+                    if full_report:
+                        threat = self._parse_report(full_report)
+                        threat["threat_type"] = threat_type
+                        filtered_threats.append(threat)
+                else:
+                    # Fallback: use metadata only
+                    threat = self._parse_report(report)
+                    threat["threat_type"] = threat_type
+                    filtered_threats.append(threat)
 
-        logger.info(f"Retrieved {len(filtered_threats)} reports matching target types (from {len(all_reports)} total reports)")
+        logger.info(f"Retrieved {len(filtered_threats)} reports with full text matching target types (from {len(all_reports)} total reports)")
         logger.info(f"Breakdown: {self._count_by_type(filtered_threats)}")
         
         return filtered_threats
@@ -723,12 +791,26 @@ class Intel471Collector(BaseCollector):
             "Medium"
         )
 
+        # Extract report body text - Intel471 may have various field names
+        # Common fields: rawText, executiveSummary, rawTextTranslated, researcherComments
+        # These fields contain HTML that needs to be stripped
+        report_body_html = (
+            report.get("executiveSummary") or  # Prefer executive summary (shorter, more relevant)
+            report.get("rawText") or 
+            report.get("rawTextTranslated") or 
+            ""
+        )
+        
+        # Strip HTML tags and clean the text
+        report_body_clean = self._strip_html(report_body_html) if report_body_html else ""
+
         return {
             "source": self.source_name,
             "threat_actor": actor_handle,
             "threat_type": report.get("documentType", "Report"),
             "confidence": confidence,
-            "summary": report.get("subject", "")[:500],
+            "summary": report.get("subject", "")[:500],  # Subject line/title
+            "full_text": report_body_clean[:2000] if report_body_clean else "",  # First 2000 chars of cleaned text
             "date": created_date,
             "tags": report.get("tags", []),
             "motivation": report.get("motivation", []),
@@ -813,3 +895,36 @@ class Intel471Collector(BaseCollector):
 
         # Fallback
         return str(indicator_values)[:100] if indicator_values else ""
+
+    @staticmethod
+    def _strip_html(text: str) -> str:
+        """
+        Remove HTML tags from text.
+        Intel471 returns HTML-formatted content that needs to be cleaned.
+        
+        Args:
+            text: HTML text
+            
+        Returns:
+            Plain text with HTML tags removed
+        """
+        if not text:
+            return ""
+        
+        # Remove HTML tags
+        text = re.sub(r'<[^>]+>', '', text)
+        
+        # Decode common HTML entities
+        text = text.replace('&nbsp;', ' ')
+        text = text.replace('&amp;', '&')
+        text = text.replace('&lt;', '<')
+        text = text.replace('&gt;', '>')
+        text = text.replace('&quot;', '"')
+        text = text.replace('&#39;', "'")
+        text = text.replace('&mdash;', '—')
+        text = text.replace('&ndash;', '–')
+        
+        # Remove excessive whitespace
+        text = re.sub(r'\s+', ' ', text)
+        
+        return text.strip()
