@@ -187,15 +187,16 @@ class TestNVDCollector:
 
             assert result.success is True
             assert result.source == "NVD"
-            # Should only include CRITICAL and HIGH (not LOW)
-            assert result.record_count == 2
-            assert len(result.data) == 2
+            # The collector now returns ALL severities; severity/exploitation filtering
+            # happens downstream during enrichment (see nvd_collector._parse_* docstrings).
+            assert result.record_count == 3
+            assert len(result.data) == 3
 
-            # Verify CVE IDs
+            # Verify CVE IDs — all severities present, including LOW
             cve_ids = [cve["cve_id"] for cve in result.data]
             assert "CVE-2024-1234" in cve_ids
             assert "CVE-2024-5678" in cve_ids
-            assert "CVE-2024-9999" not in cve_ids  # LOW severity excluded
+            assert "CVE-2024-9999" in cve_ids  # LOW severity retained for downstream filtering
 
     def test_extract_cvss_v31(self, mock_credentials):
         """Test CVSS extraction from v3.1 metrics."""

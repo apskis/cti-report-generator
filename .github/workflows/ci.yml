@@ -55,4 +55,6 @@ jobs:
       - name: Install pip-audit
         run: pip install -r requirements-dev.txt
       - name: Audit runtime dependencies
-        run: pip-audit -r requirements.txt --desc
+        # PYSEC-2024-161 is an Apache Arrow *R package* advisory (fix 17.0.0, outside
+        # our <15 cap) that does not affect the PyArrow Python bindings we use.
+        run: pip-audit -r requirements.txt --desc --ignore-vuln PYSEC-2024-161
