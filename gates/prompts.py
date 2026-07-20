@@ -188,7 +188,7 @@ WEEKLY:
 - Executive Signal: [1 to 2 sentences maximum, no conclusions, highest severity Tier 1 finding only]
 - Top IOCs: [top 10 by Tier 1 severity score, structured list]
 - Actor Summary: [from Gate 3 Tier 1 attribution only]
-- Vulnerability Highlights: [NVD + Rapid7 data only, CVSS scores if present in source]
+- Vulnerability Highlights: [NVD data only, CVSS scores if present in source]
 - OSINT Corroboration: [for each Tier 1 finding that was also mentioned in a Gate 1B article, list: Finding | Corroborating Article ID | Source | Publication Date]
 - Open Signals: [all Gate 1B signals with no Tier 1 match, labeled [OSINT ONLY: NOT VERIFIED BY TIER 1]]
 - Coverage Gaps: [all [NOT IN PROVIDED SOURCES] and [NO IOCs IN SOURCE] flags from Gates 1 to 3]

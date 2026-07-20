@@ -15,5 +15,5 @@ def test_zero_ioc_halt_raises():
 
 
 def test_non_empty_ioc_list_passes():
-    iocs = [IOC(ioc_type="ip", value="1.2.3.4", sources=["ThreatQ"], source_severity="high", cross_source_hit=False)]
+    iocs = [IOC(ioc_type="ip", value="1.2.3.4", sources=["Intel471"], source_severity="high", cross_source_hit=False)]
     check_ioc_halt(iocs)

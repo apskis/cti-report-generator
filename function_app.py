@@ -31,22 +31,6 @@ def _gate_framework_enabled() -> bool:
     return get_feature_config().gate_framework_enabled
 
 
-def _extract_rapid7_cve_counts(rapid7_data: list) -> dict:
-    """Extract CVE-to-asset-count mapping from Rapid7 vulnerability summaries."""
-    cve_to_count = {}
-    for summary in rapid7_data:
-        if not isinstance(summary, dict):
-            continue
-        for vuln in summary.get("top_vulnerabilities") or []:
-            count = vuln.get("asset_count")
-            if count is None:
-                continue
-            for cve_id in vuln.get("cve_ids") or []:
-                if cve_id and cve_id not in cve_to_count:
-                    cve_to_count[cve_id] = count
-    return cve_to_count
-
-
 def _extract_crowdstrike_cve_counts(crowdstrike_data: list) -> dict:
     """Extract CVE-to-device-count mapping from CrowdStrike Spotlight data."""
     cve_to_count = {}
@@ -67,26 +51,19 @@ def _extract_crowdstrike_cve_counts(crowdstrike_data: list) -> dict:
     return cve_to_count
 
 
-def _merge_exposure_into_analysis(analysis: dict, rapid7_data: list, crowdstrike_data: list) -> None:
-    """Merge Rapid7 and CrowdStrike asset/device counts into cve_analysis for the Exposure column.
-
-    Rapid7 counts take precedence; CrowdStrike counts are used as a fallback.
-    """
+def _merge_exposure_into_analysis(analysis: dict, crowdstrike_data: list) -> None:
+    """Merge CrowdStrike (Spotlight) device counts into cve_analysis for the Exposure column."""
     cve_analysis = analysis.get("cve_analysis") or []
     if not cve_analysis:
         return
 
-    # Rapid7 takes precedence, CrowdStrike fills gaps
-    rapid7_counts = _extract_rapid7_cve_counts(rapid7_data) if rapid7_data else {}
     cs_counts = _extract_crowdstrike_cve_counts(crowdstrike_data) if crowdstrike_data else {}
 
     for cve in cve_analysis:
         cve_id = cve.get("cve_id")
         if not cve_id:
             continue
-        if cve_id in rapid7_counts:
-            cve["server_count"] = rapid7_counts[cve_id]
-        elif cve_id in cs_counts:
+        if cve_id in cs_counts:
             cve["server_count"] = cs_counts[cve_id]
 
 
@@ -129,17 +106,12 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         cve_data = data_by_source.get("NVD", [])
         intel471_data = data_by_source.get("Intel471", [])
         crowdstrike_data = data_by_source.get("CrowdStrike", [])
-        threatq_data = data_by_source.get("ThreatQ", [])
-        rapid7_data = data_by_source.get("Rapid7", [])
-        rapid7_scans_data = data_by_source.get("Rapid7-Scans", [])
         osint_data = data_by_source.get("OSINT", [])
 
         # Log collection statistics
         logger.info(
             f"Data collected - CVEs: {len(cve_data)}, Intel471: {len(intel471_data)}, "
-            f"CrowdStrike: {len(crowdstrike_data)}, ThreatQ: {len(threatq_data)}, "
-            f"Rapid7: {len(rapid7_data)}, Rapid7-Scans: {len(rapid7_scans_data)}, "
-            f"OSINT: {len(osint_data)}"
+            f"CrowdStrike: {len(crowdstrike_data)}, OSINT: {len(osint_data)}"
         )
 
         # Log any collection failures
@@ -167,8 +139,7 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         previous_contexts = await asyncio.to_thread(context_mgr.get_previous_context, "weekly", lookback_weeks=4)
 
         # Calculate CVE trends
-        current_cve_data = cve_data + rapid7_scans_data  # Combined CVE sources
-        cve_trends = context_mgr.calculate_cve_trends(current_cve_data, previous_contexts)
+        cve_trends = context_mgr.calculate_cve_trends(cve_data, previous_contexts)
         logger.info(f"CVE Trends: {cve_trends.get('trend_summary', 'N/A')}")
 
         # Calculate threat actor trends
@@ -180,17 +151,14 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
             cve_data,
             intel471_data,
             crowdstrike_data,
-            threatq_data,
-            rapid7_data,
-            rapid7_scans_data,
             osint_data,
             previous_contexts=previous_contexts,
             cve_trends=cve_trends,
             actor_trends=actor_trends,
         )
 
-        # Merge Rapid7 and CrowdStrike (Spotlight) asset/device counts into CVE analysis for Exposure column
-        _merge_exposure_into_analysis(analysis, rapid7_data, crowdstrike_data)
+        # Merge CrowdStrike (Spotlight) device counts into CVE analysis for Exposure column
+        _merge_exposure_into_analysis(analysis, crowdstrike_data)
 
         # Save analysis context for next week's report
         logger.info("Saving analysis context for historical tracking...")

@@ -321,7 +321,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             sub_para.paragraph_format.space_after = Pt(8)  # Spacing between last line and box border
 
     def _format_exposure_cell(self, cve: dict[str, Any]) -> str:
-        """Format Exposure column as count of servers/databases/endpoints from Rapid7 only. Never use vulnerability description."""
+        """Format Exposure column as a count of servers/databases/endpoints from CrowdStrike Spotlight / pipeline data. Never use the vulnerability description."""
         # Debug: log what we received for this CVE
         cve_id = cve.get("cve_id", "Unknown")
 
@@ -360,7 +360,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             parts = s.split()
             if len(parts) >= 2 and parts[0].isdigit():
                 return s[:50]
-        # Build from numeric fields (Rapid7 / pipeline can supply these)
+        # Build from numeric fields (the pipeline can supply these)
         for key, label in (
             ("server_count", "server"),
             ("servers", "server"),
@@ -401,7 +401,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         """
         Calculate threat intelligence statistics from actual data.
 
-        Weekly Tactical Report metrics (no environment/Rapid7 data):
+        Weekly Tactical Report metrics (no environment scan data):
         - Threat Actors: Unique APT actors tracked this week
         - Active Campaigns: Campaign names from Intel471 tags
         - Exploited CVEs: CVEs with exploitation evidence
@@ -1475,10 +1475,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
         if "CrowdStrike" in api_sources_used:
             primary_sources.append(("CrowdStrike", "CrowdStrike Falcon Intelligence"))
 
-        # Include ThreatQ if cited (usually disabled)
-        if "ThreatQ" in api_sources_used:
-            primary_sources.append(("ThreatQ", "ThreatQ threat intelligence management platform"))
-
         # Map API sources
         for short_name, _full_name in primary_sources:
             citation_map[short_name] = citation_counter
@@ -1553,10 +1549,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Include CrowdStrike if cited
         if "CrowdStrike" in api_sources_used:
             primary_sources.append(("CrowdStrike", "CrowdStrike Falcon Intelligence"))
-
-        # Include ThreatQ if cited (usually disabled)
-        if "ThreatQ" in api_sources_used:
-            primary_sources.append(("ThreatQ", "ThreatQ threat intelligence management platform"))
 
         # Add numbered citations for API sources
         for short_name, full_name in primary_sources:

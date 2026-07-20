@@ -340,7 +340,7 @@ class CrowdStrikeCollector(BaseCollector):
                 if response.status == 403:
                     logger.info(
                         "Spotlight API not available (requires Falcon Spotlight license). "
-                        "Using Rapid7 for vulnerability exposure data."
+                        "Vulnerability exposure data will be unavailable."
                     )
                 else:
                     logger.warning(f"Spotlight API returned {response.status}, skipping exposure merge")
@@ -370,7 +370,7 @@ class CrowdStrikeCollector(BaseCollector):
             if out:
                 logger.info(f"Spotlight: {len(out)} CVEs with affected device counts")
         except Exception as e:
-            logger.warning(f"Spotlight fetch failed (exposure will use Rapid7 only): {e}")
+            logger.warning(f"Spotlight fetch failed (no exposure data will be available): {e}")
 
         return out
 

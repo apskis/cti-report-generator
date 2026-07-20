@@ -960,7 +960,7 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
             print(f"{'=' * 60}{Style.RESET_ALL}")
         print()
         print(f"  {Fore.WHITE}[1] Stop - I'll connect to VPN first")
-        print(f"  [2] Continue without AI (use Rapid7/NVD data directly){Style.RESET_ALL}")
+        print(f"  [2] Continue without AI (use NVD data directly){Style.RESET_ALL}")
         print()
 
         choice = input(f"  {Fore.CYAN}Enter choice (1 or 2): {Style.RESET_ALL}").strip()
@@ -971,7 +971,7 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
             sys.exit(0)
 
         print()
-        print_status("Continuing without AI analysis (Rapid7/NVD backup mode)...", "warning")
+        print_status("Continuing without AI analysis (NVD backup mode)...", "warning")
     else:
         print_status("Azure OpenAI is reachable", "success")
 
@@ -1032,9 +1032,6 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
                 data_by_source.get("NVD", []),
                 data_by_source.get("Intel471", []),
                 data_by_source.get("CrowdStrike", []),
-                data_by_source.get("ThreatQ", []),
-                data_by_source.get("Rapid7", []),
-                data_by_source.get("Rapid7-Scans", []),
             )
         else:
             intel471_all = data_by_source.get("Intel471", [])
@@ -1057,9 +1054,6 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
             data_by_source.get("NVD", []),
             data_by_source.get("Intel471", []),
             data_by_source.get("CrowdStrike", []),
-            data_by_source.get("ThreatQ", []),
-            data_by_source.get("Rapid7", []),
-            data_by_source.get("Rapid7-Scans", []),
             data_by_source.get("OSINT", []),
         )
         print_status("Analysis complete", "success")

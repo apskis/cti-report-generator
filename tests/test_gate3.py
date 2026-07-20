@@ -12,14 +12,14 @@ class _FakeLLM:
 
 
 def test_unattributed_when_no_source_names_actor():
-    iocs = [IOC("ip", "9.9.9.9", ["ThreatQ"], "low", False)]
-    g1 = GateResult("1", "COMPLETE", {"tier1_sources": [SourceRecord("ThreatQ", 1, 1, "a", "b", "OK")]})
+    iocs = [IOC("ip", "9.9.9.9", ["Intel471"], "low", False)]
+    g1 = GateResult("1", "COMPLETE", {"tier1_sources": [SourceRecord("Intel471", 1, 1, "a", "b", "OK")]})
     g2 = GateResult("2", "COMPLETE", {"iocs": iocs})
     gi = GateInput(
         report_type="WEEKLY",
         period_start="a",
         period_end="b",
-        tier1_data={"ThreatQ": [{"indicator": "9.9.9.9"}]},
+        tier1_data={"Intel471": [{"indicator": "9.9.9.9"}]},
         prior_results={"1": g1, "2": g2},
     )
     r = run(gi, _FakeLLM(), "WEEKLY")

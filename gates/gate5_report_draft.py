@@ -55,11 +55,6 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     cve_data = input.tier1_data.get("NVD", [])
     intel471_data = input.tier1_data.get("Intel471", [])
     crowdstrike_data = input.tier1_data.get("CrowdStrike", [])
-    threatq_data = input.tier1_data.get("ThreatQ", [])
-
-    # Rapid7 is disabled for threat intelligence reports, but method signature requires it
-    rapid7_data = []
-    rapid7_scans_data = []
 
     # Convert OSINT articles to the format the AI expects
     osint_data = [
@@ -157,9 +152,6 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
                             cve_data=cve_data,
                             intel471_data=intel471_data,
                             crowdstrike_data=crowdstrike_data,
-                            threatq_data=threatq_data,
-                            rapid7_data=rapid7_data,
-                            rapid7_scans_data=rapid7_scans_data,
                             osint_data=osint_data,
                         )
                     )
@@ -193,9 +185,6 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
                         cve_data=cve_data,
                         intel471_data=intel471_data,
                         crowdstrike_data=crowdstrike_data,
-                        threatq_data=threatq_data,
-                        rapid7_data=rapid7_data,
-                        rapid7_scans_data=rapid7_scans_data,
                         osint_data=osint_data,
                     )
                 )

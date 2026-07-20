@@ -23,8 +23,6 @@ class CollectorConfig:
     intel471_lookback_days: int = 7
     intel471_quarterly_lookback_days: int = 90  # Quarter = 90 days
     crowdstrike_lookback_days: int = 7
-    threatq_lookback_days: int = 7
-    rapid7_lookback_days: int = 30
 
     # Result limits per source
     nvd_max_results: int = 100
@@ -35,11 +33,6 @@ class CollectorConfig:
     crowdstrike_actors_limit: int = 50
     crowdstrike_indicators_limit: int = 50
     crowdstrike_spotlight_limit: int = 200  # Max vulnerabilities from Spotlight for exposure counts
-    threatq_indicators_limit: int = 100
-    rapid7_max_results: int = 500
-
-    # Minimum score thresholds
-    threatq_min_score: int = 7
 
     # Retry settings
     max_retries: int = 3
@@ -119,8 +112,6 @@ class AnalysisConfig:
     max_cves_for_analysis: int = 50
     max_intel471_for_analysis: int = 30
     max_crowdstrike_for_analysis: int = 30
-    max_threatq_for_analysis: int = 30
-    max_rapid7_for_analysis: int = 20
 
 
 @dataclass(frozen=True)

@@ -104,58 +104,6 @@ class APTActor:
         }
 
 
-@dataclass
-class ThreatIndicator:
-    """Represents a threat indicator from ThreatQ or similar."""
-
-    indicator_type: str
-    value: str
-    score: int
-    status: str = "Unknown"
-    last_seen: str = ""
-    source: str = "ThreatQ"
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
-        return {
-            "indicator_type": self.indicator_type,
-            "value": self.value,
-            "score": self.score,
-            "status": self.status,
-            "last_seen": self.last_seen,
-            "source": self.source,
-        }
-
-
-@dataclass
-class VulnerabilitySummary:
-    """Represents a vulnerability summary from Rapid7 or similar."""
-
-    source: str
-    total_vulnerabilities_scanned: int
-    critical_severe_count: int
-    unique_cve_count: int
-    all_cve_ids: list[str] = field(default_factory=list)
-    critical_count: int = 0
-    severe_count: int = 0
-    exploitable_count: int = 0
-    top_vulnerabilities: list[dict[str, Any]] = field(default_factory=list)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
-        return {
-            "source": self.source,
-            "total_vulnerabilities_scanned": self.total_vulnerabilities_scanned,
-            "critical_severe_count": self.critical_severe_count,
-            "unique_cve_count": self.unique_cve_count,
-            "all_cve_ids": self.all_cve_ids,
-            "critical_count": self.critical_count,
-            "severe_count": self.severe_count,
-            "exploitable_count": self.exploitable_count,
-            "top_vulnerabilities": self.top_vulnerabilities,
-        }
-
-
 # =============================================================================
 # Analysis Types
 # =============================================================================

@@ -140,9 +140,6 @@ class ThreatAnalystAgent:
         cve_data: list[dict],
         intel471_data: list[dict],
         crowdstrike_data: list[dict],
-        threatq_data: list[dict],
-        rapid7_data: list[dict],
-        rapid7_scans_data: list[dict] = None,
         osint_data: list[dict] = None,
         previous_contexts: list[dict[str, Any]] = None,
         cve_trends: dict[str, Any] = None,
@@ -158,9 +155,6 @@ class ThreatAnalystAgent:
             cve_data: List of CVE records from NVD
             intel471_data: List of threat intelligence from Intel471
             crowdstrike_data: List of APT intelligence from CrowdStrike
-            threatq_data: List of indicators from ThreatQ
-            rapid7_data: List of vulnerability data from Rapid7
-            rapid7_scans_data: List of scan-based exposure data from Rapid7
             osint_data: List of articles from curated OSINT sources
             previous_contexts: Historical analysis contexts for trend analysis
             cve_trends: Pre-calculated CVE trends (new, persistent, resolved)
@@ -171,16 +165,13 @@ class ThreatAnalystAgent:
         """
         # If no context provided, fall back to standard analysis
         if not previous_contexts and not cve_trends and not actor_trends:
-            return await self.analyze_threats(
-                cve_data, intel471_data, crowdstrike_data, threatq_data, rapid7_data, rapid7_scans_data, osint_data
-            )
+            return await self.analyze_threats(cve_data, intel471_data, crowdstrike_data, osint_data)
 
         try:
             logger.info("Starting context-aware threat analysis")
             logger.info(
                 f"Data counts - CVEs: {len(cve_data)}, Intel471: {len(intel471_data)}, "
-                f"CrowdStrike: {len(crowdstrike_data)}, ThreatQ: {len(threatq_data)}, "
-                f"Rapid7: {len(rapid7_data)}, Rapid7-Scans: {len(rapid7_scans_data or [])}, "
+                f"CrowdStrike: {len(crowdstrike_data)}, "
                 f"OSINT: {len(osint_data or [])}"
             )
 
@@ -188,14 +179,12 @@ class ThreatAnalystAgent:
                 logger.info(f"Using {len(previous_contexts)} previous contexts for trend analysis")
 
             # Fetch public exploit intelligence (CISA KEV + EPSS)
-            all_cve_ids = self._collect_all_cve_ids(cve_data, rapid7_scans_data or [])
+            all_cve_ids = self._collect_all_cve_ids(cve_data)
             kev_lookup = await fetch_kev_cves()
             epss_lookup = await fetch_epss_scores(list(all_cve_ids))
 
             # Prepare data for analysis
-            data_summary = self._prepare_data_for_analysis(
-                cve_data, intel471_data, crowdstrike_data, threatq_data, rapid7_data
-            )
+            data_summary = self._prepare_data_for_analysis(cve_data, intel471_data, crowdstrike_data)
 
             # Build context-enhanced prompt
             analysis_prompt = self._build_context_aware_prompt(
@@ -203,9 +192,6 @@ class ThreatAnalystAgent:
                 cve_data,
                 intel471_data,
                 crowdstrike_data,
-                threatq_data,
-                rapid7_data,
-                rapid7_scans_data or [],
                 osint_data or [],
                 cve_trends,
                 actor_trends,
@@ -246,8 +232,6 @@ class ThreatAnalystAgent:
                 analysis_result = self._fill_gaps_from_backup(
                     analysis_result,
                     cve_data,
-                    rapid7_data,
-                    rapid7_scans_data,
                     kev_lookup,
                     epss_lookup,
                     intel471_data,
@@ -259,9 +243,6 @@ class ThreatAnalystAgent:
                     cve_data,
                     intel471_data,
                     crowdstrike_data,
-                    threatq_data,
-                    rapid7_data,
-                    rapid7_scans_data,
                     kev_lookup,
                     epss_lookup,
                 )
@@ -272,9 +253,6 @@ class ThreatAnalystAgent:
                 cve_data,
                 intel471_data,
                 crowdstrike_data,
-                threatq_data,
-                rapid7_data,
-                rapid7_scans_data,
             )
 
     async def analyze_threats(
@@ -282,9 +260,6 @@ class ThreatAnalystAgent:
         cve_data: list[dict],
         intel471_data: list[dict],
         crowdstrike_data: list[dict],
-        threatq_data: list[dict],
-        rapid7_data: list[dict],
-        rapid7_scans_data: list[dict] = None,
         osint_data: list[dict] = None,
     ) -> dict[str, Any]:
         """
@@ -294,9 +269,6 @@ class ThreatAnalystAgent:
             cve_data: List of CVE records from NVD
             intel471_data: List of threat intelligence from Intel471
             crowdstrike_data: List of APT intelligence from CrowdStrike
-            threatq_data: List of indicators from ThreatQ
-            rapid7_data: List of vulnerability data from Rapid7
-            rapid7_scans_data: List of scan-based exposure data from Rapid7
             osint_data: List of articles from curated OSINT sources
 
         Returns:
@@ -306,20 +278,17 @@ class ThreatAnalystAgent:
             logger.info("Starting threat analysis")
             logger.info(
                 f"Data counts - CVEs: {len(cve_data)}, Intel471: {len(intel471_data)}, "
-                f"CrowdStrike: {len(crowdstrike_data)}, ThreatQ: {len(threatq_data)}, "
-                f"Rapid7: {len(rapid7_data)}, Rapid7-Scans: {len(rapid7_scans_data or [])}, "
+                f"CrowdStrike: {len(crowdstrike_data)}, "
                 f"OSINT: {len(osint_data or [])}"
             )
 
             # Fetch public exploit intelligence (CISA KEV + EPSS)
-            all_cve_ids = self._collect_all_cve_ids(cve_data, rapid7_scans_data or [])
+            all_cve_ids = self._collect_all_cve_ids(cve_data)
             kev_lookup = await fetch_kev_cves()
             epss_lookup = await fetch_epss_scores(list(all_cve_ids))
 
             # Prepare data for analysis (with smart truncation)
-            data_summary = self._prepare_data_for_analysis(
-                cve_data, intel471_data, crowdstrike_data, threatq_data, rapid7_data
-            )
+            data_summary = self._prepare_data_for_analysis(cve_data, intel471_data, crowdstrike_data)
 
             # Create analysis prompt
             analysis_prompt = self._build_analysis_prompt(
@@ -327,9 +296,6 @@ class ThreatAnalystAgent:
                 cve_data,
                 intel471_data,
                 crowdstrike_data,
-                threatq_data,
-                rapid7_data,
-                rapid7_scans_data or [],
                 osint_data or [],
             )
 
@@ -361,8 +327,6 @@ class ThreatAnalystAgent:
                 analysis_result = self._fill_gaps_from_backup(
                     analysis_result,
                     cve_data,
-                    rapid7_data,
-                    rapid7_scans_data,
                     kev_lookup,
                     epss_lookup,
                     intel471_data,
@@ -374,9 +338,6 @@ class ThreatAnalystAgent:
                     cve_data,
                     intel471_data,
                     crowdstrike_data,
-                    threatq_data,
-                    rapid7_data,
-                    rapid7_scans_data,
                     kev_lookup,
                     epss_lookup,
                 )
@@ -387,22 +348,16 @@ class ThreatAnalystAgent:
                 cve_data,
                 intel471_data,
                 crowdstrike_data,
-                threatq_data,
-                rapid7_data,
-                rapid7_scans_data,
             )
 
     @staticmethod
-    def _collect_all_cve_ids(cve_data: list[dict], rapid7_scans_data: list) -> set:
+    def _collect_all_cve_ids(cve_data: list[dict]) -> set:
         """Gather all unique CVE IDs across data sources for enrichment lookups."""
         ids = set()
         for cve in cve_data:
             cve_id = cve.get("cve_id", "")
             if cve_id:
                 ids.add(cve_id)
-        if rapid7_scans_data and len(rapid7_scans_data) > 0:
-            scan = rapid7_scans_data[0] if isinstance(rapid7_scans_data[0], dict) else {}
-            ids.update(scan.get("cve_exposure_map", {}).keys())
         return ids
 
     def _prepare_data_for_analysis(
@@ -410,8 +365,6 @@ class ThreatAnalystAgent:
         cve_data: list[dict],
         intel471_data: list[dict],
         crowdstrike_data: list[dict],
-        threatq_data: list[dict],
-        rapid7_data: list[dict],
     ) -> dict[str, list]:
         """
         Prepare and truncate data for analysis based on config limits.
@@ -426,8 +379,6 @@ class ThreatAnalystAgent:
             "cve_data": cve_data[: analysis_config.max_cves_for_analysis],
             "intel471_data": intel471_data[: analysis_config.max_intel471_for_analysis],
             "crowdstrike_data": crowdstrike_data[: analysis_config.max_crowdstrike_for_analysis],
-            "threatq_data": threatq_data[: analysis_config.max_threatq_for_analysis],
-            "rapid7_data": rapid7_data[: analysis_config.max_rapid7_for_analysis],
         }
 
     def _build_analysis_prompt(
@@ -436,70 +387,10 @@ class ThreatAnalystAgent:
         cve_data: list,
         intel471_data: list,
         crowdstrike_data: list,
-        threatq_data: list,
-        rapid7_data: list,
-        rapid7_scans_data: list = None,
         osint_data: list = None,
     ) -> str:
         """Build the analysis prompt with data."""
-        rapid7_scans_data = rapid7_scans_data or []
         osint_data = osint_data or []
-
-        # Extract Rapid7 CVE correlation data from BOTH sources
-        rapid7_cve_map = {}
-
-        # OPTION 1: Scan-based data (NEW - more accurate asset counts)
-        if rapid7_scans_data and len(rapid7_scans_data) > 0:
-            scan_summary = rapid7_scans_data[0] if isinstance(rapid7_scans_data[0], dict) else {}
-            logger.info(f"Rapid7 scan data keys: {list(scan_summary.keys())}")
-
-            cve_exposure_map = scan_summary.get("cve_exposure_map", {})
-            logger.info(f"Rapid7 scans CVE exposure map: {len(cve_exposure_map)} CVEs")
-
-            # Extract exposure data in the format: {"CVE-2024-1234": {"exposure": "12 servers", "asset_count": 12, ...}}
-            for cve_id, exposure_info in cve_exposure_map.items():
-                if isinstance(exposure_info, dict):
-                    # Use the pre-formatted exposure string (e.g., "12 servers")
-                    rapid7_cve_map[cve_id] = exposure_info.get(
-                        "exposure", f"{exposure_info.get('asset_count', 0)} systems"
-                    )
-                    logger.debug(f"Mapped {cve_id} -> {rapid7_cve_map[cve_id]}")
-
-        # OPTION 2: Fallback to vulnerability definitions (original source)
-        if not rapid7_cve_map and rapid7_data and len(rapid7_data) > 0:
-            logger.info("No scan data available, checking vulnerability definitions...")
-            rapid7_summary = rapid7_data[0] if isinstance(rapid7_data[0], dict) else {}
-            logger.info(f"Rapid7 summary keys: {list(rapid7_summary.keys())}")
-
-            top_vulns = rapid7_summary.get("top_vulnerabilities", [])
-            logger.info(f"Rapid7 top_vulnerabilities count: {len(top_vulns)}")
-
-            if top_vulns:
-                logger.info(f"Sample vulnerability structure: {top_vulns[0].keys() if top_vulns else 'empty'}")
-
-            # Build a map of CVE ID -> asset count from Rapid7 top vulnerabilities
-            for idx, vuln in enumerate(top_vulns):
-                cve_ids = vuln.get("cve_ids", [])
-                # Fix: Ensure cve_ids is a list, not a string
-                if isinstance(cve_ids, str):
-                    cve_ids = [cve_ids] if cve_ids else []
-
-                asset_count = vuln.get("asset_count")
-
-                if idx < 3:  # Log first 3 for debugging
-                    logger.info(f"Vuln {idx}: CVEs={cve_ids}, asset_count={asset_count} (type: {type(asset_count)})")
-
-                for cve_id in cve_ids:
-                    if cve_id not in rapid7_cve_map:
-                        if asset_count is not None and asset_count > 0:
-                            rapid7_cve_map[cve_id] = f"{asset_count} servers"
-                            logger.info(f"Mapped {cve_id} -> {asset_count} assets")
-                        elif idx < 3:  # Log why first 3 weren't mapped
-                            logger.info(f"Skipped {cve_id}: asset_count={asset_count}")
-
-        logger.info(f"Rapid7 CVE exposure map: {len(rapid7_cve_map)} CVEs with exposure data")
-        if rapid7_cve_map:
-            logger.info(f"Sample Rapid7 exposures: {dict(list(rapid7_cve_map.items())[:5])}")
 
         # Extract CrowdStrike Spotlight CVE correlation data
         crowdstrike_cve_map = {}
@@ -513,8 +404,8 @@ class ThreatAnalystAgent:
         if crowdstrike_cve_map:
             logger.info(f"CrowdStrike CVE exposure map: {len(crowdstrike_cve_map)} CVEs")
 
-        # Merge both sources - prefer CrowdStrike if both exist (more real-time)
-        combined_cve_map = {**rapid7_cve_map, **crowdstrike_cve_map}
+        # Exposure correlation is derived from CrowdStrike Spotlight data only
+        combined_cve_map = crowdstrike_cve_map
 
         logger.info(f"Combined exposure map: {len(combined_cve_map)} CVEs total")
         if combined_cve_map:
@@ -571,37 +462,6 @@ class ThreatAnalystAgent:
                             "uid": item.get("uid", ""),
                         }
                     )
-
-        # Merge both sources - prefer CrowdStrike if both exist (more real-time)
-        combined_cve_map = {**rapid7_cve_map, **crowdstrike_cve_map}
-
-        if combined_cve_map:
-            # Create explicit examples for the AI
-            example_mappings = []
-            for cve_id, exposure_value in list(combined_cve_map.items())[:5]:
-                # The exposure_value is already formatted (e.g., "1 system", "7 systems")
-                example_mappings.append(f'  - {cve_id}: {exposure_value} → set "exposure": "{exposure_value}"')
-
-            f"""
-CRITICAL - VULNERABILITY EXPOSURE CORRELATION:
-The following CVEs have been detected in our environment by security scans:
-{json.dumps(combined_cve_map, indent=2)}
-
-Source: {"CrowdStrike Spotlight" if crowdstrike_cve_map else ""} {"and Rapid7 InsightVM" if rapid7_cve_map else "Rapid7 InsightVM"}
-
-INSTRUCTIONS - ANALYZE ONLY DETECTED CVEs:
-- **ONLY analyze CVEs that appear in the exposure map above**
-- **IGNORE any CVEs from NVD/Intel471/other sources that are NOT in this exposure map**
-- We only care about vulnerabilities actually detected in our environment
-- Set "exposure" field to the EXACT string from the map (already formatted, e.g., "1 server", "7 systems", "3 endpoints")
-- DO NOT modify or append anything to these values - use them exactly as provided
-- Examples from the data above:
-{chr(10).join(example_mappings)}
-
-FILTERING REQUIREMENT:
-If a CVE is not in the exposure map above, DO NOT include it in your cve_analysis array.
-Your report should ONLY contain CVEs that are actually in our environment.
-"""
 
         # Add Intel471 correlation context
         intel471_context = ""
@@ -695,7 +555,6 @@ KEY PRINCIPLES:
 - Report on currently exploited vulnerabilities and active threat actors
 - Include CVEs in CISA KEV catalog (shows ongoing exploitation relevance)
 - Include CVEs mentioned in Intel471/CrowdStrike/OSINT data from this week
-- DO NOT require Rapid7 exposure data - this is threat intelligence, not vulnerability management
 - ALWAYS mention peer incidents in executive summary - leadership cares about real-world breaches
 - Extract and highlight company breaches from OSINT - these show the active threat landscape
 - This report helps leadership understand current threats in the wild
@@ -704,7 +563,6 @@ DATA SUMMARY (7-DAY COLLECTION WINDOW):
 - CVEs: {len(cve_data)} records (from NVD - published in past 7 days)
 - Intel471 Threats: {len(intel471_data)} records (underground intelligence, breach reports from past 7 days)
 - CrowdStrike APT Activity: {len(crowdstrike_data)} records (threat actor activity from past 7 days)
-- ThreatQ Indicators: {len(threatq_data)} records
 - OSINT Articles: {len(osint_data)} records (public breach news from past 7 days)
 {intel471_context}
 {osint_context}
@@ -979,7 +837,7 @@ OSINT Citation Rules:
 - The Resources section will automatically list all data sources - you don't need to reference them
 
 CRITICAL - AVOID VAGUE SOURCE REFERENCES:
-- DO NOT write "Refer to Rapid7 for remediation guidance" or "Refer to OSINT sources"
+- DO NOT write "Refer to OSINT sources" or other vague source references for remediation guidance
 - DO NOT write "as highlighted by OSINT and Microsoft Threat Intelligence" in the executive summary
 - Be specific: Instead of "Refer to X", say exactly what to do (e.g., "Patch systems immediately", "Review firewall rules", "Enable MFA")
 
@@ -1010,9 +868,6 @@ Do not use Hyphens."""
         cve_data: list,
         intel471_data: list,
         crowdstrike_data: list,
-        threatq_data: list,
-        rapid7_data: list,
-        rapid7_scans_data: list = None,
         osint_data: list = None,
         cve_trends: dict[str, Any] = None,
         actor_trends: dict[str, Any] = None,
@@ -1029,9 +884,6 @@ Do not use Hyphens."""
             cve_data,
             intel471_data,
             crowdstrike_data,
-            threatq_data,
-            rapid7_data,
-            rapid7_scans_data,
             osint_data,
         )
 
@@ -1287,28 +1139,17 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
         self,
         analysis_result: dict[str, Any],
         cve_data: list[dict],
-        rapid7_data: list[dict],
-        rapid7_scans_data: list[dict] = None,
         kev_lookup: dict[str, dict] = None,
         epss_lookup: dict[str, dict] = None,
         intel471_data: list[dict] = None,
         crowdstrike_data: list[dict] = None,
     ) -> dict[str, Any]:
         """
-        Patch AI analysis results with Rapid7/NVD/KEV/EPSS backup data where
-        the AI left gaps (N/A exposure, missing product names, etc.).
+        Patch AI analysis results with NVD/KEV/EPSS backup data where
+        the AI left gaps (missing product names, exploitation status, etc.).
         """
-        rapid7_scans_data = rapid7_scans_data or []
         kev_lookup = kev_lookup or {}
         epss_lookup = epss_lookup or {}
-        rapid7_cve_map = {}
-        rapid7_scan_lookup = {}
-        if rapid7_scans_data and len(rapid7_scans_data) > 0:
-            scan_summary = rapid7_scans_data[0] if isinstance(rapid7_scans_data[0], dict) else {}
-            for cve_id, info in scan_summary.get("cve_exposure_map", {}).items():
-                if isinstance(info, dict):
-                    rapid7_cve_map[cve_id] = info.get("exposure", f"{info.get('asset_count', 0)} systems")
-                    rapid7_scan_lookup[cve_id] = info
 
         # Build NVD lookup
         nvd_lookup = {}
@@ -1317,15 +1158,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
             if cve_id:
                 nvd_lookup[cve_id] = cve
 
-        # Build Rapid7 vuln definitions lookup
-        rapid7_vuln_lookup = {}
-        if rapid7_data and len(rapid7_data) > 0:
-            r7_summary = rapid7_data[0] if isinstance(rapid7_data[0], dict) else {}
-            for vuln in r7_summary.get("top_vulnerabilities", []):
-                for cve_id in vuln.get("cve_ids", []):
-                    rapid7_vuln_lookup[cve_id] = vuln
-
-        if not rapid7_cve_map and not nvd_lookup:
+        if not nvd_lookup:
             return analysis_result
 
         gaps_filled = 0
@@ -1337,16 +1170,6 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                 continue
 
             nvd = nvd_lookup.get(cve_id, {})
-            r7_vuln = rapid7_vuln_lookup.get(cve_id, {})
-            r7_scan = rapid7_scan_lookup.get(cve_id, {})
-
-            # Fill exposure if AI left it blank or N/A
-            exposure = cve_entry.get("exposure", "N/A")
-            if exposure in ("N/A", "", None, "Unknown", "unknown"):
-                backup_exposure = rapid7_cve_map.get(cve_id)
-                if backup_exposure:
-                    cve_entry["exposure"] = backup_exposure
-                    gaps_filled += 1
 
             # Fill affected_product if AI left it blank
             product = cve_entry.get("affected_product", "N/A")
@@ -1361,17 +1184,13 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                 backup_product = (
                     build_affected_product_from_kev(cve_id, kev_lookup)
                     or nvd.get("affected_product")
-                    or self._clean_rapid7_title(r7_scan.get("title", ""))
-                    or r7_vuln.get("title", "")
-                    or self._extract_product_from_description(
-                        nvd.get("description", "") or r7_vuln.get("description", "")
-                    )
+                    or self._extract_product_from_description(nvd.get("description", ""))
                 )
                 if backup_product and backup_product not in ("N/A", ""):
                     cve_entry["affected_product"] = backup_product
                     gaps_filled += 1
 
-            # Fill exploited_by from KEV/EPSS/Rapid7/NVD (in priority order)
+            # Fill exploited_by from KEV/EPSS/NVD (in priority order)
             exploited_by = cve_entry.get("exploited_by", "")
             exploited_lower = (exploited_by or "").lower()
             needs_exploit = (
@@ -1390,17 +1209,6 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                         cve_entry["exploited"] = True
                         cve_entry["in_cisa_kev"] = True
                     gaps_filled += 1
-                # Then try Rapid7
-                elif r7_vuln.get("exploitable"):
-                    kits = r7_vuln.get("malware_kits_count", 0)
-                    exploits = r7_vuln.get("exploits_count", 0)
-                    if kits:
-                        cve_entry["exploited_by"] = f"Malware kits ({kits} known)"
-                    elif exploits:
-                        cve_entry["exploited_by"] = f"Public exploits ({exploits} known)"
-                    else:
-                        cve_entry["exploited_by"] = "Exploit available"
-                    gaps_filled += 1
                 # Finally check NVD data for enrichment fields
                 elif nvd.get("exploited") or nvd.get("in_cisa_kev"):
                     cve_entry["exploited"] = nvd.get("exploited", False)
@@ -1414,14 +1222,6 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                 if "CISA KEV" in exploited_by:
                     cve_entry["exploited"] = True
                     cve_entry["in_cisa_kev"] = True
-
-            # Fill weeks_detected from Rapid7 scan 'added' date
-            weeks = cve_entry.get("weeks_detected", 1)
-            if weeks in (1, "1", "New", "new", None):
-                scan_weeks = r7_scan.get("weeks_detected")
-                if scan_weeks and scan_weeks > 1:
-                    cve_entry["weeks_detected"] = scan_weeks
-                    gaps_filled += 1
 
         # Recompute priority using weighted scoring
         apt_cve_map = self._build_apt_cve_map(
@@ -1455,17 +1255,8 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
             stats["p2_count"] = sum(1 for c in cve_analysis if c.get("priority") == "P2")
             stats["p3_count"] = sum(1 for c in cve_analysis if c.get("priority") == "P3")
 
-        # Filter: only keep CVEs that exist in Rapid7 scans
-        if rapid7_cve_map:
-            original_count = len(cve_analysis)
-            cve_analysis = [c for c in cve_analysis if c.get("cve_id") in rapid7_cve_map]
-            filtered = original_count - len(cve_analysis)
-            if filtered > 0:
-                logger.info(f"Filtered out {filtered} CVEs not detected in Rapid7 scans")
-            analysis_result["cve_analysis"] = cve_analysis
-
         if gaps_filled > 0:
-            logger.info(f"Filled {gaps_filled} gaps in AI analysis from Rapid7/NVD backup data")
+            logger.info(f"Filled {gaps_filled} gaps in AI analysis from NVD backup data")
 
         return analysis_result
 
@@ -1474,35 +1265,16 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
         cve_data: list[dict],
         intel471_data: list[dict],
         crowdstrike_data: list[dict],
-        threatq_data: list[dict],
-        rapid7_data: list[dict],
-        rapid7_scans_data: list[dict] = None,
         kev_lookup: dict[str, dict] = None,
         epss_lookup: dict[str, dict] = None,
     ) -> dict[str, Any]:
         """
         Generate a default analysis structure when AI analysis fails.
-        Uses Rapid7 scan data to filter to only detected CVEs and
-        cross-references with NVD data for product names and severity.
+        Builds CVE analysis from the NVD CVE records, enriched with
+        CISA KEV and EPSS exploitation data.
         """
-        rapid7_scans_data = rapid7_scans_data or []
         kev_lookup = kev_lookup or {}
         epss_lookup = epss_lookup or {}
-
-        # Build exposure map and scan enrichment from Rapid7 scans
-        rapid7_cve_map = {}
-        rapid7_scan_lookup = {}
-        if rapid7_scans_data and len(rapid7_scans_data) > 0:
-            scan_summary = rapid7_scans_data[0] if isinstance(rapid7_scans_data[0], dict) else {}
-            cve_exposure_map = scan_summary.get("cve_exposure_map", {})
-            for cve_id, exposure_info in cve_exposure_map.items():
-                if isinstance(exposure_info, dict):
-                    rapid7_cve_map[cve_id] = exposure_info.get(
-                        "exposure", f"{exposure_info.get('asset_count', 0)} systems"
-                    )
-                    rapid7_scan_lookup[cve_id] = exposure_info
-
-        logger.info(f"Default analysis: {len(rapid7_cve_map)} CVEs from Rapid7 scans")
 
         # Build NVD lookup for product names, severity, descriptions
         nvd_lookup = {}
@@ -1511,75 +1283,54 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
             if cve_id:
                 nvd_lookup[cve_id] = cve
 
-        logger.info(f"Default analysis: {len(nvd_lookup)} CVEs in NVD data for enrichment")
+        logger.info(f"Default analysis: {len(nvd_lookup)} CVEs from NVD data")
 
-        # Build Rapid7 vulnerability definitions lookup for extra product info
-        rapid7_vuln_lookup = {}
-        if rapid7_data and len(rapid7_data) > 0:
-            rapid7_summary = rapid7_data[0] if isinstance(rapid7_data[0], dict) else {}
-            for vuln in rapid7_summary.get("top_vulnerabilities", []):
-                for cve_id in vuln.get("cve_ids", []):
-                    rapid7_vuln_lookup[cve_id] = vuln
-
-        # Build CVE analysis from Rapid7-detected CVEs only
+        # Build CVE analysis from the NVD CVE records
         cve_analysis = []
-        if rapid7_cve_map:
-            for cve_id, exposure_string in rapid7_cve_map.items():
-                nvd_info = nvd_lookup.get(cve_id, {})
-                rapid7_vuln = rapid7_vuln_lookup.get(cve_id, {})
-                r7_scan = rapid7_scan_lookup.get(cve_id, {})
+        for cve_id, nvd_info in nvd_lookup.items():
+            # Get affected product from KEV, NVD CPE, or description parsing
+            affected_product = (
+                build_affected_product_from_kev(cve_id, kev_lookup)
+                or nvd_info.get("affected_product")
+                or nvd_info.get("product")
+                or self._extract_product_from_description(nvd_info.get("description", ""))
+                or "Unknown"
+            )
+            if affected_product == "N/A":
+                affected_product = "Unknown"
 
-                # Get affected product from KEV, NVD CPE, scan title, or Rapid7 vuln title
-                affected_product = (
-                    build_affected_product_from_kev(cve_id, kev_lookup)
-                    or nvd_info.get("affected_product")
-                    or self._clean_rapid7_title(r7_scan.get("title", ""))
-                    or rapid7_vuln.get("title", "")
-                    or self._extract_product_from_description(
-                        nvd_info.get("description", "") or rapid7_vuln.get("description", "")
-                    )
-                    or "Unknown"
-                )
-                if affected_product == "N/A":
-                    affected_product = "Unknown"
+            severity = nvd_info.get("severity", "HIGH")
+            exploited = nvd_info.get("exploited", False)
+            description = (nvd_info.get("description", "") or "")[:200]
+            cvss_score = nvd_info.get("cvss_score")
 
-                severity = nvd_info.get("severity", rapid7_vuln.get("severity", "HIGH"))
-                exploited = nvd_info.get("exploited", rapid7_vuln.get("exploitable", False))
-                description = nvd_info.get("description", rapid7_vuln.get("description", ""))[:200]
+            # Derive exploited_by from KEV/EPSS, then any NVD-provided value
+            kev_epss_result = build_exploited_by(cve_id, kev_lookup, epss_lookup)
+            if kev_epss_result:
+                exploited_by = kev_epss_result
+                if "CISA KEV" in kev_epss_result:
+                    exploited = True
+            elif nvd_info.get("exploited_by"):
+                exploited_by = nvd_info.get("exploited_by")
+            else:
+                exploited_by = "None known"
 
-                # Derive exploited_by from KEV/EPSS first, then Rapid7
-                kev_epss_result = build_exploited_by(cve_id, kev_lookup, epss_lookup)
-                if kev_epss_result:
-                    exploited_by = kev_epss_result
-                    if "CISA KEV" in kev_epss_result:
-                        exploited = True
-                elif rapid7_vuln.get("exploitable"):
-                    kits = rapid7_vuln.get("malware_kits_count", 0)
-                    exploits = rapid7_vuln.get("exploits_count", 0)
-                    if kits:
-                        exploited_by = f"Malware kits ({kits} known)"
-                    elif exploits:
-                        exploited_by = f"Public exploits ({exploits} known)"
-                    else:
-                        exploited_by = "Exploit available"
-                else:
-                    exploited_by = "None known"
+            cve_analysis.append(
+                {
+                    "cve_id": cve_id,
+                    "priority": "P3",
+                    "severity": severity,
+                    "exploited": exploited,
+                    "description": description,
+                    "impact": "Requires assessment",
+                    "affected_product": affected_product,
+                    "cvss_score": cvss_score,
+                    "exploited_by": exploited_by,
+                    "weeks_detected": 1,
+                }
+            )
 
-                cve_analysis.append(
-                    {
-                        "cve_id": cve_id,
-                        "priority": "P3",
-                        "severity": severity,
-                        "exploited": exploited,
-                        "description": description,
-                        "impact": "Detected in environment - requires assessment",
-                        "affected_product": affected_product,
-                        "exploited_by": exploited_by,
-                        "exposure": exposure_string,
-                        "weeks_detected": r7_scan.get("weeks_detected", 1),
-                    }
-                )
-
+        if cve_analysis:
             # Weighted priority scoring
             apt_cve_map = self._build_apt_cve_map(intel471_data, crowdstrike_data)
             for cve_entry in cve_analysis:
@@ -1598,7 +1349,6 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                 key=lambda x: (
                     priority_order.get(x.get("priority", "P3"), 3),
                     -x.get("priority_score", 0),
-                    -self._extract_count(x.get("exposure", "0")),
                 )
             )
 
@@ -1611,21 +1361,21 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
         exploited_count = sum(1 for c in cve_analysis if c.get("exploited"))
 
         if total_cves == 0:
-            executive_summary = """No vulnerabilities were detected in our environment during this reporting period.
+            executive_summary = """No vulnerabilities were identified during this reporting period.
 Continue monitoring for emerging threats and ensure all security controls remain active."""
         else:
             executive_summary = f"""This week's threat intelligence analysis identified {total_cves} vulnerabilities \
-detected in our environment through Rapid7 InsightVM scans. Of these, {p1_count} are rated P1 (critical/actively exploited), \
+from threat intelligence and vulnerability data this period. Of these, {p1_count} are rated P1 (critical/actively exploited), \
 {p2_count} are P2, and {p3_count} are P3. Immediate attention is recommended for any P1 items.
 
 Note: AI-powered analysis was unavailable for this report. The vulnerability data below is sourced directly from \
-Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detected in our environment are included."""
+NVD records cross-referenced with CISA KEV and EPSS exploitation data."""
 
         return {
             "executive_summary": executive_summary,
             "top_threats": [
                 {
-                    "threat": f"{total_cves} vulnerabilities detected in environment via Rapid7 scans",
+                    "threat": f"{total_cves} vulnerabilities identified from threat intelligence this period",
                     "priority": "P1" if p1_count > 0 else "P2",
                     "justification": f"{p1_count} critical, {exploited_count} actively exploited",
                 }
@@ -1649,9 +1399,9 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
             else [],
             "recommendations": [
                 "Review P1 vulnerabilities immediately and initiate patching within 24-48 hours",
-                "Validate Rapid7 scan coverage to ensure all critical assets are being assessed",
+                "Cross-reference identified CVEs against internal asset inventory to confirm exposure",
                 "Cross-reference detected CVEs with CISA KEV catalog for exploitation status",
-                "Prioritize remediation based on exposure count (higher count = more risk)",
+                "Prioritize remediation based on severity and active exploitation status",
                 "Schedule follow-up analysis once AI analysis is available for deeper threat correlation",
             ],
             "statistics": {
@@ -1841,28 +1591,6 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                 if len(product) > 3 and len(product) < 50:
                     return product
         return ""
-
-    @staticmethod
-    def _clean_rapid7_title(title: str) -> str:
-        """
-        Clean a Rapid7 vulnerability title into a short product name.
-
-        Rapid7 titles look like:
-          "WordPress Plugin: access-demo-importer: CVE-2021-39317: Unrestricted Upload..."
-          "7-Zip: CVE-2016-2334: Buffer Overflow"
-          "Adobe Acrobat: CVE-2016-0931: Use After Free"
-
-        Returns just the product portion, e.g. "WordPress Plugin: access-demo-importer".
-        """
-        if not title:
-            return ""
-        import re
-
-        # Strip the CVE-XXXX-XXXX: portion and everything after it
-        cleaned = re.split(r"\s*:\s*CVE-\d{4}-\d+", title)[0].strip()
-        if cleaned and len(cleaned) > 2:
-            return cleaned
-        return title.split(":")[0].strip() if ":" in title else title
 
     async def analyze_strategic(
         self,

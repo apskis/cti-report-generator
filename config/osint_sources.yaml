@@ -90,12 +90,6 @@ sources:
     enabled: false
 
   # --- Vulnerability Research ---
-  - name: "Rapid7 Blog"
-    url: "https://blog.rapid7.com/rss/"
-    type: rss
-    category: "Vulnerability Research"
-    enabled: true
-
   - name: "Qualys Threat Research"
     url: "https://blog.qualys.com/feed"
     type: rss

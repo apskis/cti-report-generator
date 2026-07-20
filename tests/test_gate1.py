@@ -24,14 +24,12 @@ def test_halt_raises_when_all_tier1_sources_have_gap():
     """check_tier1_halt halts only when EVERY Tier 1 source returned a gap.
 
     The threshold was intentionally relaxed from "2 or more" to "all" (see the
-    docstring on check_tier1_halt): known NVD/ThreatQ outages should not halt the
+    docstring on check_tier1_halt): a known transient outage should not halt the
     pipeline as long as at least one Tier 1 source has data.
     """
     records = [
-        _rec("ThreatQ", "GAP: 503"),
         _rec("NVD", "GAP: timeout"),
         _rec("Intel471", "GAP: 500"),
-        _rec("Rapid7", "GAP: timeout"),
         _rec("CrowdStrike", "GAP: 503"),
     ]
     with pytest.raises(GateHaltError) as exc:
@@ -41,12 +39,10 @@ def test_halt_raises_when_all_tier1_sources_have_gap():
 
 
 def test_halt_passes_when_some_but_not_all_sources_have_gap():
-    """Two of five Tier 1 sources failing must NOT halt under the relaxed rule."""
+    """Two of three Tier 1 sources failing must NOT halt under the relaxed rule."""
     records = [
-        _rec("ThreatQ", "GAP: 503"),
         _rec("NVD", "GAP: timeout"),
-        _rec("Intel471", "OK"),
-        _rec("Rapid7", "OK"),
+        _rec("Intel471", "GAP: 500"),
         _rec("CrowdStrike", "OK"),
     ]
     check_tier1_halt(records)
@@ -54,10 +50,8 @@ def test_halt_passes_when_some_but_not_all_sources_have_gap():
 
 def test_halt_passes_when_only_one_source_has_gap():
     records = [
-        _rec("ThreatQ", "GAP: 503"),
-        _rec("NVD", "OK"),
+        _rec("NVD", "GAP: timeout"),
         _rec("Intel471", "OK"),
-        _rec("Rapid7", "OK"),
         _rec("CrowdStrike", "OK"),
     ]
     check_tier1_halt(records)
@@ -69,10 +63,8 @@ def test_disabled_source_does_not_trigger_gap_flag():
     must not contribute to the halt count because tier=2.
     """
     records = [
-        SourceRecord("ThreatQ", 1, 1, "2026-05-12", "2026-05-19", "OK"),
         SourceRecord("NVD", 1, 1, "2026-05-12", "2026-05-19", "OK"),
         SourceRecord("Intel471", 1, 1, "2026-05-12", "2026-05-19", "OK"),
-        SourceRecord("Rapid7", 1, 1, "2026-05-12", "2026-05-19", "OK"),
         SourceRecord("CrowdStrike", 1, 1, "2026-05-12", "2026-05-19", "OK"),
         SourceRecord("Recorded Future", 2, 0, "2026-05-12", "2026-05-19", "[DISABLED IN CONFIG]", enabled=False),
     ]

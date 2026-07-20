@@ -1,7 +1,7 @@
 """Gate 1C: Technology Coherence
 
 Dynamically validates that technologies mentioned in narrative sections match detected technologies.
-Learns from actual Rapid7 scan data - no hardcoded technology list.
+Learns from the collected CVE data - no hardcoded technology list.
 Prevents false assumptions like 'WordPress is in our environment' when no WordPress CVEs exist.
 """
 
@@ -80,10 +80,8 @@ def _extract_product_mentions(text: str, min_word_length: int = 4) -> set[str]:
             "cisa",
             "kev",
             "cve",
-            "rapid7",
             "intel471",
             "crowdstrike",
-            "threatq",
             "osint",
             "january",
             "february",
@@ -115,7 +113,7 @@ def _extract_product_mentions(text: str, min_word_length: int = 4) -> set[str]:
 def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     """
     Dynamically validates that technologies mentioned in the executive summary
-    are actually detected in Rapid7 scans. Learns from your actual environment.
+    are actually present in the collected CVE data.
 
     Runs after Gate 5 to validate the drafted report.
 
@@ -137,7 +135,7 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
 
     report = g5.payload.get("report", {})
 
-    # Extract ALL technologies from CVE data (learns from Rapid7 scans)
+    # Extract ALL technologies from the collected CVE data
     detected_technologies = set()
     detected_products_full = set()  # Full product names for reference
     cve_analysis = report.get("cve_analysis", [])
@@ -201,7 +199,7 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
                 if not has_qualifier:
                     issues.append(
                         f"Technology '{product.title()}' mentioned in executive summary but has NO corresponding "
-                        f"CVE detections in Rapid7 data. Either remove the mention or add qualifying language like "
+                        f"CVE detections in the collected data. Either remove the mention or add qualifying language like "
                         f"'industry threat to monitor' or 'not currently detected in our environment'."
                     )
 

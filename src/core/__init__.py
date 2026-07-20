@@ -22,9 +22,7 @@ from src.core.models import (
     CollectorResult,
     CVERecord,
     ThreatAnalysisResult,
-    ThreatIndicator,
     ThreatReport,
-    VulnerabilitySummary,
 )
 
 try:
@@ -53,8 +51,6 @@ __all__ = [
     "CVERecord",
     "ThreatReport",
     "APTActor",
-    "ThreatIndicator",
-    "VulnerabilitySummary",
     "ThreatAnalysisResult",
     "CollectorResult",
     # Key Vault

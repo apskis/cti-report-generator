@@ -113,7 +113,7 @@
           {
             "cells": [
               {
-                "text": "4\nNew This Week\nFirst appearance in Rapid7 scans",
+                "text": "4\nNew This Week\nFirst appearance this week",
                 "shading_hex": "F5F5F5"
               },
               {
@@ -415,7 +415,7 @@
         "space_before_pt": 4.0,
         "runs": [
           {
-            "text": "Wks = consecutive weeks detected. Items at 3+ weeks highlighted. Source: Rapid7 InsightVM scans.",
+            "text": "Wks = consecutive weeks detected. Items at 3+ weeks highlighted.",
             "font_name": "Arial",
             "font_size_pt": 8.0,
             "italic": true,
@@ -616,7 +616,7 @@
         "space_after_pt": 3.0,
         "runs": [
           {
-            "text": "Review Rapid7 scan results for the 8 exposed vulnerabilities; validate asset ownership and remediation timelines",
+            "text": "Review the 8 exposed vulnerabilities; validate asset ownership and remediation timelines",
             "font_name": "Arial",
             "font_size_pt": 10.0
           }
@@ -732,7 +732,7 @@
             "color_hex": "666666"
           },
           {
-            "text": "Compiled via automated collection from NVD, CrowdStrike Falcon Intelligence, Intel471, and Rapid7 InsightVM. Threat actor attribution reflects analyst assessment based on available intelligence and does not indicate confirmed targeting of Illumina.",
+            "text": "Compiled via automated collection from NVD, CrowdStrike Falcon Intelligence, and Intel471. Threat actor attribution reflects analyst assessment based on available intelligence and does not indicate confirmed targeting of Illumina.",
             "font_name": "Arial",
             "font_size_pt": 8.0,
             "color_hex": "666666"

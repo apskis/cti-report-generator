@@ -110,12 +110,8 @@ def get_all_api_keys(vault_url: str | None = None) -> dict[str, str]:
     # All credentials stored in Key Vault for security
     collector_secrets = {
         "nvd": ["nvd_key"],
-        "threatq": ["threatq_client_id", "threatq_client_secret", "threatq_url"],
         "intel471": ["intel471_email", "intel471_key"],
         "crowdstrike": ["crowdstrike_id", "crowdstrike_secret", "crowdstrike_base_url"],
-        "rapid7": ["rapid7_key", "rapid7_region"],
-        "rapid7-scans": ["rapid7_key", "rapid7_region"],
-        "rapid7-bulk-export": ["rapid7_key", "rapid7_region"],
     }
 
     # Always required (not collector-specific)
@@ -130,16 +126,11 @@ def get_all_api_keys(vault_url: str | None = None) -> dict[str, str]:
     secrets_map = {
         # Threat Intelligence API credentials
         "nvd_key": "nvd-api-key",
-        "threatq_client_id": "threatq-client-id",
-        "threatq_client_secret": "threatq-client-secret",
-        "threatq_url": "threatq-url",
         "intel471_email": "intel471-email",
         "intel471_key": "intel471-api-key",
         "crowdstrike_id": "crowdstrike-client-id",
         "crowdstrike_secret": "crowdstrike-client-secret",
         "crowdstrike_base_url": "crowdstrike-base-url",
-        "rapid7_key": "rapid7-api-key",
-        "rapid7_region": "rapid7-region",
     }
 
     # Add required secrets
@@ -159,8 +150,9 @@ def get_all_api_keys(vault_url: str | None = None) -> dict[str, str]:
                 if key_name in secrets_map:
                     secrets_to_fetch[key_name] = secrets_map[key_name]
 
-    # Special handling: ThreatQ secrets are optional (collector handles missing gracefully)
-    optional_secrets = {"threatq_client_id", "threatq_client_secret", "threatq_url"}
+    # Optional secrets: fetched if present, but a missing value disables the
+    # dependent collector rather than failing the whole run. (None currently.)
+    optional_secrets: set[str] = set()
 
     api_keys = {}
 
@@ -171,11 +163,11 @@ def get_all_api_keys(vault_url: str | None = None) -> dict[str, str]:
         try:
             return key_name, get_secret(vault_url, secret_name)
         except ResourceNotFoundError as e:
-            # ThreatQ secrets are optional - log warning but don't fail
+            # Optional secrets log a warning but don't fail the run
             if key_name in optional_secrets:
                 logger.warning(
                     f"Optional secret '{key_name}' (secret: '{secret_name}') not found in vault. "
-                    f"ThreatQ collector will be disabled."
+                    f"The dependent collector will be disabled."
                 )
                 return key_name, ""
             # For other secrets, raise exception

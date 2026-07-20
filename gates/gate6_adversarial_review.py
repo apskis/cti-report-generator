@@ -349,7 +349,7 @@ def _scan_narrative_cohesion(report: dict, gate2_iocs: list, report_type: str = 
     - CVEs in analysis not mentioned anywhere in narrative
 
     NOTE: For weekly tactical reports (threat intelligence focused), we no longer validate
-    against "detected in environment" since Rapid7 scanning is disabled. CVEs are threat intel only.
+    against "detected in environment" since there is no environment scan data. CVEs are threat intel only.
     """
     violations: list[str] = []
 
@@ -515,7 +515,7 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     # Coverage gap validation: Different behavior for quarterly vs weekly
     # - Quarterly reports: Gaps are informational only, not blocking. Only block if AI cites empty sources.
     # - Weekly reports: Gaps are now informational (Track B) instead of blocking (Track A)
-    #   This allows reports to proceed even if some sources (like ThreatQ, Rapid7) are intentionally disabled
+    #   This allows reports to proceed even if some sources are intentionally disabled
     if report_type.upper() == "QUARTERLY":
         # For quarterly: Gaps are informational (Track B)
         track_b.extend(f"Coverage Gap (informational): {g}" for g in _scan_gap_omissions(report, gate4_gaps))

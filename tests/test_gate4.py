@@ -28,7 +28,7 @@ def _make_priors(iocs, actor_links, signals, articles):
             "COMPLETE",
             {
                 "tier1_sources": [
-                    SourceRecord("ThreatQ", 1, 1, "a", "b", "OK"),
+                    SourceRecord("Intel471", 1, 1, "a", "b", "OK"),
                     SourceRecord("Intel471", 1, 1, "a", "b", "OK"),
                 ]
             },
@@ -51,7 +51,7 @@ def _make_priors(iocs, actor_links, signals, articles):
 
 
 def test_corroboration_matches_ioc_present_in_both_tier1_and_osint():
-    iocs = [IOC("ip", "1.2.3.4", ["ThreatQ"], "high", False)]
+    iocs = [IOC("ip", "1.2.3.4", ["Intel471"], "high", False)]
     links = [ActorLink("1.2.3.4", "BadGroup", "Intel471", "Op", "high", None)]
     articles = [OSINTArticle("A001", "Krebs on Security", "title", "2026-05-15", "http://x")]
     signals = [OSINTSignal("A001", ["1.2.3.4"], [], [], "quote", True)]
@@ -59,7 +59,7 @@ def test_corroboration_matches_ioc_present_in_both_tier1_and_osint():
         report_type="WEEKLY",
         period_start="a",
         period_end="b",
-        tier1_data={"ThreatQ": [{"indicator": "1.2.3.4"}]},
+        tier1_data={"Intel471": [{"indicator": "1.2.3.4"}]},
         prior_results=_make_priors(iocs, links, signals, articles),
     )
     r = run(gi, _FakeLLM(), "WEEKLY")
@@ -70,7 +70,7 @@ def test_corroboration_matches_ioc_present_in_both_tier1_and_osint():
 
 
 def test_value_only_in_osint_becomes_open_signal_with_label():
-    iocs = [IOC("ip", "1.2.3.4", ["ThreatQ"], "high", False)]
+    iocs = [IOC("ip", "1.2.3.4", ["Intel471"], "high", False)]
     links = [ActorLink("1.2.3.4", "[UNATTRIBUTED]", "[NONE]", None, None, None)]
     articles = [OSINTArticle("A001", "Krebs on Security", "t", "2026-05-15", "http://x")]
     signals = [OSINTSignal("A001", ["9.9.9.9"], [], ["CVE-2026-99999"], "quote", True)]
@@ -78,7 +78,7 @@ def test_value_only_in_osint_becomes_open_signal_with_label():
         report_type="WEEKLY",
         period_start="a",
         period_end="b",
-        tier1_data={"ThreatQ": [{"indicator": "1.2.3.4"}]},
+        tier1_data={"Intel471": [{"indicator": "1.2.3.4"}]},
         prior_results=_make_priors(iocs, links, signals, articles),
     )
     r = run(gi, _FakeLLM(), "WEEKLY")
@@ -91,7 +91,7 @@ def test_value_only_in_osint_becomes_open_signal_with_label():
 
 
 def test_detect_osint_promotion_is_called_during_assembly():
-    iocs = [IOC("ip", "1.2.3.4", ["ThreatQ"], "high", False)]
+    iocs = [IOC("ip", "1.2.3.4", ["Intel471"], "high", False)]
     links = [ActorLink("1.2.3.4", "[UNATTRIBUTED]", "[NONE]", None, None, None)]
     articles = [OSINTArticle("A001", "Krebs on Security", "t", "2026-05-15", "http://x")]
     signals = [OSINTSignal("A001", ["9.9.9.9"], [], [], "quote", True)]
@@ -99,7 +99,7 @@ def test_detect_osint_promotion_is_called_during_assembly():
         report_type="WEEKLY",
         period_start="a",
         period_end="b",
-        tier1_data={"ThreatQ": [{"indicator": "1.2.3.4"}]},
+        tier1_data={"Intel471": [{"indicator": "1.2.3.4"}]},
         prior_results=_make_priors(iocs, links, signals, articles),
     )
     with patch("gates.gate4_assembly.detect_osint_promotion") as mock_detect:

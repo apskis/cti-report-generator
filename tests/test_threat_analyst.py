@@ -114,7 +114,7 @@ class TestThreatAnalystAgent:
     @patch("src.agents.threat_analyst.Kernel")
     def test_default_analysis_with_no_data(self, mock_kernel, mock_chat):
         agent = ThreatAnalystAgent("https://test.openai.azure.com", "key")
-        result = agent._get_default_analysis([], [], [], [], [])
+        result = agent._get_default_analysis([], [], [])
         assert "executive_summary" in result
         assert "recommendations" in result
         assert len(result["recommendations"]) > 0
@@ -124,9 +124,8 @@ class TestThreatAnalystAgent:
     def test_default_analysis_with_data(self, mock_kernel, mock_chat):
         cves = [{"cve_id": "CVE-2024-001", "severity": "CRITICAL", "exploited": True, "description": "Test"}]
         actors = [{"actor_name": "PANDA", "country": "China", "motivations": ["Espionage"]}]
-        rapid7_scans = [{"cve_exposure_map": {"CVE-2024-001": {"asset_count": 3, "exposure": "3 servers"}}}]
         agent = ThreatAnalystAgent("https://test.openai.azure.com", "key")
-        result = agent._get_default_analysis(cves, [], actors, [], [], rapid7_scans)
+        result = agent._get_default_analysis(cves, [], actors)
         assert result["statistics"]["total_cves"] == 1
         assert result["statistics"]["critical_count"] == 1
         assert len(result["cve_analysis"]) == 1

@@ -14,9 +14,7 @@ from src.collectors.intel471_collector import Intel471Collector
 
 # Import collectors
 from src.collectors.nvd_collector import NVDCollector
-from src.collectors.rapid7_collector import Rapid7Collector
 from src.collectors.registry import get_collector, list_available_collectors
-from src.collectors.threatq_collector import ThreatQCollector
 
 # =============================================================================
 # Fixtures
@@ -33,10 +31,6 @@ def mock_credentials():
         "crowdstrike_id": "test-client-id",
         "crowdstrike_secret": "test-client-secret",
         "crowdstrike_base_url": "https://api.crowdstrike.com",
-        "threatq_key": "test-threatq-key",
-        "threatq_url": "https://threatq.example.com",
-        "rapid7_key": "test-rapid7-key",
-        "rapid7_region": "us",
     }
 
 
@@ -132,30 +126,6 @@ def crowdstrike_actors_response():
                 "last_modified_date": "2024-01-15T10:00:00Z",
             }
         ]
-    }
-
-
-@pytest.fixture
-def rapid7_vulnerabilities_response():
-    """Sample Rapid7 vulnerabilities response."""
-    return {
-        "data": [
-            {
-                "id": "vuln-123",
-                "title": "Critical RCE Vulnerability",
-                "severity": "Critical",
-                "cves": ["CVE-2024-1234"],
-                "cvss": {"v3": {"score": 9.8}},
-                "exploits": 2,
-                "malwareKits": 1,
-                "published": "2024-01-15",
-                "modified": "2024-01-16",
-                "description": {"text": "Remote code execution vulnerability"},
-                "riskScore": 950,
-                "categories": ["remote-code-execution"],
-            }
-        ],
-        "metadata": {"totalResources": 100},
     }
 
 
@@ -281,67 +251,6 @@ class TestCrowdStrikeCollector:
 
 
 # =============================================================================
-# ThreatQ Collector Tests
-# =============================================================================
-
-
-class TestThreatQCollector:
-    """Tests for ThreatQ collector."""
-
-    def test_source_name(self, mock_credentials):
-        """Test source name property."""
-        collector = ThreatQCollector(mock_credentials)
-        assert collector.source_name == "ThreatQ"
-
-    def test_disabled_without_url(self):
-        """Test collector is disabled without URL."""
-        credentials = {"threatq_key": "test-key", "threatq_url": ""}
-        collector = ThreatQCollector(credentials)
-        assert collector.enabled is False
-
-    def test_enabled_with_oauth_credentials(self):
-        """Test collector is enabled with URL and OAuth client credentials."""
-        credentials = {
-            "threatq_url": "https://threatq.example.com",
-            "threatq_client_id": "test-client-id",
-            "threatq_client_secret": "test-client-secret",
-        }
-        collector = ThreatQCollector(credentials)
-        assert collector.enabled is True
-
-
-# =============================================================================
-# Rapid7 Collector Tests
-# =============================================================================
-
-
-class TestRapid7Collector:
-    """Tests for Rapid7 collector."""
-
-    def test_source_name(self, mock_credentials):
-        """Test source name property."""
-        collector = Rapid7Collector(mock_credentials)
-        assert collector.source_name == "Rapid7"
-
-    def test_get_count_list(self, mock_credentials):
-        """Test count extraction from list."""
-        collector = Rapid7Collector(mock_credentials)
-        assert collector._get_count([1, 2, 3]) == 3
-
-    def test_get_count_int(self, mock_credentials):
-        """Test count extraction from int."""
-        collector = Rapid7Collector(mock_credentials)
-        assert collector._get_count(5) == 5
-
-    def test_severity_mapping(self, mock_credentials):
-        """Test severity normalization."""
-        collector = Rapid7Collector(mock_credentials)
-        assert collector.SEVERITY_MAP["CRITICAL"] == "Critical"
-        assert collector.SEVERITY_MAP["HIGH"] == "Severe"
-        assert collector.SEVERITY_MAP["MODERATE"] == "Moderate"
-
-
-# =============================================================================
 # Registry Tests
 # =============================================================================
 
@@ -355,8 +264,6 @@ class TestRegistry:
         assert "nvd" in collectors
         assert "intel471" in collectors
         assert "crowdstrike" in collectors
-        assert "threatq" in collectors
-        assert "rapid7" in collectors
 
     def test_get_collector(self, mock_credentials):
         """Test getting collector by name."""

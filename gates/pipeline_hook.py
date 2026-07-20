@@ -52,10 +52,8 @@ def run_gate_framework_over_collected_data(
     period_start = period_end - timedelta(days=period_days)
 
     tier1_data = {
-        "ThreatQ": data_by_source.get("ThreatQ", []),
         "NVD": data_by_source.get("NVD", []),
         "Intel471": data_by_source.get("Intel471", []),
-        "Rapid7": data_by_source.get("Rapid7", []),
         "CrowdStrike": data_by_source.get("CrowdStrike", []),
     }
 

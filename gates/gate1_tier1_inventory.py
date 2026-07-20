@@ -5,9 +5,8 @@ calls the LLM for the analyst-facing inventory table. No analysis, no
 extraction, no narrative. Runs the 2-or-more Tier 1 gaps halt check before
 returning.
 
-NOTE: Rapid7 removed from Tier 1 sources - reports now focus on threat intelligence
-only (Intel471, CrowdStrike, NVD, ThreatQ, OSINT) without environment/vulnerability
-management data.
+NOTE: Reports focus on threat intelligence only (Intel471, CrowdStrike, NVD, OSINT)
+without environment/vulnerability management data.
 """
 
 from __future__ import annotations
@@ -23,7 +22,7 @@ from .prompts import GATE_1_PROMPT_TEMPLATE, SYSTEM_PROMPT_GATE_1
 logger = logging.getLogger(__name__)
 
 # All potential Tier 1 sources (will be filtered by collectors.yaml)
-ALL_TIER1_SOURCES = ["ThreatQ", "NVD", "Intel471", "CrowdStrike"]
+ALL_TIER1_SOURCES = ["NVD", "Intel471", "CrowdStrike"]
 
 
 def _build_source_record(
@@ -68,7 +67,7 @@ def _get_enabled_tier1_sources(tier1_data: dict) -> list[str]:
     """Get list of Tier 1 sources that are enabled and actually provided to this gate.
 
     Only check sources that are present in tier1_data (meaning they're enabled in collectors.yaml).
-    This prevents coverage gap warnings for intentionally disabled sources like ThreatQ.
+    This prevents coverage gap warnings for intentionally disabled sources.
     """
     enabled_sources = []
     for source in ALL_TIER1_SOURCES:
@@ -101,10 +100,8 @@ def _load_collector_config() -> dict:
         for collector in config.get("collectors", []):
             name = collector.get("name", "")
             enabled = collector.get("enabled", True)
-            # Normalize names: "threatq" -> "ThreatQ", "intel471" -> "Intel471", etc.
-            if name.lower() == "threatq":
-                enabled_map["ThreatQ"] = enabled
-            elif name.lower() == "intel471":
+            # Normalize names: "intel471" -> "Intel471", "crowdstrike" -> "CrowdStrike", etc.
+            if name.lower() == "intel471":
                 enabled_map["Intel471"] = enabled
             elif name.lower() == "crowdstrike":
                 enabled_map["CrowdStrike"] = enabled
