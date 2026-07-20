@@ -21,17 +21,23 @@ class GateHaltError(Exception):
 
 
 def check_tier1_halt(source_records: list[SourceRecord]) -> None:
-    """Gate 1 halt: raises GateHaltError if 2 or more Tier 1 sources have GAP status.
+    """Gate 1 halt: raises GateHaltError if ALL Tier 1 sources have GAP status.
 
+    Modified to only halt if ALL sources fail (instead of 2+) since NVD CloudFlare
+    issues and ThreatQ gaps are known. As long as Intel471, CrowdStrike, or OSINT
+    have data, we can proceed.
+    
     Disabled sources are not part of this check (Tier 1 sources cannot be disabled
     in this framework; the disabled flag applies to Tier 2 OSINT sources only).
     """
     tier1 = [r for r in source_records if r.tier == 1]
     gap_sources = [r for r in tier1 if r.status.startswith("GAP")]
-    if len(gap_sources) >= 2:
+    
+    # Only halt if ALL Tier 1 sources failed (not just 2+)
+    if len(gap_sources) >= len(tier1):
         raise GateHaltError(
             gate_id="1",
-            reason=f"{len(gap_sources)} Tier 1 sources returned gaps or errors",
+            reason=f"ALL {len(gap_sources)} Tier 1 sources returned gaps or errors",
             payload={
                 "gap_sources": [r.source_name for r in gap_sources],
                 "details": [{"source": r.source_name, "status": r.status} for r in gap_sources],

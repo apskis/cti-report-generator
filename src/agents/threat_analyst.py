@@ -500,32 +500,45 @@ class ThreatAnalystAgent:
             for item in intel471_data:
                 threat_type = item.get("threat_type", "").upper()
                 summary = item.get("summary", "")
-                
-                # Look for CVE mentions in Intel471 reports
+                full_text = item.get("full_text", "")
+
+                # Look for CVE mentions in Intel471 reports - check both subject and full text
                 import re
                 cve_pattern = r'CVE-\d{4}-\d{4,7}'
-                cves_mentioned = re.findall(cve_pattern, summary)
+                
+                # Search in both subject and full text for comprehensive CVE detection
+                text_to_search = f"{summary} {full_text}" if full_text else summary
+                cves_mentioned = re.findall(cve_pattern, text_to_search)
+                
                 for cve_id in cves_mentioned:
                     if cve_id not in intel471_cve_mentions:
+                        # Use full_text for context if available
+                        context_text = full_text[:300] if full_text else summary[:300]
                         intel471_cve_mentions[cve_id] = {
                             "mentioned_in": threat_type,
-                            "context": summary[:200]
+                            "context": context_text
                         }
                 
                 # Collect actor activity
                 actor = item.get("threat_actor", "")
                 if actor and actor != "Unknown":
+                    full_text = item.get("full_text", "")
                     intel471_actor_activity.append({
                         "actor": actor,
                         "type": threat_type,
-                        "summary": summary[:150]
+                        "subject": summary[:200],  # Title
+                        "details": full_text[:500] if full_text else summary[:500]  # Report excerpt
                     })
                 
                 # Collect breach information
                 if "BREACH" in threat_type:
+                    # Include both subject and full report text for comprehensive analysis
+                    full_text = item.get("full_text", "")
                     intel471_breach_summary.append({
-                        "summary": summary[:200],
-                        "date": item.get("date", "")
+                        "subject": summary[:500],  # Report title
+                        "full_text": full_text if full_text else summary,  # Full report body or fallback to subject
+                        "date": item.get("date", ""),
+                        "uid": item.get("uid", "")
                     })
         
         # Merge both sources - prefer CrowdStrike if both exist (more real-time)
@@ -583,10 +596,20 @@ If a CVE appears here, it means:
 Recent Breach Intelligence from Intel471 (peer organizations):
 {json.dumps(intel471_breach_summary[:5], indent=2)}
 
-Use this to provide context in the executive summary about:
-- What attack vectors are working against similar organizations
-- Industry breach trends
-- Common compromise methods
+Each breach report includes:
+- subject: Report title/headline
+- full_text: First 2000 characters of the full Intel471 report
+- date: When the breach was reported
+- uid: Intel471 report identifier for citation
+
+CRITICAL - Use Intel471 breach data to provide context about attack vectors and compromise methods.
+DO NOT infer or assume target industries unless explicitly stated in the Intel471 report text above.
+If industries are not mentioned in the subject or full_text, use general language:
+- "Intel471 reports ongoing ransomware activity"
+- "Underground intelligence confirms database dump operations"
+- "Breach intelligence shows continued exploitation of..."
+
+ONLY mention specific industries if they appear in the Intel471 text above.
 """
             
             if intel471_actor_activity:
@@ -661,14 +684,37 @@ RAW DATA:
 
 Please provide your analysis in the following JSON format:
 {{
-  "executive_summary": "2-3 paragraph summary highlighting the most critical threats from intelligence sources. 
+  "executive_summary": "CRITICAL: Maximum 4-5 sentences. Be extremely concise and tactical. Focus on what SOC needs to act on THIS WEEK.
   
-  MUST INCLUDE:
-  (1) Threat actors targeting our sector from Intel471/CrowdStrike
-  (2) Exploited vulnerabilities from CISA KEV / threat intelligence
-  (3) Industry peer incidents - ALWAYS mention key breaches from the industry_incidents array by company name (e.g., 'This week saw major breaches at Carnival Corporation (6M records) and Charter Communications (13M records), demonstrating ongoing targeting of large enterprises.')
+  MUST INCLUDE (1 sentence each max):
+  (1) Top threat actor activity from Intel471/CrowdStrike - only mention specific industries if explicitly stated in the source
+  (2) Most critical exploited vulnerabilities from CISA KEV / threat intelligence
+  (3) 1-2 key peer incidents with company names and attack vectors
   
-  If referencing OSINT intelligence, add inline citations like [1], [2] matching the osint_sources_used array. DO NOT reference source names directly - use citations. Make peer incidents prominent - they show real-world impact and active threat landscape.",
+  FORBIDDEN: Long paragraphs, background context, general statements. Keep it brief and actionable.
+  
+  INDUSTRY SPECIFICITY RULES - CRITICAL:
+  - ONLY mention specific industries (healthcare, pharmaceutical, manufacturing, laboratory, research, financial, etc.) if the source data EXPLICITLY states those industries are targeted or impacted
+  - DO NOT infer industries based on organization type, software type, vulnerability type, or general context
+  - Intel471 breach reports: ONLY mention industries if they appear in the report summary text
+  - CrowdStrike: ONLY mention industries from the target_industries field
+  - OSINT: ONLY mention industries explicitly stated in article text
+  - For widely-used technologies or broad campaigns without named industries, use general language:
+    * 'organizations across multiple sectors'
+    * 'widespread impact due to broad deployment of the affected platform'
+    * 'cross-industry implications'
+    * 'Intel471 reports ongoing ransomware activity' (NOT 'impacting healthcare and manufacturing' unless explicitly stated)
+  - WRONG: 'posing risk to healthcare, laboratory, or research systems' (unless article explicitly mentions these)
+  - RIGHT: 'affecting organizations using the platform' or 'broad organizational impact'
+  
+  CRITICAL - INLINE CITATIONS REQUIRED:
+  - When referencing OSINT articles, you MUST add inline citations: [1], [2], [3]
+  - When mentioning peer incidents, cite the OSINT source: "breaches at Texas Parks Dept [1] and Klue [2]"
+  - When referencing specific intelligence, cite the source: "confirmed by Intel471 [3]"
+  - DO NOT reference source names directly - use citation numbers matching osint_sources_used array
+  
+  EXAMPLE FORMAT:
+  'CrowdStrike reports LIGHTNING SPIDER and TRAVELING SPIDER active this week targeting multiple sectors. Critical vulnerabilities in ServiceNow (CVE-2026-6875) and NGINX (CVE-2026-42533) are under active exploitation [1][2]. Peer incidents include Hugging Face breach exposing internal datasets [3] and WebDAV malware infrastructure affecting organizations [4]. Intel471 confirms ongoing ransomware campaigns. Immediate patching required for affected platforms.'",
   "top_threats": [
     {{
       "threat": "Description of threat (from intelligence sources)",
@@ -687,7 +733,7 @@ Please provide your analysis in the following JSON format:
       "in_cisa_kev": true/false,
       "targeted_by_actors": "REQUIRED if actively exploited: List specific threat actors exploiting this CVE from Intel471 or CrowdStrike data (e.g., 'APT28', 'Lazarus Group', 'FIN7'). Leave empty string if no actor targeting is known.",
       "exploited_by": "Source of exploitation evidence (e.g., 'CISA KEV', 'Ransomware groups (Intel471)', 'Active exploitation (CrowdStrike)', 'Unknown')",
-      "source_citations": ["CISA KEV", "Intel471", "CrowdStrike", "NVD"] // Array listing which APIs provided intelligence for this CVE. Used to build References section.
+      "source_citations": ["CISA KEV", "Intel471", "CrowdStrike", "NVD"] // REQUIRED: Array listing which APIs provided intelligence for this CVE. ALWAYS include sources that contributed data (e.g., if CVE came from NVD, add "NVD"; if exploitation from CrowdStrike, add "CrowdStrike"). Used to build References section - sources NOT in citations won't be listed.
     }}
   ],
   "apt_activity": [
@@ -701,7 +747,23 @@ Please provide your analysis in the following JSON format:
       "intel471_activity": "If Intel471 provided underground activity for this actor, include it here with REPORT UID (e.g., 'Intel471 Report abc123: Actor selling access to biotech networks on underground forum')",
       "intel471_report_uid": "REQUIRED if intel471_activity is provided: The exact UID from Intel471 data (e.g., 'abc123-def456-ghi789')",
       "crowdstrike_activity": "If CrowdStrike provided detection or targeting data for this actor, include it here",
-      "source_citations": ["Intel471", "CrowdStrike"] // Array listing which APIs provided intelligence for this actor. Used to build References section.
+      "source_citations": ["Intel471", "CrowdStrike"] // REQUIRED: Array listing which APIs provided intelligence for this actor. ALWAYS include the source (e.g., if Intel471 provided activity, include "Intel471"; if CrowdStrike provided detections, include "CrowdStrike"). Used to build References section - sources NOT in citations won't be listed.
+    }}
+  ],
+  "active_campaigns": [
+    {{
+      "campaign_name": "REQUIRED: Named operation (e.g., 'Operation Aurora') or descriptive campaign name (e.g., 'APT41 Pharmaceutical Supply Chain Compromise'). Include both formally named campaigns AND significant sustained activity patterns.",
+      "threat_actors": ["List up to 4 specific threat actor names. If >4 actors involved, use 'Multiple actors'. If attribution unclear, use 'Multiple actors'."],
+      "objective": "Primary campaign goal/motivation (e.g., 'Steal clinical trial data', 'Deploy ransomware', 'Establish persistent access')",
+      "targets": "CRITICAL: Extract ONLY from API fields or explicit report text. Priority order:
+                 1. If API record explicitly names organizations (hospitals, labs, universities, manufacturers), list those names
+                 2. For CrowdStrike: Use exact industry names from 'target_industries' field
+                 3. For Intel471: Extract industries ONLY if explicitly mentioned in 'subject' or 'summary' text (e.g., 'targeting pharmaceutical companies', 'healthcare sector under attack')
+                 4. DO NOT infer targets from actor name, malware, CVE, technique, campaign name, or general knowledge
+                 Examples: 'Healthcare, Manufacturing' (from CrowdStrike target_industries), 'Pharmaceutical companies in Europe' (from Intel471 report text), 'Johns Hopkins Hospital, Mayo Clinic' (from named targets)",
+      "ttps": ["2-4 key techniques or tactics used in this campaign (e.g., 'Spearphishing', 'Software Supply Chain', 'Credential Harvesting')"],
+      "timeline": "When active (e.g., 'Active this week', 'Ongoing since May 2026', 'Observed June 1-7')",
+      "sources": ["Intel471", "CrowdStrike"] // CRITICAL: Only use verifiable API sources (Intel471, CrowdStrike). NEVER use generic "OSINT" - campaigns from OSINT articles should be omitted unless they cite specific threat intelligence from Intel471 or CrowdStrike. If a campaign is only mentioned in OSINT without corroboration from threat intelligence feeds, DO NOT include it.
     }}
   ],
   "recommendations": [
@@ -713,14 +775,15 @@ Please provide your analysis in the following JSON format:
   ],
   "industry_incidents": [
     {{
-      "organization": "REQUIRED: EXACT victim company/organization name. MUST be specific like 'Morrison & Foerster LLP', 'City Hospital', 'Acme Manufacturing'. 
-                      FORBIDDEN: Generic terms like 'Healthcare Sector', 'US Law Firms', 'Life sciences companies', 'Biotech firms', 'Multiple organizations'.
-                      FORBIDDEN: Breach aggregation sites like 'Databreach+' or descriptions like 'site operated by X'.
-                      If the Intel471 or OSINT source does NOT name the specific victim, do NOT include this incident.",
+      "organization": "REQUIRED: EXACT victim company/organization name from the source data. MUST be a specific named entity like 'Morrison & Foerster LLP', 'City Hospital', 'Acme Manufacturing', 'BioNTech SE', 'Kaiser Permanente'.
+                      EXAMPLES OF CORRECT NAMES: 'Medtronic plc', 'IQVIA Inc.', 'McKesson Corporation', 'Memorial Sloan Kettering', 'Covenant Health'
+                      ABSOLUTELY FORBIDDEN: Generic descriptions like 'Healthcare Sector', 'US Law Firms', 'Life sciences companies', 'Biotech firms', 'Multiple organizations', 'Pharmaceutical company', 'Medical device manufacturer', 'Healthcare provider', 'Supply chain vendor'
+                      FORBIDDEN: Breach aggregation site names like 'Databreach+' or descriptions like 'site operated by X'.
+                      CRITICAL: If the Intel471 report or OSINT article does NOT explicitly name a specific victim organization, SKIP that incident entirely - do NOT create a generic placeholder.",
       "incident_type": "Ransomware/Breach/Data Leak/DDoS/Supply Chain",
       "date": "YYYY-MM-DD from Intel471 breach alert publish date or OSINT article date",
       "source": "Intel471 or Publication name (e.g., 'BleepingComputer')",
-      "osint_citation_number": 1  // Only for OSINT incidents - match to osint_sources_used array. Omit for Intel471.
+      "osint_citation_number": 1  // REQUIRED for OSINT incidents - match to osint_sources_used array index. For Intel471 incidents, omit this field. CRITICAL: If you cannot link an OSINT incident to a specific article in osint_sources_used, DO NOT include that incident - we must be able to cite every incident to a verifiable source.
     }}
   ],
   "osint_sources_used": [
@@ -749,6 +812,92 @@ CRITICAL - OSINT Source Selection and Usage:
 - WRONG: Listing 7 OSINT sources but none are cited anywhere in the report
 - RIGHT: Listing 5 OSINT sources, all cited in executive summary or incidents table
 - If an article provides no unique value or you don't reference it, DO NOT include it in osint_sources_used
+
+CRITICAL - Active Campaigns Extraction (CrowdStrike AND Intel471 Data):
+APPROVED INDUSTRIES (for filtering):
+- Manufacturing
+- Pharmaceutical
+- Healthcare
+- Biotechnology  
+- Medical devices
+- Laboratory environments
+- Research systems
+- Supply chain vendors (when explicitly supporting one of the above industries)
+
+CROWDSTRIKE FILTERING RULES:
+- ONLY include CrowdStrike campaigns where the API record contains "target_industries" that explicitly match one of the approved industries above
+- The target_industries field in CrowdStrike data looks like: ["Healthcare", "Manufacturing", "Pharmaceutical"]
+- DO NOT infer industry relevance from: threat actor name, malware family, CVE, affected technology, attack technique, campaign name, or your general knowledge
+- If target_industries is empty [] or contains only non-approved industries, EXCLUDE that campaign
+
+INTEL471 FILTERING RULES:
+- Intel471 reports do not have a target_industries field
+- ONLY include Intel471 campaigns where the report explicitly mentions approved industries in the "subject", "summary", or "tags" fields
+- Look for explicit phrases in the Intel471 report text like:
+  * "targeting healthcare organizations"
+  * "pharmaceutical companies affected"
+  * "manufacturing sector under attack"
+  * "biotech research institutions"
+  * "medical device manufacturers"
+- DO NOT infer industry relevance from:
+  * Threat actor name
+  * Malware family
+  * Attack technique
+  * Campaign name
+  * Your general cybersecurity knowledge
+- If the Intel471 report does NOT explicitly mention approved industries in its text, EXCLUDE that campaign
+
+TARGETS COLUMN - EXTRACTION PRIORITY:
+1. **Named Organizations** (HIGHEST PRIORITY): If the API record (CrowdStrike or Intel471) explicitly names specific target companies, organizations, hospitals, laboratories, universities, or manufacturers, list those names exactly as provided
+2. **Industries from API/Report Text** (FALLBACK): 
+   - For CrowdStrike: Use exact industry names from the "target_industries" field
+   - For Intel471: Extract industry names explicitly mentioned in "subject" or "summary" text
+3. **DO NOT INVENT**: If neither organizations nor industries are explicitly in the API record or report text, exclude the campaign
+
+EXAMPLE OF CORRECT EXTRACTION:
+
+CrowdStrike Examples:
+- API record has: target_industries: ["Healthcare", "Manufacturing"]
+  → Include campaign, set targets: "Healthcare, Manufacturing"
+  
+- API record has: target_industries: ["Financial Services", "Retail"]
+  → EXCLUDE campaign (not approved industries)
+  
+- API record has: target_industries: [], description mentions "targeting healthcare"
+  → EXCLUDE campaign (target_industries is empty, don't infer from description)
+
+Intel471 Examples:
+- Report subject: "APT41 Campaign Targeting Pharmaceutical Companies in Europe"
+  → Include campaign, set targets: "Pharmaceutical companies in Europe"
+  
+- Report summary: "Ransomware group attacking manufacturing and healthcare sectors"
+  → Include campaign, set targets: "Manufacturing and healthcare sectors"
+  
+- Report subject: "LockBit Ransomware Campaign Against Financial Institutions"
+  → EXCLUDE campaign (financial institutions not in approved list)
+  
+- Report mentions malware family but no industry in text
+  → EXCLUDE campaign (no explicit industry mention)
+
+CAMPAIGN IDENTIFICATION:
+- Extract campaigns from BOTH Intel471 and CrowdStrike data
+- Include BOTH formally named operations AND significant sustained activity patterns
+- A "campaign" is a coordinated series of attacks with a specific objective
+- Examples:
+  * Named operations: "Operation Aurora", "SolarWinds Supply Chain Attack"
+  * Sustained patterns: "APT41 Pharmaceutical Supply Chain Targeting", "Lazarus LinkedIn Social Engineering"
+- DEDUPLICATION: If Intel471 and CrowdStrike report the same campaign:
+  * Merge into ONE entry
+  * List BOTH sources in the "sources" array
+  * Combine intelligence from both (use best actor attribution, merge TTPs)
+- Link campaigns to threat actors in apt_activity array:
+  * Use exact actor names from apt_activity
+  * If campaign has multiple actors, list up to 4
+  * If >4 actors or unclear attribution, use "Multiple actors"
+- **Only campaigns targeting approved industries** (based on explicit API fields or report text)
+- Typical week should have 1-3 campaigns (after filtering for approved industries)
+- If no campaigns meet the filtering criteria, return EMPTY array: []
+
 
 CRITICAL - Industry Incidents (Peer Breaches):
 - BE COMPREHENSIVE: Extract ALL breaches you can find - aim for 10-20 incidents per week

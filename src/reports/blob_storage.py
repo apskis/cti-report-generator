@@ -38,11 +38,16 @@ def upload_to_blob(
     container_name = container_name or report_config.container_name
 
     try:
-        filename = report.get_filename()
-        logger.info(f"Uploading {filename} to Azure Blob Storage: {storage_account_name}/{container_name}")
-
         # Get document bytes
         doc_bytes = report.to_bytes()
+        
+        # Get filename with report week start if available
+        if hasattr(report, '_report_week_start'):
+            filename = report.get_filename(report_week_start=report._report_week_start)
+        else:
+            filename = report.get_filename()
+        
+        logger.info(f"Uploading {filename} to Azure Blob Storage: {storage_account_name}/{container_name}")
 
         # Create BlobServiceClient using account URL
         account_url = f"https://{storage_account_name}.blob.core.windows.net"
@@ -153,7 +158,12 @@ def create_and_upload_report(
 
         # Generate report
         generator.generate(analysis_result)
-        filename = generator.get_filename()
+        
+        # Get filename with report week start if available
+        if hasattr(generator, '_report_week_start'):
+            filename = generator.get_filename(report_week_start=generator._report_week_start)
+        else:
+            filename = generator.get_filename()
 
         # Upload to blob storage
         url = upload_to_blob(generator, storage_account_name, storage_account_key)

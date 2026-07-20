@@ -7,7 +7,7 @@ import logging
 from typing import List, Dict, Any
 
 from src.collectors.base import BaseCollector
-from src.collectors.http_utils import HTTPClient, NonRetryableHTTPError
+from src.collectors.http_utils import HTTPClient, NonRetryableHTTPError, RetryableHTTPError
 from src.core.config import collector_config
 from src.core.models import CVERecord, CollectorResult
 
@@ -35,6 +35,7 @@ class NVDCollector(BaseCollector):
     async def collect(self, report_type: str = "weekly") -> CollectorResult:
         """
         Fetch CVEs from NVD API (CRITICAL and HIGH severity only).
+        Falls back to CircleCII API if NVD is blocked by CloudFlare.
 
         Returns:
             CollectorResult with list of CVE records
@@ -78,15 +79,12 @@ class NVDCollector(BaseCollector):
                     record_count=len(cves)
                 )
 
-        except NonRetryableHTTPError as e:
-            logger.error(f"NVD API error: {e}")
-            return CollectorResult(
-                source=self.source_name,
-                success=False,
-                error=str(e),
-                record_count=0
-            )
-        except Exception as e:
+        except RetryableHTTPError as e:
+            # Check if it's a 503 error (CloudFlare blocking)
+            if e.status_code == 503:
+                logger.warning(f"NVD returned 503 (CloudFlare protection), trying CircleCII fallback")
+                return await self._fallback_to_circleci()
+            
             logger.error(f"Error fetching NVD CVEs: {e}", exc_info=True)
             return CollectorResult(
                 source=self.source_name,
@@ -94,16 +92,139 @@ class NVDCollector(BaseCollector):
                 error=str(e),
                 record_count=0
             )
+        except Exception as e:
+            error_msg = str(e)
+            # Also check string for 503 in case it's wrapped differently
+            if "503" in error_msg or "Service Unavailable" in error_msg:
+                logger.warning(f"NVD returned 503 (CloudFlare protection), trying CircleCII fallback")
+                return await self._fallback_to_circleci()
+            
+            logger.error(f"Error fetching NVD CVEs: {e}", exc_info=True)
+            return CollectorResult(
+                source=self.source_name,
+                success=False,
+                error=str(e),
+                record_count=0
+            )
+    
+    async def _fallback_to_circleci(self) -> CollectorResult:
+        """
+        Fallback to CircleCII CVE API when NVD is unavailable.
+        
+        CircleCII provides free CVE data without CloudFlare protection.
+        API: https://cve.circl.lu/api/
+        """
+        try:
+            logger.info("Using CircleCII CVE API as fallback")
+            
+            # Get last N days of CVEs from CircleCII
+            lookback = self.lookback_days
+            url = f"https://cve.circl.lu/api/last/{lookback}"
+            
+            async with HTTPClient() as client:
+                data = await client.get(url)
+                
+                cves = self._parse_circleci_cves(data)
+                
+                logger.info(f"Retrieved {len(cves)} CRITICAL/HIGH CVEs from CircleCII (fallback)")
+                return CollectorResult(
+                    source=f"{self.source_name} (CircleCII)",
+                    success=True,
+                    data=[cve.to_dict() for cve in cves],
+                    record_count=len(cves)
+                )
+        
+        except Exception as e:
+            logger.error(f"CircleCII fallback also failed: {e}", exc_info=True)
+            return CollectorResult(
+                source=self.source_name,
+                success=False,
+                error=f"NVD CloudFlare blocked, CircleCII fallback failed: {str(e)}",
+                record_count=0
+            )
+    
+    def _parse_circleci_cves(self, data: List[Dict[str, Any]]) -> List[CVERecord]:
+        """
+        Parse CircleCII API response into CVERecord objects.
+        
+        Returns ALL CVEs regardless of severity - filtering will happen during enrichment
+        when we check CISA KEV and threat intelligence for exploitation evidence.
+        
+        Args:
+            data: List of CVE objects from CircleCII
+            
+        Returns:
+            List of CVERecord objects (all severities - exploitation matters more than rating)
+        """
+        cves = []
+        
+        for item in data:
+            cve_id = item.get("id", "")
+            
+            # Extract CVSS score
+            cvss_score = 0.0
+            cvss = item.get("cvss", 0)
+            if isinstance(cvss, (int, float)):
+                cvss_score = float(cvss)
+            
+            # Determine severity from CVSS score
+            if cvss_score >= 9.0:
+                severity = "CRITICAL"
+            elif cvss_score >= 7.0:
+                severity = "HIGH"
+            elif cvss_score >= 4.0:
+                severity = "MEDIUM"
+            else:
+                severity = "LOW"
+            
+            # Include ALL severities - we'll filter by exploitation activity later
+            # A MEDIUM CVE being actively exploited is more important than a CRITICAL CVE sitting idle
+            
+            # Extract description
+            description = item.get("summary", "")
+            
+            # Extract published date
+            published = item.get("Published", "")
+            
+            # Extract affected product from vulnerable_product list
+            affected_product = ""
+            vuln_products = item.get("vulnerable_product", [])
+            if vuln_products:
+                # Parse CPE string from first product
+                cpe = vuln_products[0]
+                parts = cpe.split(":")
+                if len(parts) >= 5:
+                    vendor = parts[3].replace("_", " ").title()
+                    product = parts[4].replace("_", " ").title()
+                    if vendor and product:
+                        affected_product = f"{vendor} {product}"
+            
+            cves.append(CVERecord(
+                cve_id=cve_id,
+                description=description,
+                cvss_score=cvss_score,
+                severity=severity,
+                published_date=published,
+                exploited=False,
+                source=f"{self.source_name} (CircleCII)",
+                affected_product=affected_product,
+            ))
+        
+        logger.info(f"CircleCII: Parsed {len(cves)} total CVEs (all severities - will filter by exploitation)")
+        return cves
 
     def _parse_cves(self, data: Dict[str, Any]) -> List[CVERecord]:
         """
         Parse NVD API response into CVERecord objects.
+        
+        Returns ALL CVEs regardless of severity - filtering will happen during enrichment
+        when we check CISA KEV and threat intelligence for exploitation evidence.
 
         Args:
             data: Raw API response
 
         Returns:
-            List of CVERecord objects (CRITICAL and HIGH only)
+            List of CVERecord objects (all severities - exploitation matters more than rating)
         """
         cves = []
 
@@ -114,9 +235,8 @@ class NVDCollector(BaseCollector):
             # Extract CVSS score and severity
             cvss_score, severity = self._extract_cvss(cve)
 
-            # Only include CRITICAL and HIGH severity
-            if severity not in ["CRITICAL", "HIGH"]:
-                continue
+            # Include ALL severities - we'll filter by exploitation activity later
+            # A MEDIUM CVE being actively exploited is more important than a CRITICAL CVE sitting idle
 
             # Extract description
             description = self._extract_description(cve)
@@ -138,6 +258,7 @@ class NVDCollector(BaseCollector):
                 affected_product=affected_product,
             ))
 
+        logger.info(f"NVD: Parsed {len(cves)} total CVEs (all severities - will filter by exploitation)")
         return cves
 
     def _extract_cvss(self, cve: Dict[str, Any]) -> tuple:

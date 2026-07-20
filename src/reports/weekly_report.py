@@ -79,13 +79,17 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
             # Calculate date range (Monday to Sunday of current week)
             self._calculate_date_range()
+            
+            # Store period_end for filename generation (use current week number, not lookback start)
+            self._report_week_start = self.period_end
 
             # Add sections in order
             self._add_header()
-            self._add_executive_summary(analysis_result)
             self._add_week_at_glance(analysis_result)
+            self._add_executive_summary(analysis_result)
             self._add_vulnerability_exposure(analysis_result)
             self._add_sector_threat_activity(analysis_result)
+            self._add_active_campaigns(analysis_result)
             self._add_industry_incidents(analysis_result)
             self._add_recommended_actions(analysis_result)
             self._add_resources_section(analysis_result)
@@ -160,28 +164,19 @@ class WeeklyReportGenerator(BaseReportGenerator):
         self.doc.add_paragraph()
 
     def _add_executive_summary(self, analysis_result: Dict[str, Any]) -> None:
-        """Add executive summary: bold orange heading, centered white bullet, white body, tight spacing."""
-        logger.info("Adding Executive Summary section")
+        """Add summary: bold orange heading, white body, tight spacing."""
+        logger.info("Adding Summary section")
 
         # Heading 1 style: 14pt, orange
         heading_para = self.doc.add_paragraph()
         heading_para.style = self.doc.styles["Heading 1"]
-        heading_para.paragraph_format.space_before = Pt(0)
-        heading_para.paragraph_format.space_after = Pt(0)
-        heading_run = heading_para.add_run("Executive Summary")
+        heading_para.paragraph_format.space_before = Pt(6)
+        heading_para.paragraph_format.space_after = Pt(4)
+        heading_run = heading_para.add_run("Summary")
         heading_run.font.bold = True
         heading_run.font.color.rgb = BrandColors.ORANGE_DESIGN
         heading_run.font.size = FontSizes.HEADING_1  # 14pt
         heading_run.font.name = "Arial"
-
-        # Centered bullet (•) on its own line (dark gray so visible on white)
-        bullet_para = self.doc.add_paragraph()
-        bullet_run = bullet_para.add_run("•")
-        bullet_run.font.color.rgb = BrandColors.BULLET_DARK
-        bullet_run.font.size = FontSizes.BODY
-        bullet_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        bullet_para.paragraph_format.space_before = Pt(0)
-        bullet_para.paragraph_format.space_after = Pt(0)
 
         # Body: left-aligned, dark text on white, tight paragraph spacing
         summary = analysis_result.get("executive_summary", "No executive summary available.")
@@ -219,7 +214,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Heading 1 style: "This Week at a Glance", 14pt, orange
         glance_para = self.doc.add_paragraph()
         glance_para.style = self.doc.styles["Heading 1"]
-        glance_para.paragraph_format.space_before = Pt(6)
+        glance_para.paragraph_format.space_before = Pt(0)
         glance_para.paragraph_format.space_after = Pt(0)
         r1 = glance_para.add_run("This Week ")
         r1.font.bold = True
@@ -276,10 +271,10 @@ class WeeklyReportGenerator(BaseReportGenerator):
         spacer.paragraph_format.space_after = Pt(20)  # Vertical gap between the two rows of boxes
         self._create_metric_cards(metrics_row2)
 
-        # Minimal gap before next section (no extra padding)
+        # Gap before summary section
         spacer2 = self.doc.add_paragraph()
         spacer2.paragraph_format.space_before = Pt(0)
-        spacer2.paragraph_format.space_after = Pt(6)
+        spacer2.paragraph_format.space_after = Pt(12)
 
     def _create_metric_cards(self, metrics: List[tuple]) -> None:
         """Create a row of metric cards with light gray backgrounds per spec."""
@@ -412,17 +407,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Metric 1: Threat Actors (unique actor names)
         threat_actors_count = len(apt_activity)
         
-        # Metric 2: Active Campaigns (from Intel471 tags or campaign references)
-        # TODO: Extract from Intel471 raw data tags
-        # For now, count campaigns mentioned in APT activity
-        campaigns = set()
-        for actor in apt_activity:
-            intel471_activity = actor.get("intel471_activity", "")
-            # Look for campaign keywords
-            if "campaign" in intel471_activity.lower():
-                # Simplistic extraction - will improve with actual tag parsing
-                campaigns.add(actor.get("actor", ""))
-        active_campaigns_count = len(campaigns) if campaigns else 0
+        # Metric 2: Active Campaigns (from AI-structured campaign data)
+        active_campaigns = analysis_result.get("active_campaigns", [])
+        active_campaigns_count = len(active_campaigns)
         
         # Metric 3: Exploited CVEs (CVEs with exploitation evidence)
         exploited_cves_count = sum(
@@ -653,16 +640,26 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         logger.info(f"Exploited CVEs: {len(exploited_cves)}")
 
-        # Add legend for exploitation indicator
-        legend = self.doc.add_paragraph()
-        legend.space_before = Pt(0)
-        legend.space_after = Pt(6)
+        # Add intro with actionable context
+        intro = self.doc.add_paragraph()
+        intro.space_before = Pt(0)
+        intro.space_after = Pt(6)
         
-        # Add explanation text
-        text_run = legend.add_run("CVEs with confirmed exploitation from threat intelligence (CISA KEV, threat actors, ransomware)")
-        text_run.font.size = Pt(8)
-        text_run.font.color.rgb = BrandColors.TEXT_DARK
-        text_run.font.italic = True
+        intro_run = intro.add_run(
+            "CVEs with confirmed exploitation from threat intelligence (CISA KEV, threat actors, ransomware). "
+        )
+        intro_run.font.size = Pt(8)
+        intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+        intro_run.font.italic = True
+        
+        # Add actionable context
+        action_run = intro.add_run(
+            "Review vulnerability scan results and prioritize patching. "
+            "Check affected systems for signs of exploitation."
+        )
+        action_run.font.size = Pt(8)
+        action_run.font.color.rgb = BrandColors.TEXT_DARK
+        action_run.font.bold = True
 
         # Create table: CVE ID | Affected Product | Exploitation Evidence | Source
         table = self.doc.add_table(rows=1, cols=4)
@@ -704,14 +701,32 @@ class WeeklyReportGenerator(BaseReportGenerator):
             evidence = self._format_exploitation_evidence(cve)
             cells[2].text = evidence
             
-            # Column 3: Source Citations (e.g., [1][2][3])
+            # Column 3: Source Citations - NORMAL SIZE with source names
+            cells[3].text = ""
+            cite_para = cells[3].paragraphs[0]
             source_citations = cve.get("source_citations", [])
             if isinstance(source_citations, list) and source_citations:
-                # Build citation string: [1][2][3]
-                citation_str = "".join([f"[{i}]" for i, src in enumerate(source_citations, 1)])
-                cells[3].text = citation_str
+                # Build citation map to get numbers
+                citation_map = self._build_citation_map(analysis_result)
+                
+                # Add each source with its number
+                for idx, src in enumerate(source_citations):
+                    if idx > 0:
+                        # Add comma separator between sources
+                        cite_para.add_run(", ")
+                    
+                    # Get citation number
+                    cite_num = citation_map.get(src, "?")
+                    
+                    # Add [#] Source (normal size, not superscript)
+                    cite_run = cite_para.add_run(f"[{cite_num}] {src}")
+                    cite_run.font.size = FontSizes.SUBTITLE
+                    cite_run.font.color.rgb = BrandColors.TEXT_DARK
             else:
-                cells[3].text = "[1]"  # Default to NVD
+                # Default to NVD
+                cite_run = cite_para.add_run("[1] NVD")
+                cite_run.font.size = FontSizes.SUBTITLE
+                cite_run.font.color.rgb = BrandColors.TEXT_DARK
 
             # Styling for all columns - white background (no fill)
             for idx in range(4):
@@ -776,15 +791,22 @@ class WeeklyReportGenerator(BaseReportGenerator):
         h = self.doc.add_heading("Sector Threat Activity", level=1)
         self._style_heading_1(h)
 
-        # Intro text
+        # Intro text with actionable context
         intro = self.doc.add_paragraph()
         intro_run = intro.add_run(
             "The following threat actors have been observed targeting organizations "
-            "in the biotech, pharmaceutical, healthcare, manufacturing, and related sectors this week."
+            "in the biotech, pharmaceutical, healthcare, manufacturing, and related sectors this week. "
         )
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+        
+        action_run = intro.add_run(
+            "Review 'What to Monitor' column to identify relevant log sources and detection opportunities."
+        )
+        action_run.font.size = FontSizes.BODY_SMALL
+        action_run.font.bold = True
+        action_run.font.color.rgb = BrandColors.TEXT_DARK
 
         self.doc.add_paragraph()
 
@@ -792,10 +814,10 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         if apt_activity:
             # Create threat actor table per CTI_Weekly_Report_Template_Spec.json
-            table = self.doc.add_table(rows=1, cols=3)
+            table = self.doc.add_table(rows=1, cols=4)
 
             # Header row: orange background, white text
-            headers = ["Origin / Motivation", "Activity Observed", "What to Monitor"]
+            headers = ["Origin / Motivation", "Activity Observed", "What to Monitor", "Source"]
             header_cells = table.rows[0].cells
             for i, header in enumerate(headers):
                 header_cells[i].text = header
@@ -805,6 +827,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 para.runs[0].font.color.rgb = BrandColors.WHITE
                 self._set_cell_shading(header_cells[i], BrandColors.TABLE_HEADER_BG)
                 self._set_cell_borders(header_cells[i], "CCCCCC")
+
+            # Build citation map
+            citation_map = self._build_citation_map(analysis_result)
 
             # Data rows: styled per spec
             for apt in apt_activity:
@@ -833,32 +858,226 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 self._set_cell_shading(cells[2], BrandColors.SECTOR_MONITOR_BG)
                 self._set_cell_borders(cells[2], "CCCCCC")
 
+                # Column 3: Source Citations - NORMAL SIZE [#] Source
+                cells[3].text = ""
+                cite_para = cells[3].paragraphs[0]
+                source_citations = apt.get("source_citations", [])
+                if isinstance(source_citations, list) and source_citations:
+                    # Add each source with its number
+                    for idx, src in enumerate(source_citations):
+                        if idx > 0:
+                            cite_para.add_run(", ")
+                        
+                        # Get citation number
+                        cite_num = citation_map.get(src, "?")
+                        
+                        # Add [#] Source (normal size, not superscript)
+                        cite_run = cite_para.add_run(f"[{cite_num}] {src}")
+                        cite_run.font.size = FontSizes.SUBTITLE
+                        cite_run.font.color.rgb = BrandColors.TEXT_DARK
+                else:
+                    # Default if no source_citations
+                    cite_run = cite_para.add_run("Unknown")
+                    cite_run.font.size = FontSizes.SUBTITLE
+                    cite_run.font.color.rgb = BrandColors.TEXT_DARK
+                
+                self._clear_cell_shading(cells[3])
+                self._set_cell_borders(cells[3], "CCCCCC")
+
                 for cell in cells:
                     for para in cell.paragraphs:
                         for run in para.runs:
                             run.font.size = FontSizes.SUBTITLE
                             run.font.color.rgb = BrandColors.TEXT_DARK
+            
+            # Set column widths
+            table.columns[0].width = Inches(1.3)  # Origin/Motivation
+            table.columns[1].width = Inches(2.5)  # Activity Observed
+            table.columns[2].width = Inches(2.0)  # What to Monitor
+            table.columns[3].width = Inches(0.9)  # Source
         else:
             self.doc.add_paragraph("No threat actor activity data available.")
 
         self.doc.add_paragraph()
 
-    def _add_industry_incidents(self, analysis_result: Dict[str, Any]) -> None:
-        """Add Industry Incidents section - company breaches from OSINT sources."""
-        logger.info("Adding Industry Incidents section")
+    def _add_active_campaigns(self, analysis_result: Dict[str, Any]) -> None:
+        """Add Active Campaigns section with campaign details table."""
+        logger.info("Adding Active Campaigns section")
 
-        h = self.doc.add_heading("Industry Incidents", level=1)
+        h = self.doc.add_heading("Active Campaigns", level=1)
         self._style_heading_1(h)
 
         # Intro text
         intro = self.doc.add_paragraph()
         intro_run = intro.add_run(
-            "Notable security incidents affecting organizations in similar sectors or technology stacks, "
-            "observed from underground intelligence, public breach disclosures, and security news sources."
+            "Coordinated attack campaigns observed this week from threat intelligence sources. "
+            "Campaigns represent sustained, targeted operations by threat actors with specific objectives."
         )
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+
+        self.doc.add_paragraph()
+
+        campaigns = analysis_result.get("active_campaigns", [])
+
+        if campaigns:
+            # Create campaigns table
+            # Columns: Campaign Name | Threat Actor(s) | Objective | Targets | TTPs | Timeline | Source
+            table = self.doc.add_table(rows=1, cols=7)
+
+            # Header row: orange background, white text
+            headers = ["Campaign Name", "Threat Actor(s)", "Objective", "Targets", "TTPs", "Timeline", "Source"]
+            header_cells = table.rows[0].cells
+            for i, header in enumerate(headers):
+                header_cells[i].text = header
+                para = header_cells[i].paragraphs[0]
+                para.runs[0].font.bold = True
+                para.runs[0].font.size = FontSizes.SUBTITLE
+                para.runs[0].font.color.rgb = BrandColors.WHITE
+                self._set_cell_shading(header_cells[i], BrandColors.TABLE_HEADER_BG)
+                self._set_cell_borders(header_cells[i], "CCCCCC")
+
+            # Build citation map
+            citation_map = self._build_citation_map(analysis_result)
+
+            # Data rows
+            for campaign in campaigns:
+                row = table.add_row()
+                cells = row.cells
+
+                # Column 0: Campaign Name
+                campaign_name = campaign.get("campaign_name", "Unknown Campaign")
+                cells[0].text = campaign_name
+                self._clear_cell_shading(cells[0])
+                self._set_cell_borders(cells[0], "CCCCCC")
+
+                # Column 1: Threat Actor(s) - handle list of up to 4, or "Multiple actors"
+                actors = campaign.get("threat_actors", [])
+                if isinstance(actors, list):
+                    if len(actors) > 4:
+                        actor_text = "Multiple actors"
+                    else:
+                        actor_text = ", ".join(actors) if actors else "Multiple actors"
+                else:
+                    actor_text = str(actors) if actors else "Multiple actors"
+                cells[1].text = actor_text
+                self._clear_cell_shading(cells[1])
+                self._set_cell_borders(cells[1], "CCCCCC")
+
+                # Column 2: Objective
+                objective = campaign.get("objective", "")
+                cells[2].text = objective
+                self._clear_cell_shading(cells[2])
+                self._set_cell_borders(cells[2], "CCCCCC")
+
+                # Column 3: Targets
+                targets = campaign.get("targets", "")
+                cells[3].text = targets
+                self._clear_cell_shading(cells[3])
+                self._set_cell_borders(cells[3], "CCCCCC")
+
+                # Column 4: TTPs - join list
+                ttps = campaign.get("ttps", [])
+                if isinstance(ttps, list):
+                    ttps_text = ", ".join(ttps[:4])  # Limit to 4 TTPs for readability
+                else:
+                    ttps_text = str(ttps) if ttps else ""
+                cells[4].text = ttps_text
+                self._clear_cell_shading(cells[4])
+                self._set_cell_borders(cells[4], "CCCCCC")
+
+                # Column 5: Timeline
+                timeline = campaign.get("timeline", "Active this week")
+                cells[5].text = timeline
+                self._clear_cell_shading(cells[5])
+                self._set_cell_borders(cells[5], "CCCCCC")
+
+                # Column 6: Source Citations - NORMAL SIZE [#] Source
+                cells[6].text = ""
+                cite_para = cells[6].paragraphs[0]
+                source_citations = campaign.get("sources", [])
+                if isinstance(source_citations, list) and source_citations:
+                    # Add each source with its number
+                    for idx, src in enumerate(source_citations):
+                        if idx > 0:
+                            cite_para.add_run(", ")
+                        
+                        # Get citation number - must be a real API source
+                        cite_num = citation_map.get(src)
+                        
+                        if cite_num:
+                            # Add [#] Source (normal size, not superscript)
+                            cite_run = cite_para.add_run(f"[{cite_num}] {src}")
+                            cite_run.font.size = FontSizes.SUBTITLE
+                            cite_run.font.color.rgb = BrandColors.TEXT_DARK
+                        else:
+                            # No valid citation - log warning and show in gray
+                            logger.warning(f"Campaign '{campaign.get('campaign_name')}' cites unverifiable source: {src}")
+                            cite_run = cite_para.add_run(f"{src}")
+                            cite_run.font.size = FontSizes.SUBTITLE
+                            cite_run.font.color.rgb = BrandColors.GRAY_MEDIUM  # Gray to indicate issue
+                else:
+                    # Default if no source_citations
+                    cite_run = cite_para.add_run("Unknown")
+                    cite_run.font.size = FontSizes.SUBTITLE
+                    cite_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+                
+                self._clear_cell_shading(cells[6])
+                self._set_cell_borders(cells[6], "CCCCCC")
+
+                # Style all cells
+                for cell in cells:
+                    for para in cell.paragraphs:
+                        for run in para.runs:
+                            run.font.size = FontSizes.SUBTITLE
+                            run.font.color.rgb = BrandColors.TEXT_DARK
+
+            # Set column widths for readability
+            # Campaign Name: wider, Actors: medium, others: proportional
+            table.columns[0].width = Inches(1.3)  # Campaign Name
+            table.columns[1].width = Inches(1.0)  # Threat Actor(s)
+            table.columns[2].width = Inches(1.3)  # Objective
+            table.columns[3].width = Inches(1.1)  # Targets
+            table.columns[4].width = Inches(1.0)  # TTPs
+            table.columns[5].width = Inches(0.8)  # Timeline
+            table.columns[6].width = Inches(0.9)  # Source
+        else:
+            # No campaigns observed
+            no_campaigns = self.doc.add_paragraph()
+            no_campaigns_run = no_campaigns.add_run(
+                "No named campaigns observed this week. See Sector Threat Activity for general threat actor behavior."
+            )
+            no_campaigns_run.font.size = FontSizes.BODY
+            no_campaigns_run.font.italic = True
+            no_campaigns_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+
+        self.doc.add_paragraph()
+
+    def _add_industry_incidents(self, analysis_result: Dict[str, Any]) -> None:
+        """Add Peer Incidents section - company breaches from OSINT sources."""
+        logger.info("Adding Peer Incidents section")
+
+        h = self.doc.add_heading("Peer Incidents", level=1)
+        self._style_heading_1(h)
+
+        # Intro text with actionable context
+        intro = self.doc.add_paragraph()
+        intro_run = intro.add_run(
+            "Notable security incidents affecting organizations in similar sectors or technology stacks, "
+            "observed from underground intelligence, public breach disclosures, and security news sources. "
+        )
+        intro_run.font.size = FontSizes.BODY_SMALL
+        intro_run.font.italic = True
+        intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+        
+        action_run = intro.add_run(
+            "Review attack vectors to identify relevant log sources: authentication logs for Credential Harvesting, "
+            "web logs for Remote Code Execution, network logs for C2 Communication."
+        )
+        action_run.font.size = FontSizes.BODY_SMALL
+        action_run.font.bold = True
+        action_run.font.color.rgb = BrandColors.TEXT_DARK
 
         self.doc.add_paragraph()
 
@@ -919,8 +1138,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 org = incident.get("organization", "Unknown")
                 cells[0].text = org[:40]  # Truncate long names
                 
-                # Column 1: Incident type
-                cells[1].text = incident.get("incident_type", "Breach")
+                # Column 1: Incident type (using SOC-friendly attack vectors)
+                incident_type = incident.get("incident_type", "Breach")
+                # Map to VERIS-aligned attack vectors for SOC consumption
+                incident_type = self._normalize_incident_type(incident_type)
+                cells[1].text = incident_type
                 
                 # Column 2: Date
                 date = incident.get("date", "Unknown")
@@ -945,12 +1167,29 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 # Check if this is an Intel471 source
                 intel471_citation = citation_map.get("Intel471")
                 
+                # Check for generic OSINT fallback
+                osint_citation = citation_map.get("OSINT")
+                
+                # Column 3: Source - NORMAL SIZE [#] SourceName (not superscript in table column)
+                cells[3].text = ""
+                source_para = cells[3].paragraphs[0]
+                
                 if final_citation_num:
-                    cells[3].text = f"[{final_citation_num}] {source_name[:20]}"
+                    # Normal size: [#] SourceName
+                    cite_run = source_para.add_run(f"[{final_citation_num}] {source_name[:20]}")
+                    cite_run.font.size = FontSizes.SUBTITLE
+                    cite_run.font.color.rgb = BrandColors.TEXT_DARK
                 elif "Intel471" in source_name and intel471_citation:
-                    cells[3].text = f"[{intel471_citation}] Intel471"
+                    # Normal size: [#] Intel471
+                    cite_run = source_para.add_run(f"[{intel471_citation}] Intel471")
+                    cite_run.font.size = FontSizes.SUBTITLE
+                    cite_run.font.color.rgb = BrandColors.TEXT_DARK
                 else:
-                    cells[3].text = source_name[:25]
+                    # No valid citation - log warning and show source without number
+                    logger.warning(f"Peer incident for {org} has no valid citation source: {source_name}")
+                    source_text_run = source_para.add_run(source_name[:25])
+                    source_text_run.font.size = FontSizes.SUBTITLE
+                    source_text_run.font.color.rgb = BrandColors.GRAY_MEDIUM  # Gray to indicate missing citation
 
                 # Styling for all columns
                 for idx in range(4):
@@ -1020,16 +1259,22 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 # Try to extract organization name from title
                 org_name = self._extract_organization_from_title(source.get("title", ""))
                 
-                # Determine incident type
-                incident_type = "Breach"
+                # Determine incident type (VERIS-aligned attack vectors)
+                incident_type = "Credential Harvesting"  # Default
                 if "ransomware" in title:
                     incident_type = "Ransomware"
                 elif "ddos" in title or "denial of service" in title:
                     incident_type = "DDoS"
-                elif "data leak" in title:
-                    incident_type = "Data Leak"
+                elif "data leak" in title or "data breach" in title:
+                    incident_type = "Data Exfiltration"
                 elif "supply chain" in title:
-                    incident_type = "Supply Chain"
+                    incident_type = "Supply Chain Attack"
+                elif "phishing" in title:
+                    incident_type = "Phishing"
+                elif "malware" in title:
+                    incident_type = "Malware Infection"
+                elif "exploit" in title or "vulnerability" in title:
+                    incident_type = "Remote Code Execution"
                 
                 # Extract source domain from URL
                 source_name = "OSINT"
@@ -1095,6 +1340,38 @@ class WeeklyReportGenerator(BaseReportGenerator):
             return " ".join(words[:3]).title()[:40]
         
         return "Unknown Organization"
+    
+    def _normalize_incident_type(self, incident_type: str) -> str:
+        """Normalize incident types to SOC-friendly VERIS-aligned attack vectors."""
+        incident_type_lower = incident_type.lower()
+        
+        # Map common incident types to VERIS attack vectors
+        if "ransomware" in incident_type_lower:
+            return "Ransomware"
+        elif "credential" in incident_type_lower or "harvesting" in incident_type_lower:
+            return "Credential Harvesting"
+        elif "phishing" in incident_type_lower:
+            return "Phishing"
+        elif "malware" in incident_type_lower:
+            return "Malware Infection"
+        elif "ddos" in incident_type_lower or "denial" in incident_type_lower:
+            return "DDoS"
+        elif "data leak" in incident_type_lower or "exfiltration" in incident_type_lower:
+            return "Data Exfiltration"
+        elif "supply chain" in incident_type_lower:
+            return "Supply Chain Attack"
+        elif "exploit" in incident_type_lower or "rce" in incident_type_lower or "remote code" in incident_type_lower:
+            return "Remote Code Execution"
+        elif "injection" in incident_type_lower or "sqli" in incident_type_lower:
+            return "Code Injection"
+        elif "c2" in incident_type_lower or "command and control" in incident_type_lower:
+            return "C2 Communication"
+        elif "brute" in incident_type_lower or "force" in incident_type_lower:
+            return "Brute Force"
+        elif "breach" in incident_type_lower:
+            return "Unauthorized Access"
+        else:
+            return incident_type  # Return as-is if no mapping
 
     def _add_recommended_actions(self, analysis_result: Dict[str, Any]) -> None:
         """Add recommended actions section."""
@@ -1260,11 +1537,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
         for short_name, full_name in primary_sources:
             para = self.doc.add_paragraph(style="List Bullet")
             
-            # Get citation number from map
+            # Get citation number from map - NORMAL SIZE BOLD (not superscript)
             citation_num = citation_map.get(short_name, "?")
             cite_run = para.add_run(f"[{citation_num}] ")
-            cite_run.font.size = FontSizes.BODY_SMALL
             cite_run.font.bold = True
+            cite_run.font.size = FontSizes.BODY_SMALL
             cite_run.font.color.rgb = BrandColors.TEXT_DARK
             
             # Add source name
@@ -1292,11 +1569,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
                         # Create paragraph with bullet
                         para = self.doc.add_paragraph(style="List Bullet")
                         
-                        # Get citation number from map (consistent with Industry Incidents)
+                        # Get citation number from map - NORMAL SIZE BOLD (not superscript)
                         citation_num = citation_map.get(title, citation_map.get(url, "?"))
                         cite_run = para.add_run(f"[{citation_num}] ")
-                        cite_run.font.size = FontSizes.FOOTNOTE
                         cite_run.font.bold = True
+                        cite_run.font.size = FontSizes.FOOTNOTE
                         cite_run.font.color.rgb = BrandColors.TEXT_DARK
                         
                         # Add hyperlink for the title
@@ -1373,16 +1650,27 @@ class WeeklyReportGenerator(BaseReportGenerator):
         self.doc.add_paragraph()
 
     def _add_footer(self) -> None:
-        """Add footer with contact info."""
+        """Add footer with contact info and ServiceNow hyperlink."""
         logger.info("Adding footer")
 
         # Contact info
         contact = self.doc.add_paragraph()
-        contact_run = contact.add_run(
-            "Questions or suspicious activity: secops@illumina.com | ServiceNow"
-        )
+        contact.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Add text: "Questions or suspicious activity: secops@illumina.com | "
+        contact_run = contact.add_run("Questions or suspicious activity: secops@illumina.com | ")
         contact_run.font.size = FontSizes.BODY_SMALL
         contact_run.font.bold = True
-        contact.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        contact_run.font.color.rgb = BrandColors.TEXT_DARK
+        
+        # Add ServiceNow as hyperlink
+        servicenow_url = "https://illumina.service-now.com/esp?id=sc_cat_item&sys_id=2498318b4fee53c0f628d0af0310c75d"
+        self._add_hyperlink(contact, "ServiceNow", servicenow_url)
+        
+        # Apply font styling to hyperlink
+        for run in contact.runs:
+            if run != contact_run:  # Style the hyperlink run
+                run.font.size = FontSizes.BODY_SMALL
+                run.font.bold = True
 
         self.doc.add_paragraph()

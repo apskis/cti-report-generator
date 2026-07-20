@@ -221,14 +221,9 @@ def _print_gate_summary(session: dict, gate_info: dict, report_type: str) -> Non
 def get_mock_weekly_analysis() -> dict:
     """Generate mock data for weekly report testing."""
     return {
-        "executive_summary": """This week's threat intelligence collection identified 8 actively exploited vulnerabilities \
-from CISA KEV and underground intelligence sources. Three APT groups with known interest in the life sciences sector \
-were observed conducting campaigns targeting pharmaceutical supply chains.
+        "executive_summary": """This week's threat intelligence collection identified 8 actively exploited vulnerabilities from CISA KEV and underground intelligence sources. Three APT groups with known interest in the life sciences sector were observed conducting campaigns targeting pharmaceutical supply chains.
 
-Industry peer incidents this week include ransomware attacks against two biotech companies and a data breach at a \
-healthcare supply chain vendor. No direct threats to the organization were identified; however, the exploited CVEs \
-and threat actor TTPs are consistent with those historically targeting genomics and biotech companies. \
-Immediate attention is recommended for CVE-2026-22907 (Grafana) which has active exploitation confirmed by Intel471.""",
+Industry peer incidents this week include ransomware attacks against BioNTech [1] and Kaiser Permanente [3], plus a data breach at McKesson Corporation [2]. No direct threats to the organization were identified; however, the exploited CVEs and threat actor TTPs are consistent with those historically targeting genomics and biotech companies. Immediate attention is recommended for CVE-2026-22907 (Grafana) which has active exploitation confirmed by Intel471 [3]. CrowdStrike detected APT29 targeting VMware vCenter vulnerabilities [4].""",
         "statistics": {
             "threat_actors": 3,
             "active_campaigns": 2,
@@ -247,7 +242,8 @@ Immediate attention is recommended for CVE-2026-22907 (Grafana) which has active
                 "actively_exploited": True,
                 "in_cisa_kev": True,
                 "targeted_by_actors": "APT41",
-                "exploited_by": "CISA KEV; Underground forums (Intel471)"
+                "exploited_by": "CISA KEV; Underground forums (Intel471)",
+                "source_citations": ["NVD", "CISA KEV", "Intel471"]
             },
             {
                 "cve_id": "CVE-2026-0713",
@@ -267,7 +263,8 @@ Immediate attention is recommended for CVE-2026-22907 (Grafana) which has active
                 "actively_exploited": True,
                 "in_cisa_kev": False,
                 "targeted_by_actors": "APT29",
-                "exploited_by": "APT29 (CrowdStrike)"
+                "exploited_by": "APT29 (CrowdStrike)",
+                "source_citations": ["NVD", "CrowdStrike"]
             },
             {
                 "cve_id": "CVE-2025-12345",
@@ -330,7 +327,8 @@ Immediate attention is recommended for CVE-2026-22907 (Grafana) which has active
                 "what_to_monitor": "Software update anomalies; unexpected binary modifications; connections to Asia-Pacific IPs",
                 "intel471_activity": "Intel471 Report 4a5b6c7d: APT41 selling access to pharmaceutical networks on underground forum",
                 "intel471_report_uid": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
-                "crowdstrike_activity": "CrowdStrike detected APT41 targeting FortiOS and Grafana vulnerabilities"
+                "crowdstrike_activity": "CrowdStrike detected APT41 targeting FortiOS and Grafana vulnerabilities",
+                "source_citations": ["Intel471", "CrowdStrike"]
             },
             {
                 "actor": "Lazarus Group",
@@ -341,7 +339,8 @@ Immediate attention is recommended for CVE-2026-22907 (Grafana) which has active
                 "what_to_monitor": "Suspicious LinkedIn outreach to research staff; unusual file downloads from cloud storage",
                 "intel471_activity": "",
                 "intel471_report_uid": "",
-                "crowdstrike_activity": "CrowdStrike observed Lazarus Group phishing campaigns targeting life sciences sector"
+                "crowdstrike_activity": "CrowdStrike observed Lazarus Group phishing campaigns targeting life sciences sector",
+                "source_citations": ["CrowdStrike"]
             },
             {
                 "actor": "LockBit Affiliates",
@@ -352,7 +351,28 @@ Immediate attention is recommended for CVE-2026-22907 (Grafana) which has active
                 "what_to_monitor": "Unusual file encryption activity; VSS deletion; lateral movement from DMZ",
                 "intel471_activity": "Intel471 Report 9z8y7x6w: LockBit affiliates advertising access to biotech companies",
                 "intel471_report_uid": "9z8y7x6w-5v4u-3t2s-1r0q-ponmlkjihgfe",
-                "crowdstrike_activity": ""
+                "crowdstrike_activity": "",
+                "source_citations": ["Intel471"]
+            },
+        ],
+        "active_campaigns": [
+            {
+                "campaign_name": "Operation PharmaDrain",
+                "threat_actors": ["APT41"],
+                "objective": "Pharmaceutical IP theft and supply chain compromise",
+                "targets": "Pharmaceutical manufacturers and biotech research firms",
+                "ttps": ["Software Supply Chain", "Credential Access", "Data Exfiltration"],
+                "timeline": "May 2026 - Present",
+                "sources": ["Intel471", "CrowdStrike"]
+            },
+            {
+                "campaign_name": "BioSpear Campaign",
+                "threat_actors": ["Lazarus Group"],
+                "objective": "Social engineering for initial access and credential theft",
+                "targets": "Life sciences researchers and executives",
+                "ttps": ["Spearphishing", "LinkedIn Social Engineering", "Malware Delivery"],
+                "timeline": "April - May 2026",
+                "sources": ["CrowdStrike"]
             },
         ],
         "recommendations": [
@@ -361,6 +381,43 @@ Immediate attention is recommended for CVE-2026-22907 (Grafana) which has active
             "Brief research and executive staff on LinkedIn social engineering campaigns by Lazarus Group",
             "Verify CrowdStrike has latest behavioral IOAs enabled for ransomware and APT detection",
             "Monitor industry peer incidents for emerging attack patterns affecting biotech organizations",
+        ],
+        "industry_incidents": [
+            {
+                "organization": "BioNTech SE",
+                "incident_type": "Ransomware",
+                "date": "2026-05-25",
+                "source": "BleepingComputer",
+                "osint_citation_number": 1
+            },
+            {
+                "organization": "McKesson Corporation",
+                "incident_type": "Data Exfiltration",
+                "date": "2026-05-23",
+                "source": "SecurityWeek",
+                "osint_citation_number": 2
+            },
+            {
+                "organization": "Kaiser Permanente",
+                "incident_type": "Ransomware",
+                "date": "2026-05-22",
+                "source": "Healthcare IT News",
+                "osint_citation_number": 5
+            },
+            {
+                "organization": "IQVIA Inc.",
+                "incident_type": "Credential Harvesting",
+                "date": "2026-05-20",
+                "source": "Dark Reading",
+                "osint_citation_number": 4
+            },
+            {
+                "organization": "Medtronic plc",
+                "incident_type": "Remote Code Execution",
+                "date": "2026-05-19",
+                "source": "SecurityWeek",
+                "osint_citation_number": 2
+            },
         ],
         "osint_sources_used": [
             {
@@ -608,8 +665,8 @@ async def generate_report_local(
     """
     from src.reports import get_report_generator
 
-    # Get the appropriate report generator
-    generator = get_report_generator(report_type)
+    # Get the appropriate report generator (mark as mock if using mock data)
+    generator = get_report_generator(report_type, use_mock_data=use_mock)
     if generator is None:
         raise ValueError(f"Unknown report type: {report_type}")
 
@@ -766,7 +823,13 @@ async def generate_report_local(
     # Always save a local copy
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    filename = generator.get_filename()
+    
+    # Get filename with report week start if available
+    if hasattr(generator, '_report_week_start'):
+        filename = generator.get_filename(report_week_start=generator._report_week_start)
+    else:
+        filename = generator.get_filename()
+    
     filepath = output_path / filename
     doc.save(str(filepath))
     print_status(f"Saved locally: {filepath}", "success")
@@ -909,12 +972,22 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
     data_by_source = get_data_by_source(collector_results)
 
     # Show collection results
-    for source, data in data_by_source.items():
-        count = len(data)
-        if count > 0:
-            print_status(f"{source}: {count} records", "success")
+    for source, result in collector_results.items():
+        if result.success:
+            count = result.record_count
+            # Check if CircleCII fallback was used
+            if "CircleCII" in result.source:
+                if count > 0:
+                    print_status(f"{source}: {count} records (via CircleCII fallback)", "success")
+                else:
+                    print_status(f"{source}: CircleCII fallback active (0 CRITICAL/HIGH CVEs found)", "warning")
+            else:
+                if count > 0:
+                    print_status(f"{source}: {count} records", "success")
+                else:
+                    print_status(f"{source}: No data", "warning")
         else:
-            print_status(f"{source}: No data", "warning")
+            print_status(f"{source}: Failed - {result.error[:50]}", "error")
     
     # Enrich data
     try:

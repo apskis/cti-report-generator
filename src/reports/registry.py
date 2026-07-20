@@ -32,12 +32,13 @@ def register_report_generator(report_type: str):
     return decorator
 
 
-def get_report_generator(report_type: str) -> BaseReportGenerator | None:
+def get_report_generator(report_type: str, use_mock_data: bool = False) -> BaseReportGenerator | None:
     """
     Get a report generator instance by type name.
 
     Args:
         report_type: The report type identifier (e.g., "weekly", "monthly")
+        use_mock_data: Whether this report uses mock data (affects filename)
 
     Returns:
         Instantiated report generator, or None if not found
@@ -47,7 +48,7 @@ def get_report_generator(report_type: str) -> BaseReportGenerator | None:
         logger.error(f"Unknown report type: {report_type}. Available: {list(REPORT_REGISTRY.keys())}")
         return None
 
-    return generator_class()
+    return generator_class(use_mock_data=use_mock_data)
 
 
 def list_report_types() -> list[str]:

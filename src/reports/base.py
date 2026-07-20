@@ -121,9 +121,10 @@ class BaseReportGenerator(ABC):
     - generate(): Method to generate the report document
     """
 
-    def __init__(self):
+    def __init__(self, use_mock_data: bool = False):
         self.doc: Document | None = None
         self.created_at = datetime.now()
+        self.use_mock_data = use_mock_data  # Track if using mock data for filename
 
     @property
     @abstractmethod
@@ -150,10 +151,29 @@ class BaseReportGenerator(ABC):
         """
         pass
 
-    def get_filename(self) -> str:
-        """Generate the filename for this report."""
-        date_str = self.created_at.strftime("%Y-%m-%d")
-        return f"{self.filename_prefix}_{date_str}.docx"
+    def get_filename(self, report_week_start: datetime = None) -> str:
+        """
+        Generate the filename for this report.
+        
+        Args:
+            report_week_start: Optional date representing the start of the reporting week.
+                             If provided, the ISO week number is used instead of a date.
+        
+        Returns:
+            Filename string in format: {prefix}_Week{WW}_MOCK.docx or {prefix}_Week{WW}.docx
+        """
+        # Use report week start if provided, otherwise use creation date
+        date_to_use = report_week_start if report_week_start else self.created_at
+        
+        # Get ISO week number and year
+        iso_calendar = date_to_use.isocalendar()
+        year = iso_calendar[0]
+        week = iso_calendar[1]
+        
+        # Add _MOCK suffix if using mock data
+        mock_suffix = "_MOCK" if self.use_mock_data else ""
+        
+        return f"{self.filename_prefix}_{year}_Week{week:02d}{mock_suffix}.docx"
 
     def to_bytes(self) -> bytes:
         """Convert the document to bytes for upload."""
