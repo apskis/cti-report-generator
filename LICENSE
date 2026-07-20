@@ -1,0 +1,16 @@
+Copyright (c) 2026. All rights reserved.
+
+This software and associated documentation files (the "Software") are
+proprietary and confidential. Unauthorized copying, distribution, modification,
+public display, or public performance of the Software, via any medium, is
+strictly prohibited without the prior written permission of the copyright
+holder.
+
+The Software is provided "AS IS", without warranty of any kind, express or
+implied, including but not limited to the warranties of merchantability,
+fitness for a particular purpose, and noninfringement.
+
+NOTE: This is a conservative default for an internal/proprietary tool. Replace
+this file with your organization's actual license (and the correct copyright
+holder) — or an open-source license (e.g. MIT/Apache-2.0) if you intend to
+release it publicly.

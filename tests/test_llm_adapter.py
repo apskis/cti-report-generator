@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.gates.llm_adapter import StructuralLLMClient, _detect_gate_from_prompt
+from src.gates.llm_adapter import StructuralLLMClient, _detect_gate_from_prompt, build_gate_llm_client
 
 
 def test_detect_gate_from_prompt():
@@ -36,3 +36,17 @@ def test_complete_unknown_gate_defaults_to_gate1_marker():
     client = StructuralLLMClient()
     out = client.complete("system", "no gate marker")
     assert out.strip().endswith("GATE 1 COMPLETE. AWAITING CLEARANCE.")
+
+
+def test_build_gate_llm_client_defaults_to_structural(monkeypatch):
+    monkeypatch.delenv("GATE_LLM_MODE", raising=False)
+    assert isinstance(build_gate_llm_client(None), StructuralLLMClient)
+    # Even with creds, structural mode (the default) is used.
+    creds = {"openai_endpoint": "https://x.openai.azure.com", "openai_key": "k"}
+    assert isinstance(build_gate_llm_client(creds), StructuralLLMClient)
+
+
+def test_build_gate_llm_client_azure_without_creds_falls_back(monkeypatch):
+    monkeypatch.setenv("GATE_LLM_MODE", "azure")
+    # No credentials -> falls back to the structural stub rather than failing.
+    assert isinstance(build_gate_llm_client(None), StructuralLLMClient)

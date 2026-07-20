@@ -88,10 +88,10 @@ class IndustryFilterConfig:
 class EnrichmentConfig:
     """Configuration for data enrichment."""
 
-    # Enable/disable web search for filling data gaps
-    # When enabled, will search the web for missing CVE product information
-    # When disabled, uses only CISA KEV catalog and pattern matching
-    enable_web_search: bool = True
+    # Enable/disable web search for filling data gaps.
+    # NOTE: web search is not yet implemented (see cve_enricher), so this defaults
+    # to False; enrichment uses only the CISA KEV catalog and pattern matching.
+    enable_web_search: bool = os.getenv("ENABLE_WEB_SEARCH", "false").lower() in {"1", "true", "yes"}
 
     # Web search settings
     web_search_timeout_seconds: int = 5
@@ -185,6 +185,8 @@ class CustomerProfile:
     brand_color_hex: str = "005DAA"  # hex without leading '#'
     security_contact: str = "secops@illumina.com"
     osint_source_name: str = "Illumina-OSINT"
+    # Short industry/sector descriptor used to ground strategic analysis prompts.
+    industry: str = "genomics, life sciences, and precision manufacturing"
     # Lowercase keywords (company name + product/platform names) used to detect
     # company-specific grounding in geopolitical relevance bullets.
     product_keywords: tuple[str, ...] = (
@@ -273,17 +275,17 @@ def get_feature_config() -> FeatureConfig:
     """
     config = _load_features_from_yaml()
 
-    # Environment variable override for gate framework
-    env_gate_enabled = os.environ.get("ENABLE_GATE_FRAMEWORK", "").lower() in {"1", "true", "yes"}
-    if env_gate_enabled:
-        # Can't modify frozen dataclass, so create new instance
-        return FeatureConfig(gate_framework_enabled=True, gate_framework_interactive=config.gate_framework_interactive)
+    # Environment variable override for the gate framework (bidirectional):
+    # ENABLE_GATE_FRAMEWORK can force it on OR off, taking precedence over YAML.
+    env_val = os.environ.get("ENABLE_GATE_FRAMEWORK", "").strip().lower()
+    if env_val:
+        forced = env_val in {"1", "true", "yes"}
+        # Can't mutate a frozen dataclass, so create a new instance.
+        return FeatureConfig(
+            gate_framework_enabled=forced, gate_framework_interactive=config.gate_framework_interactive
+        )
 
     return config
-
-
-# Lazy-loaded feature config (call get_feature_config() to get current state)
-feature_config = get_feature_config()
 
 
 _CUSTOMER_PROFILE_YAML = Path(__file__).resolve().parent.parent.parent / "config" / "customer_profile.yaml"
@@ -303,6 +305,7 @@ def _load_customer_profile() -> CustomerProfile:
         brand_color_hex=str(cfg.get("brand_color_hex", defaults.brand_color_hex)),
         security_contact=cfg.get("security_contact", defaults.security_contact),
         osint_source_name=cfg.get("osint_source_name", defaults.osint_source_name),
+        industry=cfg.get("industry", defaults.industry),
         product_keywords=tuple(k.lower() for k in keywords) if keywords else defaults.product_keywords,
     )
 

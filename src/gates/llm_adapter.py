@@ -1,22 +1,33 @@
 """LLM client adapters for the gate framework.
 
 The gate modules expect an injected client with a `.complete(system_prompt,
-user_prompt) -> str` method. This module provides:
+user_prompt) -> str` method. This module provides two implementations:
 
-- StructuralLLMClient: a deterministic stub that returns well-formed gate
-  completion markers without calling any external API. Used by the automated
-  pipeline path so the Python structural fences run end-to-end without an
-  Azure OpenAI round-trip. Real GPT-4.1 inference is intended for the
-  interactive analyst workflow described in CURSOR_CTI_REPORTING.md.
+- StructuralLLMClient (default): a deterministic stub that returns well-formed
+  gate completion markers without calling any external API. IMPORTANT: with the
+  stub, the gate framework's value is its **deterministic Python checks**
+  (statistics/timestamp validation, IOC extraction, source audit, structural
+  escape detection). The LLM `.complete()` steps are placeholders that return
+  canned, already-valid structure — they do not perform real AI validation.
 
-A real Azure OpenAI adapter can be added here later; it must expose the same
-`.complete` interface and is responsible for synchronizing its async client
-behind a synchronous facade if the orchestrator is invoked from sync code.
+- AzureOpenAILLMClient (opt-in, EXPERIMENTAL): a real Azure OpenAI adapter
+  exposing the same synchronous `.complete` interface. Selected by setting the
+  GATE_LLM_MODE=azure environment variable (default is "structural"). It is
+  marked experimental because the gate prompts were tuned for the structural
+  stub's exact marker/table output; a real model's responses will likely need
+  prompt-tuning and live end-to-end validation before they reliably pass the
+  escape detectors. Default behavior is unchanged.
+
+Use `build_gate_llm_client(credentials)` to construct the configured client.
 """
 
 from __future__ import annotations
 
+import logging
+import os
 import re
+
+logger = logging.getLogger(__name__)
 
 _GATE_MARKER_RE = re.compile(r"GATE\s+([0-9]+B?)\s+", re.IGNORECASE)
 
@@ -72,3 +83,53 @@ class StructuralLLMClient:
         gate_id = _detect_gate_from_prompt(user_prompt)
         body = self._STUBS.get(gate_id, "")
         return f"{body}\nGATE {gate_id} COMPLETE. AWAITING CLEARANCE."
+
+
+class AzureOpenAILLMClient:
+    """Opt-in real Azure OpenAI adapter with a synchronous `.complete` interface.
+
+    EXPERIMENTAL: the gate prompts were designed for StructuralLLMClient's exact
+    output; expect to tune prompts and validate end-to-end before relying on this
+    for gating decisions. Uses the synchronous ``openai.AzureOpenAI`` client
+    (imported lazily so this module loads without the SDK installed).
+    """
+
+    def __init__(self, endpoint: str, api_key: str, deployment: str, api_version: str = "2024-06-01"):
+        from openai import AzureOpenAI  # lazy import; only needed when opted in
+
+        self._deployment = deployment
+        self._client = AzureOpenAI(azure_endpoint=endpoint, api_key=api_key, api_version=api_version)
+
+    def complete(self, system_prompt: str, user_prompt: str) -> str:
+        response = self._client.chat.completions.create(
+            model=self._deployment,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.1,
+        )
+        return response.choices[0].message.content or ""
+
+
+def build_gate_llm_client(credentials: dict | None = None):
+    """Return the configured gate LLM client.
+
+    Defaults to the deterministic StructuralLLMClient. If GATE_LLM_MODE=azure and
+    OpenAI credentials are available, returns the experimental AzureOpenAILLMClient;
+    on any construction failure it logs and falls back to the stub so the pipeline
+    still runs.
+    """
+    mode = os.environ.get("GATE_LLM_MODE", "structural").strip().lower()
+    if mode == "azure" and credentials and credentials.get("openai_endpoint") and credentials.get("openai_key"):
+        from src.core.config import analysis_config
+
+        try:
+            return AzureOpenAILLMClient(
+                endpoint=credentials["openai_endpoint"],
+                api_key=credentials["openai_key"],
+                deployment=analysis_config.deployment_name,
+            )
+        except Exception as e:  # noqa: BLE001 - fall back to stub on any setup error
+            logger.warning(f"GATE_LLM_MODE=azure but AzureOpenAILLMClient init failed; using structural stub: {e}")
+    return StructuralLLMClient()

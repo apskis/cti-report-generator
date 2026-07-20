@@ -11,6 +11,7 @@ def test_shipped_profile_defaults_to_illumina():
     assert profile.brand_color_hex == "005DAA"
     assert profile.security_contact == "secops@illumina.com"
     assert profile.osint_source_name == "Illumina-OSINT"
+    assert "genomics" in profile.industry
     assert "illumina" in profile.product_keywords
     assert "dragen" in profile.product_keywords
 

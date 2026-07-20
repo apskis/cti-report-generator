@@ -14,7 +14,7 @@ from datetime import date, timedelta
 
 from .escape_handler import EscapeDetectedError
 from .halt import GateHaltError
-from .llm_adapter import StructuralLLMClient
+from .llm_adapter import build_gate_llm_client
 from .models import GateResult
 from .orchestrator import GateOrchestrator
 
@@ -58,7 +58,7 @@ def run_gate_framework_over_collected_data(
     }
 
     orchestrator = GateOrchestrator(
-        llm_client=StructuralLLMClient(),
+        llm_client=build_gate_llm_client(credentials),
         report_type=report_type.upper(),
     )
 

@@ -16,6 +16,9 @@ brand_color_hex: "005DAA"
 # Security contact shown in report footers.
 security_contact: "secops@illumina.com"
 
+# Short industry/sector descriptor used to ground strategic analysis prompts.
+industry: "genomics, life sciences, and precision manufacturing"
+
 # The source key that the company-context OSINT collector emits and that gates
 # and reports read from data_by_source.
 osint_source_name: "Illumina-OSINT"
