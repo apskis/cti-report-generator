@@ -14,6 +14,8 @@ import logging
 import re
 from typing import Any
 
+from src.core.config import customer_profile
+
 from .models import GateInput, GateResult
 
 logger = logging.getLogger(__name__)
@@ -116,40 +118,30 @@ def _validate_osint_citations(report: dict) -> list[str]:
 
 
 def _validate_illumina_context_usage(gate_input: GateInput, report: dict) -> list[str]:
-    """Validate Illumina-OSINT context was used in geopolitical relevance bullets."""
+    """Validate the company-OSINT context was used in geopolitical relevance bullets."""
     warnings = []
 
-    # Check if Illumina-OSINT data exists
-    illumina_data = gate_input.tier1_data.get("Illumina-OSINT", [])
-    if not illumina_data:
-        return warnings  # No Illumina context to validate
+    # Check if company-OSINT data exists
+    company_data = gate_input.tier1_data.get(customer_profile.osint_source_name, [])
+    if not company_data:
+        return warnings  # No company context to validate
 
-    # Check if geopolitical threats reference Illumina products/platforms
+    # Check if geopolitical threats reference the company's products/platforms
     geo_threats = report.get("geopolitical_threats", [])
 
-    illumina_keywords = [
-        "illumina",
-        "novaseq",
-        "nextseq",
-        "iseq",
-        "miseq",
-        "sequencing platform",
-        "ica",
-        "basespace",
-        "dragen",
-    ]
+    company_keywords = customer_profile.product_keywords
 
-    illumina_mentions = 0
+    company_mentions = 0
     for threat in geo_threats:
         for bullet in threat.get("relevance", []):
-            if any(keyword in bullet.lower() for keyword in illumina_keywords):
-                illumina_mentions += 1
+            if any(keyword in bullet.lower() for keyword in company_keywords):
+                company_mentions += 1
                 break
 
-    if illumina_mentions == 0:
+    if company_mentions == 0:
         warnings.append(
-            f"Illumina-OSINT context provided ({len(illumina_data)} records) but no Illumina-specific "
-            f"products or platforms mentioned in geopolitical relevance bullets"
+            f"{customer_profile.osint_source_name} context provided ({len(company_data)} records) but no "
+            f"{customer_profile.name}-specific products or platforms mentioned in geopolitical relevance bullets"
         )
         logger.warning("Illumina context not used in geopolitical relevance")
 

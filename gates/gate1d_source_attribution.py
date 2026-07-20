@@ -21,6 +21,7 @@ import logging
 from typing import Any
 
 from gates.models import GateInput, GateResult
+from src.core.config import customer_profile
 
 logger = logging.getLogger(__name__)
 
@@ -128,20 +129,23 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
         else:
             warnings.append("No breach landscape in quarterly report - expected for strategic analysis")
 
-        # ===== 6. Illumina-OSINT Context Validation =====
-        illumina_osint = data_by_source.get("Illumina-OSINT", [])
+        # ===== 6. Company-OSINT Context Validation =====
+        company_osint = data_by_source.get(customer_profile.osint_source_name, [])
 
-        if illumina_osint:
-            logger.info(f"✓ Illumina-OSINT context collected ({len(illumina_osint)} records)")
+        if company_osint:
+            logger.info(f"✓ {customer_profile.osint_source_name} context collected ({len(company_osint)} records)")
         else:
-            warnings.append("No Illumina-OSINT context - geopolitical relevance may lack company-specific grounding")
+            warnings.append(
+                f"No {customer_profile.osint_source_name} context - geopolitical relevance may lack "
+                "company-specific grounding"
+            )
 
         # ===== Summary =====
         summary = {
             "intel471_reports": len(intel471_data),
             "crowdstrike_records": len(crowdstrike_data),
             "osint_articles": len(osint_data),
-            "illumina_osint_records": len(illumina_osint),
+            "illumina_osint_records": len(company_osint),
             "geopolitical_threats": len(geopolitical_threats),
             "breach_incidents": len(breach_landscape.get("incidents_by_type", [])) if breach_landscape else 0,
             "issues": issues,

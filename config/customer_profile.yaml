@@ -19,3 +19,17 @@ security_contact: "secops@illumina.com"
 # The source key that the company-context OSINT collector emits and that gates
 # and reports read from data_by_source.
 osint_source_name: "Illumina-OSINT"
+
+# Lowercase keywords (company name plus product/platform names) used by the
+# quality gates to detect company-specific grounding in geopolitical relevance
+# bullets. Set these to your organization's products.
+product_keywords:
+  - illumina
+  - novaseq
+  - nextseq
+  - iseq
+  - miseq
+  - sequencing platform
+  - ica
+  - basespace
+  - dragen

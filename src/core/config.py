@@ -194,6 +194,19 @@ class CustomerProfile:
     brand_color_hex: str = "005DAA"  # hex without leading '#'
     security_contact: str = "secops@illumina.com"
     osint_source_name: str = "Illumina-OSINT"
+    # Lowercase keywords (company name + product/platform names) used to detect
+    # company-specific grounding in geopolitical relevance bullets.
+    product_keywords: tuple[str, ...] = (
+        "illumina",
+        "novaseq",
+        "nextseq",
+        "iseq",
+        "miseq",
+        "sequencing platform",
+        "ica",
+        "basespace",
+        "dragen",
+    )
 
 
 # Global configuration instances
@@ -293,11 +306,13 @@ def _load_customer_profile() -> CustomerProfile:
         return defaults
     with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
+    keywords = cfg.get("product_keywords")
     return CustomerProfile(
         name=cfg.get("name", defaults.name),
         brand_color_hex=str(cfg.get("brand_color_hex", defaults.brand_color_hex)),
         security_contact=cfg.get("security_contact", defaults.security_contact),
         osint_source_name=cfg.get("osint_source_name", defaults.osint_source_name),
+        product_keywords=tuple(k.lower() for k in keywords) if keywords else defaults.product_keywords,
     )
 
 

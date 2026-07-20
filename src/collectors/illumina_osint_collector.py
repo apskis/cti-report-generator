@@ -14,6 +14,7 @@ import certifi
 from bs4 import BeautifulSoup
 
 from src.collectors.base import BaseCollector, CollectorResult
+from src.core.config import customer_profile
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class IlluminaOSINTCollector(BaseCollector):
     @property
     def source_name(self) -> str:
         """Unique identifier for this data source."""
-        return "Illumina-OSINT"
+        return customer_profile.osint_source_name
 
     @property
     def enabled(self) -> bool:

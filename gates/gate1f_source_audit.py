@@ -15,6 +15,8 @@ import logging
 import re
 from typing import Any
 
+from src.core.config import customer_profile
+
 from .models import GateInput, GateResult
 
 logger = logging.getLogger(__name__)
@@ -159,25 +161,15 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
     logger.info("-" * 80)
 
     illumina_issues = []
-    illumina_data = input.tier1_data.get("Illumina-OSINT", [])
+    company_data = input.tier1_data.get(customer_profile.osint_source_name, [])
 
-    if not illumina_data:
-        logger.warning("   ⚠️  No Illumina-OSINT data collected")
+    if not company_data:
+        logger.warning(f"   ⚠️  No {customer_profile.osint_source_name} data collected")
     else:
-        logger.info(f"   Illumina-OSINT records collected: {len(illumina_data)}")
+        logger.info(f"   {customer_profile.osint_source_name} records collected: {len(company_data)}")
 
         # Check if the context was actually used
-        illumina_keywords = [
-            "illumina",
-            "novaseq",
-            "nextseq",
-            "iseq",
-            "miseq",
-            "sequencing platform",
-            "ica",
-            "basespace",
-            "dragen",
-        ]
+        company_keywords = customer_profile.product_keywords
 
         geo_threats = report.get("geopolitical_threats", [])
         illumina_mentions = 0
@@ -185,14 +177,15 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
         for threat in geo_threats:
             country = threat.get("name", "")
             for bullet in threat.get("relevance", []):
-                if any(kw in bullet.lower() for kw in illumina_keywords):
+                if any(kw in bullet.lower() for kw in company_keywords):
                     illumina_mentions += 1
-                    logger.info(f"   ✓ {country}: Illumina context used in relevance bullet")
+                    logger.info(f"   ✓ {country}: {customer_profile.name} context used in relevance bullet")
                     logger.info(f'      "{bullet[:80]}..."')
 
         if illumina_mentions == 0:
             illumina_issues.append(
-                f"⚠️  Illumina-OSINT collected ({len(illumina_data)} records) but NOT used in geopolitical relevance"
+                f"⚠️  {customer_profile.osint_source_name} collected ({len(company_data)} records) but NOT used "
+                "in geopolitical relevance"
             )
             logger.warning("   ⚠️  ILLUMINA CONTEXT NOT USED IN GEOPOLITICAL RELEVANCE")
         else:
@@ -287,8 +280,8 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
             "breach_audit": {"total_incidents": len(incidents), "generic_terms_found": len(breach_issues)},
             "osint_audit": {"sources_listed": len(osint_sources), "issues_found": len(osint_issues)},
             "illumina_audit": {
-                "records_collected": len(illumina_data),
-                "mentions_in_report": illumina_mentions if illumina_data else 0,
+                "records_collected": len(company_data),
+                "mentions_in_report": illumina_mentions if company_data else 0,
             },
             "statistics_audit": {"actual_breach_count": actual_breach_count, "issues_found": len(stats_issues)},
         },
