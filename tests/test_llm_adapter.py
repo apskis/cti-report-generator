@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from gates.llm_adapter import StructuralLLMClient, _detect_gate_from_prompt
+from src.gates.llm_adapter import StructuralLLMClient, _detect_gate_from_prompt
 
 
 def test_detect_gate_from_prompt():

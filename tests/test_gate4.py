@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from gates.gate4_assembly import run
-from gates.models import (
+from src.gates.gate4_assembly import run
+from src.gates.models import (
     IOC,
     ActorLink,
     GateInput,
@@ -102,6 +102,6 @@ def test_detect_osint_promotion_is_called_during_assembly():
         tier1_data={"Intel471": [{"indicator": "1.2.3.4"}]},
         prior_results=_make_priors(iocs, links, signals, articles),
     )
-    with patch("gates.gate4_assembly.detect_osint_promotion") as mock_detect:
+    with patch("src.gates.gate4_assembly.detect_osint_promotion") as mock_detect:
         run(gi, _FakeLLM(), "WEEKLY")
         assert mock_detect.called

@@ -20,8 +20,8 @@ PURPOSE:
 import logging
 from typing import Any
 
-from gates.models import GateInput, GateResult
 from src.core.config import customer_profile
+from src.gates.models import GateInput, GateResult
 
 logger = logging.getLogger(__name__)
 

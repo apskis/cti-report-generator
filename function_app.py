@@ -13,12 +13,12 @@ from datetime import date
 
 import azure.functions as func  # type: ignore
 
-from gates.pipeline_hook import run_gate_framework_over_collected_data
 from src.agents.context_manager import AgentContextManager
 from src.agents.threat_analyst import ThreatAnalystAgent
 from src.collectors import collect_all, get_data_by_source
 from src.core.config import analysis_config, azure_config, customer_profile
 from src.core.keyvault import get_all_api_keys
+from src.gates.pipeline_hook import run_gate_framework_over_collected_data
 from src.reports.blob_storage import create_and_upload_report
 from src.utils.cache_manager import CacheManager
 

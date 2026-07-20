@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import pytest
 
-from gates import orchestrator as orch
-from gates.escape_handler import EscapeDetectedError, EscapeType
-from gates.halt import GateHaltError
-from gates.llm_adapter import StructuralLLMClient
-from gates.models import GateResult
+from src.gates import orchestrator as orch
+from src.gates.escape_handler import EscapeDetectedError, EscapeType
+from src.gates.halt import GateHaltError
+from src.gates.llm_adapter import StructuralLLMClient
+from src.gates.models import GateResult
 
 
 def _complete_runner(gate_id: str):

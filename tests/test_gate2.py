@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from gates.halt import GateHaltError, check_ioc_halt
-from gates.models import IOC
+from src.gates.halt import GateHaltError, check_ioc_halt
+from src.gates.models import IOC
 
 
 def test_zero_ioc_halt_raises():

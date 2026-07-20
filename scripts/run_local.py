@@ -744,8 +744,8 @@ async def generate_report_local(
             print_section("🔒 Gate Framework Validation")
         except UnicodeEncodeError:
             print_section("Gate Framework Validation")
-        from gates.pipeline_hook import run_gate_framework_over_collected_data
         from src.core.config import get_feature_config
+        from src.gates.pipeline_hook import run_gate_framework_over_collected_data
 
         feature_config = get_feature_config()
         interactive_mode = feature_config.gate_framework_interactive

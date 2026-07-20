@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from gates.gate3_actor_linkage import run
-from gates.models import IOC, GateInput, GateResult, SourceRecord
+from src.gates.gate3_actor_linkage import run
+from src.gates.models import IOC, GateInput, GateResult, SourceRecord
 
 
 class _FakeLLM:

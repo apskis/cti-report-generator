@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from gates.halt import GateHaltError, check_tier1_halt
-from gates.models import SourceRecord
+from src.gates.halt import GateHaltError, check_tier1_halt
+from src.gates.models import SourceRecord
 
 
 def _rec(name: str, status: str, enabled: bool = True) -> SourceRecord:

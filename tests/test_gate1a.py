@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from gates.gate1a_statistics import run
-from gates.halt import GateHaltError
-from gates.models import GateInput, GateResult, SourceRecord
+from src.gates.gate1a_statistics import run
+from src.gates.halt import GateHaltError
+from src.gates.models import GateInput, GateResult, SourceRecord
 
 
 def _gate1_prior(records_returned: int = 5, status: str = "OK") -> GateResult:

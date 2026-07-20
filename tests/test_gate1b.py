@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from gates.gate1b_osint_triage import run
-from gates.models import GateInput
+from src.gates.gate1b_osint_triage import run
+from src.gates.models import GateInput
 
 
 class _FakeLLM:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from gates.escape_handler import (
+from src.gates.escape_handler import (
     EscapeDetectedError,
     EscapeType,
     detect_gate_bleed,
@@ -13,7 +13,7 @@ from gates.escape_handler import (
     detect_prose_leakage,
     get_recovery_prompt,
 )
-from gates.models import OpenSignal
+from src.gates.models import OpenSignal
 
 
 def test_gate_bleed_catches_two_completion_markers():
