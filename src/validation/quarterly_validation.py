@@ -8,6 +8,8 @@ import logging
 import re
 from typing import Any
 
+from src.core.config import customer_profile
+
 logger = logging.getLogger(__name__)
 
 
@@ -138,21 +140,23 @@ class QuarterlyReportValidator:
             # No meaningful Illumina context provided, skip check
             return
 
-        # Check if any OSINT sources reference Illumina
+        # Check if any OSINT sources reference the company
+        company_name_lower = customer_profile.name.lower()
         osint_sources = analysis_result.get("osint_sources_used", [])
-        has_illumina_source = any(
-            "illumina" in s.get("title", "").lower()
-            or "illumina" in s.get("description", "").lower()
+        has_company_source = any(
+            company_name_lower in s.get("title", "").lower()
+            or company_name_lower in s.get("description", "").lower()
             or "precision medicine" in s.get("description", "").lower()
             for s in osint_sources
         )
 
-        if not has_illumina_source:
+        if not has_company_source:
             self.warnings.append(
-                f"Illumina context provided ({len(illumina_context)} chars) but no Illumina-specific OSINT source cited"
+                f"{customer_profile.name} context provided ({len(illumina_context)} chars) but no "
+                f"{customer_profile.name}-specific OSINT source cited"
             )
 
-        # Check if relevance bullets mention Illumina-specific information
+        # Check if relevance bullets mention company-specific information
         geo_threats = analysis_result.get("geopolitical_threats", [])
         illumina_mentions = 0
 
@@ -160,14 +164,13 @@ class QuarterlyReportValidator:
             relevance_bullets = threat.get("relevance", [])
             for bullet in relevance_bullets:
                 bullet_lower = bullet.lower()
-                if any(
-                    term in bullet_lower for term in ["illumina", "novaseq", "sequencing platform", "ica", "basespace"]
-                ):
+                if any(term in bullet_lower for term in customer_profile.product_keywords):
                     illumina_mentions += 1
 
         if illumina_mentions == 0:
             self.warnings.append(
-                "Illumina context provided but no Illumina-specific products/platforms mentioned in relevance bullets"
+                f"{customer_profile.name} context provided but no {customer_profile.name}-specific "
+                "products/platforms mentioned in relevance bullets"
             )
 
     def _check_executive_summary_length(self, analysis_result: dict[str, Any]) -> None:
