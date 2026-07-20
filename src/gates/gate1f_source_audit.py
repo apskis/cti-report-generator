@@ -256,16 +256,15 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
     for warning in warnings:
         logger.warning(f"  {warning}")
 
-    # Determine status - use WARNINGS instead of HALT
-    # The AI should skip these breaches; if they appear, it's an AI instruction issue
+    # Gate 1F is non-halting: it returns COMPLETE and surfaces critical findings in
+    # payload['critical_issues']. Gate 6 folds those into Track A and blocks publish,
+    # so the audit's "critical/BLOCKING" findings genuinely stop a report now (they
+    # previously did not — the gate returned COMPLETE and nothing consumed them).
+    status = "COMPLETE"
+    halt_reason = None
     if critical_issues:
-        status = "COMPLETE"  # Don't block - let the report skip the problematic breaches
-        halt_reason = None
-        logger.warning(f"\n⚠️  GATE 1F: {len(critical_issues)} breach(es) with generic terms detected")
-        logger.warning("These should have been skipped by the AI. Consider improving prompt instructions.")
+        logger.error(f"\n❌ GATE 1F: {len(critical_issues)} critical issue(s) will block publish at Gate 6")
     else:
-        status = "COMPLETE"
-        halt_reason = None
         logger.info("\n✓ GATE 1F PASSED: All source audits passed")
 
     logger.info("=" * 80)

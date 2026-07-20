@@ -24,31 +24,37 @@ def _complete_runner(gate_id: str):
 
 def test_get_gate_sequence_selects_by_report_type():
     assert orch._get_gate_sequence("weekly")[0] == "1"
-    assert orch._get_gate_sequence("quarterly")[:3] == ["1", "1A", "1B"]
+    assert orch._get_gate_sequence("quarterly")[:3] == ["1", "1B", "2"]
+    # 1A/1C reconcile the drafted report, so they run after Gate 5, not up front.
+    weekly = orch._get_gate_sequence("weekly")
+    assert weekly.index("1A") > weekly.index("5")
+    assert weekly.index("1C") > weekly.index("5")
     # Unknown report types fall back to the weekly sequence.
     assert orch._get_gate_sequence("nonsense") == orch._get_gate_sequence("weekly")
 
 
 def test_previous_gate_lookup():
     assert orch._previous_gate("1", "weekly") is None
-    assert orch._previous_gate("1A", "weekly") == "1"
+    assert orch._previous_gate("1B", "weekly") == "1"
     assert orch._previous_gate("2", "weekly") == "1B"
+    # 1A now sits in the post-Gate-5 reconciliation band.
+    assert orch._previous_gate("1A", "weekly") == "5"
 
 
 def test_run_gate_requires_previous_gate_cleared(monkeypatch):
     monkeypatch.setitem(orch._GATE_RUNNERS, "1", _complete_runner("1"))
-    monkeypatch.setitem(orch._GATE_RUNNERS, "1A", _complete_runner("1A"))
+    monkeypatch.setitem(orch._GATE_RUNNERS, "1B", _complete_runner("1B"))
     o = orch.GateOrchestrator(StructuralLLMClient(), "weekly")
 
     o.run_gate("1")
-    # 1 is run but not cleared yet -> running 1A must be refused.
+    # 1 is run but not cleared yet -> running 1B (the next gate) must be refused.
     with pytest.raises(RuntimeError, match="previous gate 1 has not been cleared"):
-        o.run_gate("1A")
+        o.run_gate("1B")
 
     o.clear("1")
-    result = o.run_gate("1A")
+    result = o.run_gate("1B")
     assert result.status == "COMPLETE"
-    assert o.current_gate == "1A"
+    assert o.current_gate == "1B"
 
 
 def test_run_gate_records_halt_and_reraises(monkeypatch):

@@ -294,7 +294,9 @@ def _validate_quarterly_statistics(gate_input: GateInput) -> GateResult:
     gate1_result = gate_input.prior_results.get("1")
     if not gate1_result:
         raise GateHaltError(
-            gate_id="1A", reason="Gate 1 has not been run - cannot validate statistics without source inventory"
+            gate_id="1A",
+            reason="Gate 1 has not been run - cannot validate statistics without source inventory",
+            payload={},
         )
 
     tier1_sources = gate1_result.payload.get("tier1_sources", [])

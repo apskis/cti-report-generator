@@ -57,6 +57,28 @@ def test_halt_passes_when_only_one_source_has_gap():
     check_tier1_halt(records)
 
 
+def test_halt_threshold_is_config_driven(monkeypatch):
+    """GATE_TIER1_GAP_HALT_MIN=2 halts at two gapped Tier 1 sources instead of all three."""
+    records = [
+        _rec("NVD", "GAP: timeout"),
+        _rec("Intel471", "GAP: 500"),
+        _rec("CrowdStrike", "OK"),
+    ]
+    # Default ("all"): two gaps must NOT halt.
+    check_tier1_halt(records)
+    # With threshold 2, the same two gaps halt.
+    monkeypatch.setenv("GATE_TIER1_GAP_HALT_MIN", "2")
+    with pytest.raises(GateHaltError) as exc:
+        check_tier1_halt(records)
+    assert exc.value.payload["halt_threshold"] == 2
+
+
+def test_halt_threshold_explicit_arg_overrides_env():
+    records = [_rec("NVD", "GAP: timeout"), _rec("Intel471", "OK"), _rec("CrowdStrike", "OK")]
+    with pytest.raises(GateHaltError):
+        check_tier1_halt(records, min_gap_to_halt=1)
+
+
 def test_disabled_source_does_not_trigger_gap_flag():
     """SourceRecord with enabled=False represents Tier 2 disabled OSINT sources.
     Such records should never appear in Tier 1 input, but if they did, they

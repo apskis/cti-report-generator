@@ -216,3 +216,39 @@ machine-checkable output:
 The key principle: **let deterministic grounding be the hard gate, and the LLM self-critique
 be an additional (verifiable) soft layer** — never rely on the model's unverified word that
 its own output is grounded.
+
+---
+
+## Implementation status (2026-07-20)
+
+**Tier 1 (deterministic grounding) — done.** New pure-Python module `src/gates/grounding.py`:
+- `build_source_index(tier1_data, osint_articles)` indexes CVE ids, actor names, and a
+  lowercased text blob over the raw collected data.
+- `verify_report_grounding(report, index)` emits a Track A finding for every `cve_analysis`
+  CVE, `apt_activity` actor, and `industry_incidents` victim that does **not** resolve to a
+  source record (closes gap #3 — internally-consistent fabrications now fail).
+- `rederive_statistics(report)` recomputes headline counts and flags mismatches.
+- Wired into Gate 6 `run()` (Track A → BLOCK). Covered by `tests/test_grounding.py` (26 cases)
+  and `tests/test_gate6.py` (fabricated CVE/actor/statistic all BLOCK).
+
+**Tier 3 (structural fixes) — done.**
+- **#8** Gate 1A moved into a post-Gate-5 reconciliation band in both `orchestrator.py`
+  sequences and the `pipeline_hook.py` interactive sequence, so its cross-gate/source checks
+  actually run (was always-fire/dead). Fixed the quarterly halt missing-`payload` bug.
+- **#9** Gate 1C now runs for **weekly**, scans the **whole report** narrative (not just the
+  exec summary), uses **tokenized** matching, and blocks via Gate 6 (which folds 1C `issues`
+  into Track A).
+- **#10** Gate 1E's generic-name **downgrade removed**; Gate 1E/1F critical findings are now
+  surfaced in their payloads and folded into Gate 6 Track A, so they genuinely block.
+- **#11** `detect_osint_promotion` now keys on **positive Tier-1 membership** (`_is_tier1_source`,
+  supports an explicit `tier` field) instead of the defeatable `not startswith("OSINT")`;
+  `detect_missing_clearance_marker` documented as an intentional opt-in interactive helper.
+- **#12** Tier 1 halt threshold is **config-driven** via `GATE_TIER1_GAP_HALT_MIN` (default
+  "all"), with an explicit `min_gap_to_halt` override.
+- **#13** Gate 1B now **populates** OSINT `actor_names` deterministically by grounding article
+  text against known Tier 1 actor names, so Gate 4's OSINT actor corroboration/open-signal
+  paths are live.
+
+**Tier 2 (verifiable LLM self-critique) — not yet built.** Requires wiring the real Azure
+OpenAI adapter (`GATE_LLM_MODE=azure`) plus the structured/quote-back adversary and
+self-consistency voting (#5–#7). Needs live model access and prompt-tuning to validate.

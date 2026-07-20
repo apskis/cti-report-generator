@@ -36,17 +36,24 @@ logger = logging.getLogger(__name__)
 # Gate sequences per report type
 # Weekly Tactical: Fast operational intelligence with threat actor focus (no environment data)
 # Quarterly Geopolitical: Strategic threat landscape with comprehensive source audit
-# Note: Gate 1F (Source Audit) runs BEFORE Gate 1E (AI Quality) so audit logs are always visible
+#
+# Ordering rule: Gate 1A and 1C both reconcile the DRAFTED report (and, for 1A, the
+# raw source data) against prior gate results, so they MUST run after Gates 2-5 have
+# produced those results. Running 1A at position 2 (as it used to) left every one of
+# its cross-gate checks reading empty prior_results — always-fire warnings or dead
+# code. They now run in the post-Gate-5 reconciliation band.
+# Note: Gate 1F (Source Audit) runs BEFORE Gate 1E (AI Quality) so audit logs are always visible.
 _GATE_SEQUENCES = {
-    "weekly": ["1", "1A", "1B", "2", "3", "4", "5", "6"],  # Removed 1C - no environment/technology data
+    # Post-Gate-5 reconciliation band: 1A (source/stat reconciliation), 1C (tech coherence).
+    "weekly": ["1", "1B", "2", "3", "4", "5", "1A", "1C", "6"],
     "quarterly": [
         "1",
-        "1A",
         "1B",
         "2",
         "3",
         "4",
         "5",
+        "1A",
         "1F",
         "1E",
         "1C",
