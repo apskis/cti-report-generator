@@ -3,16 +3,15 @@ Weekly CTI Report Generator.
 
 Generates weekly threat intelligence reports matching the branded template.
 """
-from datetime import datetime, timedelta
+
 import logging
-from typing import Dict, Any, List
+from datetime import timedelta
+from typing import Any
 
 from docx import Document
-from docx.shared import Pt, Inches, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches, Pt, RGBColor
 
 from src.reports.base import BaseReportGenerator, BrandColors, FontSizes
 from src.reports.registry import register_report_generator
@@ -48,7 +47,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
     def filename_prefix(self) -> str:
         return "CTI_Weekly_Report"
 
-    def generate(self, analysis_result: Dict[str, Any]) -> Document:
+    def generate(self, analysis_result: dict[str, Any]) -> Document:
         """
         Generate the weekly report document.
 
@@ -79,7 +78,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
             # Calculate date range (Monday to Sunday of current week)
             self._calculate_date_range()
-            
+
             # Store period_end for filename generation (use current week number, not lookback start)
             self._report_week_start = self.period_end
 
@@ -105,6 +104,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
     def _calculate_date_range(self) -> None:
         """Calculate the reporting period based on actual data lookback window."""
         from src.core.config import collector_config
+
         today = self.created_at
         lookback_days = collector_config.nvd_lookback_days
         self.period_end = today
@@ -163,7 +163,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Minimal gap before Executive Summary
         self.doc.add_paragraph()
 
-    def _add_executive_summary(self, analysis_result: Dict[str, Any]) -> None:
+    def _add_executive_summary(self, analysis_result: dict[str, Any]) -> None:
         """Add summary: bold orange heading, white body, tight spacing."""
         logger.info("Adding Summary section")
 
@@ -180,24 +180,24 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         # Body: left-aligned, dark text on white, tight paragraph spacing
         summary = analysis_result.get("executive_summary", "No executive summary available.")
-        
+
         # Add trend context if available
         cve_trends = analysis_result.get("cve_trends", {})
         actor_trends = analysis_result.get("actor_trends", {})
-        
+
         if cve_trends or actor_trends:
             # Prepend trend summary to executive summary
             trend_intro = []
-            
+
             if cve_trends and cve_trends.get("trend_summary"):
                 trend_intro.append(f"Trend Analysis: {cve_trends['trend_summary']}")
-            
+
             if actor_trends and actor_trends.get("trend_summary"):
                 trend_intro.append(f"Actor Trends: {actor_trends['trend_summary']}")
-            
+
             if trend_intro:
                 summary = "\n\n".join(trend_intro) + "\n\n" + summary
-        
+
         para = self.doc.add_paragraph(summary)
         para.paragraph_format.space_before = Pt(0)
         para.paragraph_format.space_after = Pt(4)
@@ -207,7 +207,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             run.font.color.rgb = BrandColors.TEXT_DARK
             run.font.name = "Arial"
 
-    def _add_week_at_glance(self, analysis_result: Dict[str, Any]) -> None:
+    def _add_week_at_glance(self, analysis_result: dict[str, Any]) -> None:
         """Add 'This Week at a Glance': bold orange heading; space before subtitle."""
         logger.info("Adding This Week at a Glance section")
 
@@ -249,20 +249,12 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Row 1: Threat Actors, Active Campaigns
         # Row 2: Exploited CVEs, Peer Incidents
         metrics_row1 = [
-            (str(stats.get("threat_actors", 0)),
-             "Threat Actors",
-             "APT groups active this week"),
-            (str(stats.get("active_campaigns", 0)),
-             "Active Campaigns",
-             "Operations from underground intel"),
+            (str(stats.get("threat_actors", 0)), "Threat Actors", "APT groups active this week"),
+            (str(stats.get("active_campaigns", 0)), "Active Campaigns", "Operations from underground intel"),
         ]
         metrics_row2 = [
-            (str(stats.get("exploited_cves", 0)),
-             "Exploited CVEs",
-             "Known exploitation activity"),
-            (str(stats.get("peer_incidents", 0)),
-             "Peer Incidents",
-             "Company breaches observed"),
+            (str(stats.get("exploited_cves", 0)), "Exploited CVEs", "Known exploitation activity"),
+            (str(stats.get("peer_incidents", 0)), "Peer Incidents", "Company breaches observed"),
         ]
         # Two separate tables: 2 boxes, then space, then 2 boxes (2x2 grid)
         self._create_metric_cards(metrics_row1)
@@ -276,7 +268,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         spacer2.paragraph_format.space_before = Pt(0)
         spacer2.paragraph_format.space_after = Pt(12)
 
-    def _create_metric_cards(self, metrics: List[tuple]) -> None:
+    def _create_metric_cards(self, metrics: list[tuple]) -> None:
         """Create a row of metric cards with light gray backgrounds per spec."""
         table = self.doc.add_table(rows=1, cols=len(metrics))
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -327,27 +319,40 @@ class WeeklyReportGenerator(BaseReportGenerator):
             sub_para.paragraph_format.space_before = Pt(0)
             sub_para.paragraph_format.space_after = Pt(8)  # Spacing between last line and box border
 
-    def _format_exposure_cell(self, cve: Dict[str, Any]) -> str:
+    def _format_exposure_cell(self, cve: dict[str, Any]) -> str:
         """Format Exposure column as count of servers/databases/endpoints from Rapid7 only. Never use vulnerability description."""
         # Debug: log what we received for this CVE
         cve_id = cve.get("cve_id", "Unknown")
-        
+
         # Only use fields that represent asset/server/database counts (never description)
-        raw = (
-            cve.get("exposure")
-            or cve.get("exposure_summary")
-            or cve.get("asset_count")
-            or cve.get("affected_assets")
+        raw = cve.get("exposure") or cve.get("exposure_summary") or cve.get("asset_count") or cve.get("affected_assets")
+
+        logger.debug(
+            f"CVE {cve_id} exposure fields - exposure: {cve.get('exposure')}, "
+            f"asset_count: {cve.get('asset_count')}, raw: {raw}"
         )
-        
-        logger.debug(f"CVE {cve_id} exposure fields - exposure: {cve.get('exposure')}, "
-                    f"asset_count: {cve.get('asset_count')}, raw: {raw}")
-        
+
         if isinstance(raw, str) and raw.strip():
             s = raw.strip()
             # Use only if it looks like a count: "N servers", "N databases", "N endpoints", or "Production"
             lower = s.lower()
-            if any(lower.endswith(x) for x in ("servers", "server", "databases", "database", "endpoints", "endpoint", "systems", "system", "workstations", "workstation", "cloud servers", "cloud instances")):
+            if any(
+                lower.endswith(x)
+                for x in (
+                    "servers",
+                    "server",
+                    "databases",
+                    "database",
+                    "endpoints",
+                    "endpoint",
+                    "systems",
+                    "system",
+                    "workstations",
+                    "workstation",
+                    "cloud servers",
+                    "cloud instances",
+                )
+            ):
                 return s[:50]
             if s in ("Production", "N/A", "—", "-"):
                 return s
@@ -391,10 +396,10 @@ class WeeklyReportGenerator(BaseReportGenerator):
         except (ValueError, IndexError, AttributeError):
             return 0
 
-    def _calculate_statistics(self, analysis_result: Dict[str, Any]) -> Dict[str, int]:
+    def _calculate_statistics(self, analysis_result: dict[str, Any]) -> dict[str, int]:
         """
         Calculate threat intelligence statistics from actual data.
-        
+
         Weekly Tactical Report metrics (no environment/Rapid7 data):
         - Threat Actors: Unique APT actors tracked this week
         - Active Campaigns: Campaign names from Intel471 tags
@@ -403,24 +408,23 @@ class WeeklyReportGenerator(BaseReportGenerator):
         """
         cve_analysis = analysis_result.get("cve_analysis", [])
         apt_activity = analysis_result.get("apt_activity", [])
-        
+
         # Metric 1: Threat Actors (unique actor names)
         threat_actors_count = len(apt_activity)
-        
+
         # Metric 2: Active Campaigns (from AI-structured campaign data)
         active_campaigns = analysis_result.get("active_campaigns", [])
         active_campaigns_count = len(active_campaigns)
-        
+
         # Metric 3: Exploited CVEs (CVEs with exploitation evidence)
         exploited_cves_count = sum(
-            1 for cve in cve_analysis 
-            if cve.get("actively_exploited") or cve.get("targeted_by_actors")
+            1 for cve in cve_analysis if cve.get("actively_exploited") or cve.get("targeted_by_actors")
         )
-        
+
         # Metric 4: Peer Incidents (from industry_incidents - includes both OSINT and Intel471)
         industry_incidents = analysis_result.get("industry_incidents", [])
         peer_incidents_count = len(industry_incidents)
-        
+
         return {
             "threat_actors": threat_actors_count,
             "active_campaigns": active_campaigns_count,
@@ -430,20 +434,20 @@ class WeeklyReportGenerator(BaseReportGenerator):
             "total_cves": len(cve_analysis),
             "critical_count": sum(1 for cve in cve_analysis if cve.get("severity", "").upper() == "CRITICAL"),
         }
-    
-    def _calculate_resolved_count(self, current_cves: List[Dict[str, Any]]) -> int:
+
+    def _calculate_resolved_count(self, current_cves: list[dict[str, Any]]) -> int:
         """
         Calculate resolved CVEs by comparing with previous week.
         Reads last week's report from reports/ directory if available.
         """
         try:
-            from datetime import timedelta
             import os
-            
+            from datetime import timedelta
+
             # Calculate last week's date
             last_week = self.created_at - timedelta(days=7)
             last_week_filename = f"CTI_Weekly_Report_{last_week.strftime('%Y-%m-%d')}.docx"
-            
+
             # Check in both reports/ and reports_test/ directories
             for report_dir in ["reports", "reports_test", "."]:
                 last_week_path = os.path.join(report_dir, last_week_filename)
@@ -452,55 +456,57 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     json_cache = last_week_path.replace(".docx", "_cves.json")
                     if os.path.exists(json_cache):
                         import json
-                        with open(json_cache, 'r') as f:
+
+                        with open(json_cache) as f:
                             last_week_cves = set(json.load(f))
-                        
+
                         # CVEs that were in last week but not this week
                         current_cve_ids = set(cve.get("cve_id") for cve in current_cves)
                         resolved = len(last_week_cves - current_cve_ids)
                         logger.info(f"Resolved CVEs: {resolved} (comparing with {last_week_filename})")
                         return resolved
-            
+
             logger.debug("No previous week's data found for comparison")
             return 0
-            
+
         except Exception as e:
             logger.debug(f"Could not calculate resolved count: {e}")
             return 0
 
-    def _save_cve_cache(self, cve_analysis: List[Dict[str, Any]], output_path: str):
+    def _save_cve_cache(self, cve_analysis: list[dict[str, Any]], output_path: str):
         """Save CVE IDs to JSON cache for next week's comparison."""
         try:
             import json
+
             cve_ids = [cve.get("cve_id") for cve in cve_analysis if cve.get("cve_id")]
             cache_path = output_path.replace(".docx", "_cves.json")
-            with open(cache_path, 'w') as f:
+            with open(cache_path, "w") as f:
                 json.dump(cve_ids, f)
             logger.debug(f"Saved CVE cache to {cache_path}")
         except Exception as e:
             logger.debug(f"Could not save CVE cache: {e}")
 
-    def _group_cves_by_technology(self, cve_analysis: List[Dict[str, Any]]) -> tuple:
+    def _group_cves_by_technology(self, cve_analysis: list[dict[str, Any]]) -> tuple:
         """
         Group CVEs by technology/product family for cleaner reporting.
-        
+
         Returns:
             tuple: (grouped_items, individual_cves, all_cves)
         """
         from collections import defaultdict
-        
+
         # Define grouping patterns
         groups = defaultdict(list)
         individual_cves = []
-        
+
         # Minimum CVEs needed to form a group (reduced to 2 for more aggressive grouping)
         MIN_GROUP_SIZE = 2
-        
+
         # Debug: log first few products to see what we're working with
         if cve_analysis:
             sample_products = [cve.get("affected_product", "?")[:50] for cve in cve_analysis[:5]]
             logger.info(f"Sample products for grouping: {sample_products}")
-        
+
         for cve in cve_analysis:
             product = cve.get("affected_product", "").strip()
             product_lower = product.lower()
@@ -530,7 +536,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             else:
                 # Don't group unique products
                 individual_cves.append(cve)
-        
+
         # Convert groups to summary items, only if they meet minimum size
         grouped_items = []
         for group_name, cves in groups.items():
@@ -538,35 +544,34 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 # Calculate aggregate metrics
                 total_systems = sum(self._extract_count(cve.get("exposure", "0")) for cve in cves)
                 max_weeks = max((cve.get("weeks_detected", 1) for cve in cves), default=1)
-                
+
                 logger.info(f"Grouping {len(cves)} CVEs into '{group_name}'")
-                
-                grouped_items.append({
-                    "is_group": True,
-                    "group_name": group_name,
-                    "cve_count": len(cves),
-                    "cves": cves,
-                    "exposure": f"{total_systems} systems" if total_systems > 0 else "Multiple",
-                    "weeks_detected": max_weeks,
-                })
+
+                grouped_items.append(
+                    {
+                        "is_group": True,
+                        "group_name": group_name,
+                        "cve_count": len(cves),
+                        "cves": cves,
+                        "exposure": f"{total_systems} systems" if total_systems > 0 else "Multiple",
+                        "weeks_detected": max_weeks,
+                    }
+                )
             else:
                 # If group is too small, treat as individual CVEs
                 individual_cves.extend(cves)
-        
+
         # Sort individual CVEs by severity/exposure (show most critical first)
-        individual_cves.sort(key=lambda x: (
-            -self._extract_count(x.get("exposure", "0")),
-            -x.get("weeks_detected", 1)
-        ))
-        
+        individual_cves.sort(key=lambda x: (-self._extract_count(x.get("exposure", "0")), -x.get("weeks_detected", 1)))
+
         # Limit individual CVEs to top 5 most critical
         if len(individual_cves) > 5:
             logger.info(f"Limiting individual CVEs to top 5 (total: {len(individual_cves)})")
             individual_cves = individual_cves[:5]
-        
+
         return grouped_items, individual_cves, cve_analysis
 
-    def _is_actively_exploited(self, cve: Dict[str, Any]) -> tuple:
+    def _is_actively_exploited(self, cve: dict[str, Any]) -> tuple:
         """
         Check if a CVE is actively exploited.
         Returns (is_exploited: bool, reason: str)
@@ -613,7 +618,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         return (False, "")
 
-    def _add_vulnerability_exposure(self, analysis_result: Dict[str, Any]) -> None:
+    def _add_vulnerability_exposure(self, analysis_result: dict[str, Any]) -> None:
         """Add Exploited Vulnerabilities section - intelligence-sourced CVEs only (no environment data)."""
         logger.info("Adding Exploited Vulnerabilities section")
 
@@ -621,18 +626,19 @@ class WeeklyReportGenerator(BaseReportGenerator):
         self._style_heading_1(h)
 
         cve_analysis = analysis_result.get("cve_analysis", [])
-        
+
         if not cve_analysis:
             self.doc.add_paragraph("No exploited vulnerabilities identified from threat intelligence this week.")
             self.doc.add_paragraph()
             return
-        
+
         # Filter to only exploited CVEs (from threat intelligence sources)
         exploited_cves = [
-            cve for cve in cve_analysis
+            cve
+            for cve in cve_analysis
             if cve.get("actively_exploited") or cve.get("targeted_by_actors") or cve.get("in_cisa_kev")
         ]
-        
+
         if not exploited_cves:
             self.doc.add_paragraph("No exploited vulnerabilities identified from threat intelligence this week.")
             self.doc.add_paragraph()
@@ -644,14 +650,14 @@ class WeeklyReportGenerator(BaseReportGenerator):
         intro = self.doc.add_paragraph()
         intro.space_before = Pt(0)
         intro.space_after = Pt(6)
-        
+
         intro_run = intro.add_run(
             "CVEs with confirmed exploitation from threat intelligence (CISA KEV, threat actors, ransomware). "
         )
         intro_run.font.size = Pt(8)
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
         intro_run.font.italic = True
-        
+
         # Add actionable context
         action_run = intro.add_run(
             "Review vulnerability scan results and prioritize patching. "
@@ -665,7 +671,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         table = self.doc.add_table(rows=1, cols=4)
         headers = ["CVE ID", "Affected Product", "Exploitation Evidence", "Source"]
         header_cells = table.rows[0].cells
-        table_caption_7pt = Pt(7)
+        Pt(7)
 
         # Header row: orange background, white bold text
         for i, header in enumerate(headers):
@@ -693,14 +699,14 @@ class WeeklyReportGenerator(BaseReportGenerator):
             cve_run.font.size = FontSizes.SUBTITLE
             cve_run.font.color.rgb = BrandColors.TEXT_DARK
             cve_run.font.bold = True
-            
+
             # Column 1: Affected Product
             cells[1].text = cve.get("affected_product", cve.get("product", "N/A"))[:60]
-            
+
             # Column 2: Exploitation Evidence (source of exploitation intel)
             evidence = self._format_exploitation_evidence(cve)
             cells[2].text = evidence
-            
+
             # Column 3: Source Citations - NORMAL SIZE with source names
             cells[3].text = ""
             cite_para = cells[3].paragraphs[0]
@@ -708,16 +714,16 @@ class WeeklyReportGenerator(BaseReportGenerator):
             if isinstance(source_citations, list) and source_citations:
                 # Build citation map to get numbers
                 citation_map = self._build_citation_map(analysis_result)
-                
+
                 # Add each source with its number
                 for idx, src in enumerate(source_citations):
                     if idx > 0:
                         # Add comma separator between sources
                         cite_para.add_run(", ")
-                    
+
                     # Get citation number
                     cite_num = citation_map.get(src, "?")
-                    
+
                     # Add [#] Source (normal size, not superscript)
                     cite_run = cite_para.add_run(f"[{cite_num}] {src}")
                     cite_run.font.size = FontSizes.SUBTITLE
@@ -761,30 +767,30 @@ class WeeklyReportGenerator(BaseReportGenerator):
         caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
         self.doc.add_paragraph()
-    
-    def _format_exploitation_evidence(self, cve: Dict[str, Any]) -> str:
+
+    def _format_exploitation_evidence(self, cve: dict[str, Any]) -> str:
         """Format exploitation evidence column based on threat intelligence sources."""
         evidence_parts = []
-        
+
         if cve.get("in_cisa_kev"):
             evidence_parts.append("CISA KEV")
-        
+
         targeted_by = str(cve.get("targeted_by_actors", "")).strip()
         if targeted_by and targeted_by.lower() not in ("", "none", "unknown", "n/a"):
             evidence_parts.append(f"Actor: {targeted_by[:30]}")
-        
+
         exploited_by = str(cve.get("exploited_by", "")).upper()
         if "RANSOMWARE" in exploited_by:
             evidence_parts.append("Ransomware")
         elif "ACTIVE EXPLOITATION" in exploited_by:
             evidence_parts.append("Active exploit")
-        
+
         if not evidence_parts:
             evidence_parts.append("Exploitation confirmed")
-        
+
         return "; ".join(evidence_parts[:2])  # Max 2 sources to keep readable
 
-    def _add_sector_threat_activity(self, analysis_result: Dict[str, Any]) -> None:
+    def _add_sector_threat_activity(self, analysis_result: dict[str, Any]) -> None:
         """Add sector threat activity section with threat actor table."""
         logger.info("Adding Sector Threat Activity section")
 
@@ -800,7 +806,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-        
+
         action_run = intro.add_run(
             "Review 'What to Monitor' column to identify relevant log sources and detection opportunities."
         )
@@ -867,10 +873,10 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     for idx, src in enumerate(source_citations):
                         if idx > 0:
                             cite_para.add_run(", ")
-                        
+
                         # Get citation number
                         cite_num = citation_map.get(src, "?")
-                        
+
                         # Add [#] Source (normal size, not superscript)
                         cite_run = cite_para.add_run(f"[{cite_num}] {src}")
                         cite_run.font.size = FontSizes.SUBTITLE
@@ -880,7 +886,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     cite_run = cite_para.add_run("Unknown")
                     cite_run.font.size = FontSizes.SUBTITLE
                     cite_run.font.color.rgb = BrandColors.TEXT_DARK
-                
+
                 self._clear_cell_shading(cells[3])
                 self._set_cell_borders(cells[3], "CCCCCC")
 
@@ -889,7 +895,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                         for run in para.runs:
                             run.font.size = FontSizes.SUBTITLE
                             run.font.color.rgb = BrandColors.TEXT_DARK
-            
+
             # Set column widths
             table.columns[0].width = Inches(1.3)  # Origin/Motivation
             table.columns[1].width = Inches(2.5)  # Activity Observed
@@ -900,7 +906,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         self.doc.add_paragraph()
 
-    def _add_active_campaigns(self, analysis_result: Dict[str, Any]) -> None:
+    def _add_active_campaigns(self, analysis_result: dict[str, Any]) -> None:
         """Add Active Campaigns section with campaign details table."""
         logger.info("Adding Active Campaigns section")
 
@@ -1002,10 +1008,10 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     for idx, src in enumerate(source_citations):
                         if idx > 0:
                             cite_para.add_run(", ")
-                        
+
                         # Get citation number - must be a real API source
                         cite_num = citation_map.get(src)
-                        
+
                         if cite_num:
                             # Add [#] Source (normal size, not superscript)
                             cite_run = cite_para.add_run(f"[{cite_num}] {src}")
@@ -1013,7 +1019,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
                             cite_run.font.color.rgb = BrandColors.TEXT_DARK
                         else:
                             # No valid citation - log warning and show in gray
-                            logger.warning(f"Campaign '{campaign.get('campaign_name')}' cites unverifiable source: {src}")
+                            logger.warning(
+                                f"Campaign '{campaign.get('campaign_name')}' cites unverifiable source: {src}"
+                            )
                             cite_run = cite_para.add_run(f"{src}")
                             cite_run.font.size = FontSizes.SUBTITLE
                             cite_run.font.color.rgb = BrandColors.GRAY_MEDIUM  # Gray to indicate issue
@@ -1022,7 +1030,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     cite_run = cite_para.add_run("Unknown")
                     cite_run.font.size = FontSizes.SUBTITLE
                     cite_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-                
+
                 self._clear_cell_shading(cells[6])
                 self._set_cell_borders(cells[6], "CCCCCC")
 
@@ -1054,7 +1062,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         self.doc.add_paragraph()
 
-    def _add_industry_incidents(self, analysis_result: Dict[str, Any]) -> None:
+    def _add_industry_incidents(self, analysis_result: dict[str, Any]) -> None:
         """Add Peer Incidents section - company breaches from OSINT sources."""
         logger.info("Adding Peer Incidents section")
 
@@ -1070,7 +1078,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-        
+
         action_run = intro.add_run(
             "Review attack vectors to identify relevant log sources: authentication logs for Credential Harvesting, "
             "web logs for Remote Code Execution, network logs for C2 Communication."
@@ -1083,7 +1091,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         # Build citation map for consistent numbering
         citation_map = self._build_citation_map(analysis_result)
-        
+
         # Build reverse lookup: map AI's original citation numbers to OSINT titles
         osint_sources = analysis_result.get("osint_sources_used", [])
         ai_citation_to_title = {}
@@ -1092,27 +1100,27 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 title = source.get("title", "")
                 # AI assigns citation numbers starting from 1
                 ai_citation_to_title[i] = title
-        
+
         # Collect incidents from multiple sources:
         incidents = []
-        
+
         # 1. Get AI-identified incidents from OSINT (structured output)
         ai_incidents = analysis_result.get("industry_incidents", [])
         if ai_incidents:
             logger.info(f"Found {len(ai_incidents)} incidents from AI analysis")
             incidents.extend(ai_incidents)
-        
+
         # 2. Add Intel471 breach alerts directly (may not be in AI output)
         intel471_breaches = self._extract_intel471_breaches(analysis_result)
         if intel471_breaches:
             logger.info(f"Adding {len(intel471_breaches)} Intel471 breach alerts")
             incidents.extend(intel471_breaches)
-        
+
         # 3. Fallback: extract from OSINT if AI didn't provide structured incidents
         if not incidents:
             logger.warning("No industry_incidents from AI or Intel471, falling back to extraction from OSINT titles")
             incidents = self._extract_breach_incidents(osint_sources)
-        
+
         if incidents:
             # Create table: Company | Incident Type | Date | Source
             table = self.doc.add_table(rows=1, cols=4)
@@ -1137,25 +1145,25 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 # Column 0: Organization name
                 org = incident.get("organization", "Unknown")
                 cells[0].text = org[:40]  # Truncate long names
-                
+
                 # Column 1: Incident type (using SOC-friendly attack vectors)
                 incident_type = incident.get("incident_type", "Breach")
                 # Map to VERIS-aligned attack vectors for SOC consumption
                 incident_type = self._normalize_incident_type(incident_type)
                 cells[1].text = incident_type
-                
+
                 # Column 2: Date
                 date = incident.get("date", "Unknown")
-                if hasattr(date, 'strftime'):
-                    date = date.strftime('%Y-%m-%d')
+                if hasattr(date, "strftime"):
+                    date = date.strftime("%Y-%m-%d")
                 elif isinstance(date, str) and len(date) > 10:
                     date = date[:10]  # Truncate to YYYY-MM-DD
                 cells[2].text = date
-                
+
                 # Column 3: Source with citation number
                 source_name = incident.get("source", "OSINT")
                 ai_citation_num = incident.get("osint_citation_number")
-                
+
                 # Map AI's citation number to the correct final citation number
                 final_citation_num = None
                 if ai_citation_num and ai_citation_num in ai_citation_to_title:
@@ -1163,17 +1171,17 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     title = ai_citation_to_title[ai_citation_num]
                     # Get the final citation number from the map
                     final_citation_num = citation_map.get(title)
-                
+
                 # Check if this is an Intel471 source
                 intel471_citation = citation_map.get("Intel471")
-                
+
                 # Check for generic OSINT fallback
-                osint_citation = citation_map.get("OSINT")
-                
+                citation_map.get("OSINT")
+
                 # Column 3: Source - NORMAL SIZE [#] SourceName (not superscript in table column)
                 cells[3].text = ""
                 source_para = cells[3].paragraphs[0]
-                
+
                 if final_citation_num:
                     # Normal size: [#] SourceName
                     cite_run = source_para.add_run(f"[{final_citation_num}] {source_name[:20]}")
@@ -1224,41 +1232,48 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         self.doc.add_paragraph()
 
-    def _extract_intel471_breaches(self, analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _extract_intel471_breaches(self, analysis_result: dict[str, Any]) -> list[dict[str, Any]]:
         """Extract breach incidents from raw Intel471 data.
-        
+
         Intel471 breach alerts have threat_type='BREACH ALERT' or 'Breach Alert'.
         We need to access the raw data, not the AI's analysis.
         """
         incidents = []
-        
+
         # The analysis_result doesn't have raw Intel471 data
         # We need to get it from somewhere else - for now, return empty
         # TODO: Pass raw Intel471 data to the report generator
-        
+
         logger.debug("Intel471 breach extraction not yet implemented - raw data not available to report generator")
         return incidents
-    
-    def _extract_breach_incidents(self, osint_sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+
+    def _extract_breach_incidents(self, osint_sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Extract breach incidents from OSINT sources."""
         incidents = []
-        
+
         # Keywords that indicate breach/incident articles
         breach_keywords = [
-            "breach", "ransomware", "hack", "attack", "compromise", 
-            "data leak", "cyberattack", "cyber attack", "incident"
+            "breach",
+            "ransomware",
+            "hack",
+            "attack",
+            "compromise",
+            "data leak",
+            "cyberattack",
+            "cyber attack",
+            "incident",
         ]
-        
+
         for source in osint_sources:
             title = source.get("title", "").lower()
             url = source.get("url", "")
             date = source.get("date", source.get("published", "Unknown"))
-            
+
             # Check if this is a breach-related article
             if any(keyword in title for keyword in breach_keywords):
                 # Try to extract organization name from title
                 org_name = self._extract_organization_from_title(source.get("title", ""))
-                
+
                 # Determine incident type (VERIS-aligned attack vectors)
                 incident_type = "Credential Harvesting"  # Default
                 if "ransomware" in title:
@@ -1275,54 +1290,65 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     incident_type = "Malware Infection"
                 elif "exploit" in title or "vulnerability" in title:
                     incident_type = "Remote Code Execution"
-                
+
                 # Extract source domain from URL
                 source_name = "OSINT"
                 if url:
                     try:
                         from urllib.parse import urlparse
+
                         domain = urlparse(url).netloc
                         # Remove www. prefix
                         if domain.startswith("www."):
                             domain = domain[4:]
                         source_name = domain[:25]  # Truncate long domains
-                    except:
+                    except (ValueError, AttributeError):
                         source_name = "OSINT"
-                
+
                 # Format date if it's a datetime
-                if hasattr(date, 'strftime'):
-                    date = date.strftime('%Y-%m-%d')
+                if hasattr(date, "strftime"):
+                    date = date.strftime("%Y-%m-%d")
                 elif isinstance(date, str) and len(date) > 10:
                     date = date[:10]  # Truncate to YYYY-MM-DD
-                
-                incidents.append({
-                    "organization": org_name,
-                    "incident_type": incident_type,
-                    "date": date,
-                    "source": source_name,
-                    "url": url
-                })
-        
+
+                incidents.append(
+                    {
+                        "organization": org_name,
+                        "incident_type": incident_type,
+                        "date": date,
+                        "source": source_name,
+                        "url": url,
+                    }
+                )
+
         # Limit to top 15 most recent
         return incidents[:15]
-    
+
     def _extract_organization_from_title(self, title: str) -> str:
         """Extract organization name from article title."""
         # Common patterns in breach headlines:
         # "Company X suffers data breach"
         # "Ransomware attack hits Organization Y"
         # "Hackers breach Company Z"
-        
+
         # Remove common prefixes/suffixes
         title = title.replace("'s ", " ").replace("'s ", " ")
-        
+
         # Split on common verbs/keywords
         split_words = [
-            " suffers ", " confirms ", " discloses ", " reports ",
-            " hit by ", " targeted by ", " attacked by ", " breached by ",
-            " says ", " warns ", " announces "
+            " suffers ",
+            " confirms ",
+            " discloses ",
+            " reports ",
+            " hit by ",
+            " targeted by ",
+            " attacked by ",
+            " breached by ",
+            " says ",
+            " warns ",
+            " announces ",
         ]
-        
+
         for word in split_words:
             if word in title.lower():
                 # Take the part before the verb
@@ -1333,18 +1359,18 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     # Take last 2-3 words as organization name
                     org_name = " ".join(words[-3:]) if len(words) >= 3 else " ".join(words[-2:])
                     return org_name.title()[:40]  # Capitalize and truncate
-        
+
         # If no pattern match, take first N words
         words = title.split()
         if len(words) >= 2:
             return " ".join(words[:3]).title()[:40]
-        
+
         return "Unknown Organization"
-    
+
     def _normalize_incident_type(self, incident_type: str) -> str:
         """Normalize incident types to SOC-friendly VERIS-aligned attack vectors."""
         incident_type_lower = incident_type.lower()
-        
+
         # Map common incident types to VERIS attack vectors
         if "ransomware" in incident_type_lower:
             return "Ransomware"
@@ -1373,7 +1399,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         else:
             return incident_type  # Return as-is if no mapping
 
-    def _add_recommended_actions(self, analysis_result: Dict[str, Any]) -> None:
+    def _add_recommended_actions(self, analysis_result: dict[str, Any]) -> None:
         """Add recommended actions section."""
         logger.info("Adding Recommended Actions section")
 
@@ -1383,7 +1409,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         recommendations = analysis_result.get("recommendations", [])
 
         if recommendations:
-            for i, rec in enumerate(recommendations):
+            for rec in recommendations:
                 para = self.doc.add_paragraph(rec, style="List Bullet")
                 for run in para.runs:
                     run.font.size = FontSizes.BODY_SMALL
@@ -1397,7 +1423,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 "Review scan results for exposed vulnerabilities; validate asset ownership and remediation timelines",
                 "Brief development teams on current threat campaigns",
                 "Verify endpoint protection has latest behavioral IOAs enabled",
-                "Confirm SIEM is receiving logs from affected systems"
+                "Confirm SIEM is receiving logs from affected systems",
             ]
             for rec in default_recs:
                 para = self.doc.add_paragraph(rec, style="List Bullet")
@@ -1406,14 +1432,14 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         self.doc.add_paragraph()
 
-    def _build_citation_map(self, analysis_result: Dict[str, Any]) -> Dict[str, int]:
+    def _build_citation_map(self, analysis_result: dict[str, Any]) -> dict[str, int]:
         """Build a mapping of OSINT source titles/URLs to their final citation numbers."""
         citation_map = {}
         citation_counter = 1
-        
+
         # Collect all API sources actually cited in analysis
         api_sources_used = set()
-        
+
         # Check CVE analysis for source citations
         cve_analysis = analysis_result.get("cve_analysis", [])
         for cve in cve_analysis:
@@ -1421,7 +1447,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 sources = cve.get("source_citations", [])
                 if isinstance(sources, list):
                     api_sources_used.update(sources)
-        
+
         # Check APT activity for source citations
         apt_activity = analysis_result.get("apt_activity", [])
         for apt in apt_activity:
@@ -1429,34 +1455,34 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 sources = apt.get("source_citations", [])
                 if isinstance(sources, list):
                     api_sources_used.update(sources)
-        
+
         # Build primary sources list based on what was actually used
         primary_sources = []
-        
+
         # Always include NVD (CVE database)
         primary_sources.append(("NVD", "NIST National Vulnerability Database (NVD)"))
-        
+
         # Include CISA KEV if any CVEs are in KEV
         if any(cve.get("in_cisa_kev") for cve in cve_analysis if isinstance(cve, dict)):
             primary_sources.append(("CISA KEV", "CISA Known Exploited Vulnerabilities (KEV) Catalog"))
-        
+
         # Include Intel471 if cited
         if "Intel471" in api_sources_used:
             primary_sources.append(("Intel471", "Intel471 Titan threat intelligence platform"))
-        
+
         # Include CrowdStrike if cited
         if "CrowdStrike" in api_sources_used:
             primary_sources.append(("CrowdStrike", "CrowdStrike Falcon Intelligence"))
-        
+
         # Include ThreatQ if cited (usually disabled)
         if "ThreatQ" in api_sources_used:
             primary_sources.append(("ThreatQ", "ThreatQ threat intelligence management platform"))
-        
+
         # Map API sources
-        for short_name, full_name in primary_sources:
+        for short_name, _full_name in primary_sources:
             citation_map[short_name] = citation_counter
             citation_counter += 1
-        
+
         # Map OSINT sources - create mapping from title/URL to citation number
         osint_sources = analysis_result.get("osint_sources_used", [])
         for source in osint_sources:
@@ -1470,10 +1496,10 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     # Also map by URL as fallback
                     citation_map[url] = citation_counter
                 citation_counter += 1
-        
+
         return citation_map
-    
-    def _add_resources_section(self, analysis_result: Dict[str, Any]) -> None:
+
+    def _add_resources_section(self, analysis_result: dict[str, Any]) -> None:
         """Add Resources section listing threat intelligence sources that actually provided data."""
         logger.info("Adding Resources section")
 
@@ -1482,19 +1508,17 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         # Intro text
         intro = self.doc.add_paragraph()
-        intro_run = intro.add_run(
-            "This report was compiled using the following intelligence sources:"
-        )
+        intro_run = intro.add_run("This report was compiled using the following intelligence sources:")
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
 
         # Build citation map (used by Industry Incidents table too)
         citation_map = self._build_citation_map(analysis_result)
-        
+
         # Collect all API sources actually cited in analysis
         api_sources_used = set()
-        
+
         # Check CVE analysis for source citations
         cve_analysis = analysis_result.get("cve_analysis", [])
         for cve in cve_analysis:
@@ -1502,7 +1526,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 sources = cve.get("source_citations", [])
                 if isinstance(sources, list):
                     api_sources_used.update(sources)
-        
+
         # Check APT activity for source citations
         apt_activity = analysis_result.get("apt_activity", [])
         for apt in apt_activity:
@@ -1510,25 +1534,25 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 sources = apt.get("source_citations", [])
                 if isinstance(sources, list):
                     api_sources_used.update(sources)
-        
+
         # Build primary sources list based on what was actually used
         primary_sources = []
-        
+
         # Always include NVD (CVE database)
         primary_sources.append(("NVD", "NIST National Vulnerability Database (NVD)"))
-        
+
         # Include CISA KEV if any CVEs are in KEV
         if any(cve.get("in_cisa_kev") for cve in cve_analysis if isinstance(cve, dict)):
             primary_sources.append(("CISA KEV", "CISA Known Exploited Vulnerabilities (KEV) Catalog"))
-        
+
         # Include Intel471 if cited
         if "Intel471" in api_sources_used:
             primary_sources.append(("Intel471", "Intel471 Titan threat intelligence platform"))
-        
+
         # Include CrowdStrike if cited
         if "CrowdStrike" in api_sources_used:
             primary_sources.append(("CrowdStrike", "CrowdStrike Falcon Intelligence"))
-        
+
         # Include ThreatQ if cited (usually disabled)
         if "ThreatQ" in api_sources_used:
             primary_sources.append(("ThreatQ", "ThreatQ threat intelligence management platform"))
@@ -1536,14 +1560,14 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Add numbered citations for API sources
         for short_name, full_name in primary_sources:
             para = self.doc.add_paragraph(style="List Bullet")
-            
+
             # Get citation number from map - NORMAL SIZE BOLD (not superscript)
             citation_num = citation_map.get(short_name, "?")
             cite_run = para.add_run(f"[{citation_num}] ")
             cite_run.font.bold = True
             cite_run.font.size = FontSizes.BODY_SMALL
             cite_run.font.color.rgb = BrandColors.TEXT_DARK
-            
+
             # Add source name
             source_run = para.add_run(full_name)
             source_run.font.size = FontSizes.BODY_SMALL
@@ -1564,28 +1588,28 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     title = source.get("title", "")
                     url = source.get("url", "")
                     relevance = source.get("relevance", "")
-                    
+
                     if title and url:
                         # Create paragraph with bullet
                         para = self.doc.add_paragraph(style="List Bullet")
-                        
+
                         # Get citation number from map - NORMAL SIZE BOLD (not superscript)
                         citation_num = citation_map.get(title, citation_map.get(url, "?"))
                         cite_run = para.add_run(f"[{citation_num}] ")
                         cite_run.font.bold = True
                         cite_run.font.size = FontSizes.FOOTNOTE
                         cite_run.font.color.rgb = BrandColors.TEXT_DARK
-                        
+
                         # Add hyperlink for the title
                         self._add_hyperlink(para, title, url)
-                        
+
                         # Add relevance note if provided
                         if relevance:
                             rel_run = para.add_run(f" - {relevance}")
                             rel_run.font.size = FontSizes.FOOTNOTE
                             rel_run.font.color.rgb = BrandColors.GRAY_MEDIUM
                             rel_run.font.italic = True
-                        
+
                         # Set font size for the whole paragraph
                         for run in para.runs:
                             if run.font.size is None:
@@ -1613,14 +1637,14 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Create a single-cell table for the box
         table = self.doc.add_table(rows=1, cols=1)
         cell = table.rows[0].cells[0]
-        
+
         # Light blue/gray background for the info box
         self._set_cell_shading(cell, "E8F4F8")  # Light blue-gray
         self._set_cell_borders(cell, "B0D4E3", "8")  # Slightly darker blue border
-        
+
         # Clear default paragraph
         cell.paragraphs[0].clear()
-        
+
         # Title in the box
         title_para = cell.paragraphs[0]
         title_run = title_para.add_run("AI-Generated Intelligence Report")
@@ -1629,7 +1653,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         title_run.font.color.rgb = BrandColors.TEXT_DARK
         title_run.font.name = "Arial"
         title_para.paragraph_format.space_after = Pt(4)
-        
+
         # Body text
         body_para = cell.add_paragraph()
         body_text = (
@@ -1656,17 +1680,17 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Contact info
         contact = self.doc.add_paragraph()
         contact.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
+
         # Add text: "Questions or suspicious activity: secops@illumina.com | "
         contact_run = contact.add_run("Questions or suspicious activity: secops@illumina.com | ")
         contact_run.font.size = FontSizes.BODY_SMALL
         contact_run.font.bold = True
         contact_run.font.color.rgb = BrandColors.TEXT_DARK
-        
+
         # Add ServiceNow as hyperlink
         servicenow_url = "https://illumina.service-now.com/esp?id=sc_cat_item&sys_id=2498318b4fee53c0f628d0af0310c75d"
         self._add_hyperlink(contact, "ServiceNow", servicenow_url)
-        
+
         # Apply font styling to hyperlink
         for run in contact.runs:
             if run != contact_run:  # Style the hyperlink run

@@ -3,23 +3,27 @@ AI-powered threat analyst using Microsoft Semantic Kernel and Azure OpenAI.
 
 Analyzes threat intelligence data and generates actionable reports.
 """
-import logging
+
 import json
+import logging
 import re
-from typing import Dict, List, Any
 from pathlib import Path
+from typing import Any
 
 from semantic_kernel import Kernel  # type: ignore
-from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion  # type: ignore
-from semantic_kernel.connectors.ai.open_ai import AzureChatPromptExecutionSettings  # type: ignore
+from semantic_kernel.connectors.ai.open_ai import (
+    AzureChatCompletion,  # type: ignore
+    AzureChatPromptExecutionSettings,  # type: ignore
+)
 from semantic_kernel.contents import ChatHistory  # type: ignore
 
-from src.core.config import analysis_config, industry_filter_config
-from src.core.models import ThreatAnalysisResult
 from src.agents.exploit_enrichment import (
-    fetch_kev_cves, fetch_epss_scores,
-    build_exploited_by, build_affected_product_from_kev,
+    build_affected_product_from_kev,
+    build_exploited_by,
+    fetch_epss_scores,
+    fetch_kev_cves,
 )
+from src.core.config import analysis_config, industry_filter_config
 
 logger = logging.getLogger(__name__)
 
@@ -102,13 +106,7 @@ class ThreatAnalystAgent:
     Analyzes threat intelligence data and generates actionable reports.
     """
 
-    def __init__(
-        self,
-        openai_endpoint: str,
-        openai_key: str,
-        deployment_name: str = None,
-        system_prompt: str = None
-    ):
+    def __init__(self, openai_endpoint: str, openai_key: str, deployment_name: str = None, system_prompt: str = None):
         """
         Initialize the Threat Analyst Agent.
 
@@ -131,10 +129,7 @@ class ThreatAnalystAgent:
 
         # Add Azure OpenAI chat service
         self.chat_service = AzureChatCompletion(
-            deployment_name=self.deployment_name,
-            endpoint=openai_endpoint,
-            api_key=openai_key,
-            service_id="cti_analyst"
+            deployment_name=self.deployment_name, endpoint=openai_endpoint, api_key=openai_key, service_id="cti_analyst"
         )
 
         self.kernel.add_service(self.chat_service)
@@ -142,23 +137,23 @@ class ThreatAnalystAgent:
 
     async def analyze_threats_with_context(
         self,
-        cve_data: List[Dict],
-        intel471_data: List[Dict],
-        crowdstrike_data: List[Dict],
-        threatq_data: List[Dict],
-        rapid7_data: List[Dict],
-        rapid7_scans_data: List[Dict] = None,
-        osint_data: List[Dict] = None,
-        previous_contexts: List[Dict[str, Any]] = None,
-        cve_trends: Dict[str, Any] = None,
-        actor_trends: Dict[str, Any] = None
-    ) -> Dict[str, Any]:
+        cve_data: list[dict],
+        intel471_data: list[dict],
+        crowdstrike_data: list[dict],
+        threatq_data: list[dict],
+        rapid7_data: list[dict],
+        rapid7_scans_data: list[dict] = None,
+        osint_data: list[dict] = None,
+        previous_contexts: list[dict[str, Any]] = None,
+        cve_trends: dict[str, Any] = None,
+        actor_trends: dict[str, Any] = None,
+    ) -> dict[str, Any]:
         """
         Analyze threat intelligence data with historical context awareness.
-        
+
         This is the context-aware version that includes historical trends.
         Falls back to standard analysis if no context is provided.
-        
+
         Args:
             cve_data: List of CVE records from NVD
             intel471_data: List of threat intelligence from Intel471
@@ -170,17 +165,16 @@ class ThreatAnalystAgent:
             previous_contexts: Historical analysis contexts for trend analysis
             cve_trends: Pre-calculated CVE trends (new, persistent, resolved)
             actor_trends: Pre-calculated threat actor trends
-            
+
         Returns:
             Dictionary containing analysis results with trend information
         """
         # If no context provided, fall back to standard analysis
         if not previous_contexts and not cve_trends and not actor_trends:
             return await self.analyze_threats(
-                cve_data, intel471_data, crowdstrike_data,
-                threatq_data, rapid7_data, rapid7_scans_data, osint_data
+                cve_data, intel471_data, crowdstrike_data, threatq_data, rapid7_data, rapid7_scans_data, osint_data
             )
-        
+
         try:
             logger.info("Starting context-aware threat analysis")
             logger.info(
@@ -189,92 +183,110 @@ class ThreatAnalystAgent:
                 f"Rapid7: {len(rapid7_data)}, Rapid7-Scans: {len(rapid7_scans_data or [])}, "
                 f"OSINT: {len(osint_data or [])}"
             )
-            
+
             if previous_contexts:
                 logger.info(f"Using {len(previous_contexts)} previous contexts for trend analysis")
-            
+
             # Fetch public exploit intelligence (CISA KEV + EPSS)
-            all_cve_ids = self._collect_all_cve_ids(
-                cve_data, rapid7_scans_data or []
-            )
+            all_cve_ids = self._collect_all_cve_ids(cve_data, rapid7_scans_data or [])
             kev_lookup = await fetch_kev_cves()
             epss_lookup = await fetch_epss_scores(list(all_cve_ids))
-            
+
             # Prepare data for analysis
             data_summary = self._prepare_data_for_analysis(
                 cve_data, intel471_data, crowdstrike_data, threatq_data, rapid7_data
             )
-            
+
             # Build context-enhanced prompt
             analysis_prompt = self._build_context_aware_prompt(
-                data_summary, cve_data, intel471_data, crowdstrike_data,
-                threatq_data, rapid7_data, rapid7_scans_data or [],
-                osint_data or [], cve_trends, actor_trends, previous_contexts
+                data_summary,
+                cve_data,
+                intel471_data,
+                crowdstrike_data,
+                threatq_data,
+                rapid7_data,
+                rapid7_scans_data or [],
+                osint_data or [],
+                cve_trends,
+                actor_trends,
+                previous_contexts,
             )
-            
+
             # Create chat history
             chat_history = ChatHistory()
             chat_history.add_system_message(self.system_prompt)
             chat_history.add_user_message(analysis_prompt)
-            
+
             # Configure execution settings
             settings = AzureChatPromptExecutionSettings(
                 response_format={"type": "json_object"},
                 temperature=0.1,
                 seed=789,
             )
-            
+
             # Get response from GPT
             logger.info("Sending context-aware request to Azure OpenAI")
-            response = await self.chat_service.get_chat_message_content(
-                chat_history=chat_history,
-                settings=settings
-            )
-            
+            response = await self.chat_service.get_chat_message_content(chat_history=chat_history, settings=settings)
+
             # Parse response
             response_text = str(response)
             logger.info("Received response from Azure OpenAI")
-            
+
             analysis_result = self._parse_response(response_text)
-            
+
             if analysis_result:
                 logger.info("Successfully parsed context-aware analysis results")
-                
+
                 # Add trend information to result
                 if cve_trends:
                     analysis_result["cve_trends"] = cve_trends
                 if actor_trends:
                     analysis_result["actor_trends"] = actor_trends
-                
+
                 analysis_result = self._fill_gaps_from_backup(
-                    analysis_result, cve_data, rapid7_data, rapid7_scans_data,
-                    kev_lookup, epss_lookup, intel471_data, crowdstrike_data,
+                    analysis_result,
+                    cve_data,
+                    rapid7_data,
+                    rapid7_scans_data,
+                    kev_lookup,
+                    epss_lookup,
+                    intel471_data,
+                    crowdstrike_data,
                 )
                 return analysis_result
             else:
                 return self._get_default_analysis(
-                    cve_data, intel471_data, crowdstrike_data,
-                    threatq_data, rapid7_data, rapid7_scans_data,
-                    kev_lookup, epss_lookup,
+                    cve_data,
+                    intel471_data,
+                    crowdstrike_data,
+                    threatq_data,
+                    rapid7_data,
+                    rapid7_scans_data,
+                    kev_lookup,
+                    epss_lookup,
                 )
-        
+
         except Exception as e:
             logger.error(f"Error during context-aware threat analysis: {e}", exc_info=True)
             return self._get_default_analysis(
-                cve_data, intel471_data, crowdstrike_data,
-                threatq_data, rapid7_data, rapid7_scans_data,
+                cve_data,
+                intel471_data,
+                crowdstrike_data,
+                threatq_data,
+                rapid7_data,
+                rapid7_scans_data,
             )
-    
+
     async def analyze_threats(
         self,
-        cve_data: List[Dict],
-        intel471_data: List[Dict],
-        crowdstrike_data: List[Dict],
-        threatq_data: List[Dict],
-        rapid7_data: List[Dict],
-        rapid7_scans_data: List[Dict] = None,
-        osint_data: List[Dict] = None
-    ) -> Dict[str, Any]:
+        cve_data: list[dict],
+        intel471_data: list[dict],
+        crowdstrike_data: list[dict],
+        threatq_data: list[dict],
+        rapid7_data: list[dict],
+        rapid7_scans_data: list[dict] = None,
+        osint_data: list[dict] = None,
+    ) -> dict[str, Any]:
         """
         Analyze threat intelligence data from multiple sources.
 
@@ -300,9 +312,7 @@ class ThreatAnalystAgent:
             )
 
             # Fetch public exploit intelligence (CISA KEV + EPSS)
-            all_cve_ids = self._collect_all_cve_ids(
-                cve_data, rapid7_scans_data or []
-            )
+            all_cve_ids = self._collect_all_cve_ids(cve_data, rapid7_scans_data or [])
             kev_lookup = await fetch_kev_cves()
             epss_lookup = await fetch_epss_scores(list(all_cve_ids))
 
@@ -313,9 +323,14 @@ class ThreatAnalystAgent:
 
             # Create analysis prompt
             analysis_prompt = self._build_analysis_prompt(
-                data_summary, cve_data, intel471_data, crowdstrike_data,
-                threatq_data, rapid7_data, rapid7_scans_data or [],
-                osint_data or []
+                data_summary,
+                cve_data,
+                intel471_data,
+                crowdstrike_data,
+                threatq_data,
+                rapid7_data,
+                rapid7_scans_data or [],
+                osint_data or [],
             )
 
             # Create chat history
@@ -332,10 +347,7 @@ class ThreatAnalystAgent:
 
             # Get response from GPT
             logger.info("Sending request to Azure OpenAI")
-            response = await self.chat_service.get_chat_message_content(
-                chat_history=chat_history,
-                settings=settings
-            )
+            response = await self.chat_service.get_chat_message_content(chat_history=chat_history, settings=settings)
 
             # Parse response
             response_text = str(response)
@@ -347,26 +359,41 @@ class ThreatAnalystAgent:
             if analysis_result:
                 logger.info("Successfully parsed analysis results")
                 analysis_result = self._fill_gaps_from_backup(
-                    analysis_result, cve_data, rapid7_data, rapid7_scans_data,
-                    kev_lookup, epss_lookup, intel471_data, crowdstrike_data,
+                    analysis_result,
+                    cve_data,
+                    rapid7_data,
+                    rapid7_scans_data,
+                    kev_lookup,
+                    epss_lookup,
+                    intel471_data,
+                    crowdstrike_data,
                 )
                 return analysis_result
             else:
                 return self._get_default_analysis(
-                    cve_data, intel471_data, crowdstrike_data,
-                    threatq_data, rapid7_data, rapid7_scans_data,
-                    kev_lookup, epss_lookup,
+                    cve_data,
+                    intel471_data,
+                    crowdstrike_data,
+                    threatq_data,
+                    rapid7_data,
+                    rapid7_scans_data,
+                    kev_lookup,
+                    epss_lookup,
                 )
 
         except Exception as e:
             logger.error(f"Error during threat analysis: {e}", exc_info=True)
             return self._get_default_analysis(
-                cve_data, intel471_data, crowdstrike_data,
-                threatq_data, rapid7_data, rapid7_scans_data,
+                cve_data,
+                intel471_data,
+                crowdstrike_data,
+                threatq_data,
+                rapid7_data,
+                rapid7_scans_data,
             )
 
     @staticmethod
-    def _collect_all_cve_ids(cve_data: List[Dict], rapid7_scans_data: List) -> set:
+    def _collect_all_cve_ids(cve_data: list[dict], rapid7_scans_data: list) -> set:
         """Gather all unique CVE IDs across data sources for enrichment lookups."""
         ids = set()
         for cve in cve_data:
@@ -380,12 +407,12 @@ class ThreatAnalystAgent:
 
     def _prepare_data_for_analysis(
         self,
-        cve_data: List[Dict],
-        intel471_data: List[Dict],
-        crowdstrike_data: List[Dict],
-        threatq_data: List[Dict],
-        rapid7_data: List[Dict]
-    ) -> Dict[str, List]:
+        cve_data: list[dict],
+        intel471_data: list[dict],
+        crowdstrike_data: list[dict],
+        threatq_data: list[dict],
+        rapid7_data: list[dict],
+    ) -> dict[str, list]:
         """
         Prepare and truncate data for analysis based on config limits.
 
@@ -396,70 +423,72 @@ class ThreatAnalystAgent:
             Dictionary with truncated data
         """
         return {
-            "cve_data": cve_data[:analysis_config.max_cves_for_analysis],
-            "intel471_data": intel471_data[:analysis_config.max_intel471_for_analysis],
-            "crowdstrike_data": crowdstrike_data[:analysis_config.max_crowdstrike_for_analysis],
-            "threatq_data": threatq_data[:analysis_config.max_threatq_for_analysis],
-            "rapid7_data": rapid7_data[:analysis_config.max_rapid7_for_analysis]
+            "cve_data": cve_data[: analysis_config.max_cves_for_analysis],
+            "intel471_data": intel471_data[: analysis_config.max_intel471_for_analysis],
+            "crowdstrike_data": crowdstrike_data[: analysis_config.max_crowdstrike_for_analysis],
+            "threatq_data": threatq_data[: analysis_config.max_threatq_for_analysis],
+            "rapid7_data": rapid7_data[: analysis_config.max_rapid7_for_analysis],
         }
 
     def _build_analysis_prompt(
         self,
-        data_summary: Dict[str, List],
-        cve_data: List,
-        intel471_data: List,
-        crowdstrike_data: List,
-        threatq_data: List,
-        rapid7_data: List,
-        rapid7_scans_data: List = None,
-        osint_data: List = None
+        data_summary: dict[str, list],
+        cve_data: list,
+        intel471_data: list,
+        crowdstrike_data: list,
+        threatq_data: list,
+        rapid7_data: list,
+        rapid7_scans_data: list = None,
+        osint_data: list = None,
     ) -> str:
         """Build the analysis prompt with data."""
         rapid7_scans_data = rapid7_scans_data or []
         osint_data = osint_data or []
-        
+
         # Extract Rapid7 CVE correlation data from BOTH sources
         rapid7_cve_map = {}
-        
+
         # OPTION 1: Scan-based data (NEW - more accurate asset counts)
         if rapid7_scans_data and len(rapid7_scans_data) > 0:
             scan_summary = rapid7_scans_data[0] if isinstance(rapid7_scans_data[0], dict) else {}
             logger.info(f"Rapid7 scan data keys: {list(scan_summary.keys())}")
-            
+
             cve_exposure_map = scan_summary.get("cve_exposure_map", {})
             logger.info(f"Rapid7 scans CVE exposure map: {len(cve_exposure_map)} CVEs")
-            
+
             # Extract exposure data in the format: {"CVE-2024-1234": {"exposure": "12 servers", "asset_count": 12, ...}}
             for cve_id, exposure_info in cve_exposure_map.items():
                 if isinstance(exposure_info, dict):
                     # Use the pre-formatted exposure string (e.g., "12 servers")
-                    rapid7_cve_map[cve_id] = exposure_info.get("exposure", f"{exposure_info.get('asset_count', 0)} systems")
+                    rapid7_cve_map[cve_id] = exposure_info.get(
+                        "exposure", f"{exposure_info.get('asset_count', 0)} systems"
+                    )
                     logger.debug(f"Mapped {cve_id} -> {rapid7_cve_map[cve_id]}")
-        
+
         # OPTION 2: Fallback to vulnerability definitions (original source)
         if not rapid7_cve_map and rapid7_data and len(rapid7_data) > 0:
             logger.info("No scan data available, checking vulnerability definitions...")
             rapid7_summary = rapid7_data[0] if isinstance(rapid7_data[0], dict) else {}
             logger.info(f"Rapid7 summary keys: {list(rapid7_summary.keys())}")
-            
+
             top_vulns = rapid7_summary.get("top_vulnerabilities", [])
             logger.info(f"Rapid7 top_vulnerabilities count: {len(top_vulns)}")
-            
+
             if top_vulns:
                 logger.info(f"Sample vulnerability structure: {top_vulns[0].keys() if top_vulns else 'empty'}")
-            
+
             # Build a map of CVE ID -> asset count from Rapid7 top vulnerabilities
             for idx, vuln in enumerate(top_vulns):
                 cve_ids = vuln.get("cve_ids", [])
                 # Fix: Ensure cve_ids is a list, not a string
                 if isinstance(cve_ids, str):
                     cve_ids = [cve_ids] if cve_ids else []
-                
+
                 asset_count = vuln.get("asset_count")
-                
+
                 if idx < 3:  # Log first 3 for debugging
                     logger.info(f"Vuln {idx}: CVEs={cve_ids}, asset_count={asset_count} (type: {type(asset_count)})")
-                
+
                 for cve_id in cve_ids:
                     if cve_id not in rapid7_cve_map:
                         if asset_count is not None and asset_count > 0:
@@ -467,11 +496,11 @@ class ThreatAnalystAgent:
                             logger.info(f"Mapped {cve_id} -> {asset_count} assets")
                         elif idx < 3:  # Log why first 3 weren't mapped
                             logger.info(f"Skipped {cve_id}: asset_count={asset_count}")
-        
+
         logger.info(f"Rapid7 CVE exposure map: {len(rapid7_cve_map)} CVEs with exposure data")
         if rapid7_cve_map:
             logger.info(f"Sample Rapid7 exposures: {dict(list(rapid7_cve_map.items())[:5])}")
-        
+
         # Extract CrowdStrike Spotlight CVE correlation data
         crowdstrike_cve_map = {}
         if crowdstrike_data:
@@ -480,22 +509,22 @@ class ThreatAnalystAgent:
                     for cve_id in item.get("cve_ids", []):
                         if cve_id not in crowdstrike_cve_map:
                             crowdstrike_cve_map[cve_id] = item["device_count"]
-        
+
         if crowdstrike_cve_map:
             logger.info(f"CrowdStrike CVE exposure map: {len(crowdstrike_cve_map)} CVEs")
-        
+
         # Merge both sources - prefer CrowdStrike if both exist (more real-time)
         combined_cve_map = {**rapid7_cve_map, **crowdstrike_cve_map}
-        
+
         logger.info(f"Combined exposure map: {len(combined_cve_map)} CVEs total")
         if combined_cve_map:
             logger.info(f"Exposure map content: {combined_cve_map}")
-        
+
         # Extract Intel471 breach/exploitation context
         intel471_cve_mentions = {}
         intel471_actor_activity = []
         intel471_breach_summary = []
-        
+
         if intel471_data:
             for item in intel471_data:
                 threat_type = item.get("threat_type", "").upper()
@@ -504,55 +533,56 @@ class ThreatAnalystAgent:
 
                 # Look for CVE mentions in Intel471 reports - check both subject and full text
                 import re
-                cve_pattern = r'CVE-\d{4}-\d{4,7}'
-                
+
+                cve_pattern = r"CVE-\d{4}-\d{4,7}"
+
                 # Search in both subject and full text for comprehensive CVE detection
                 text_to_search = f"{summary} {full_text}" if full_text else summary
                 cves_mentioned = re.findall(cve_pattern, text_to_search)
-                
+
                 for cve_id in cves_mentioned:
                     if cve_id not in intel471_cve_mentions:
                         # Use full_text for context if available
                         context_text = full_text[:300] if full_text else summary[:300]
-                        intel471_cve_mentions[cve_id] = {
-                            "mentioned_in": threat_type,
-                            "context": context_text
-                        }
-                
+                        intel471_cve_mentions[cve_id] = {"mentioned_in": threat_type, "context": context_text}
+
                 # Collect actor activity
                 actor = item.get("threat_actor", "")
                 if actor and actor != "Unknown":
                     full_text = item.get("full_text", "")
-                    intel471_actor_activity.append({
-                        "actor": actor,
-                        "type": threat_type,
-                        "subject": summary[:200],  # Title
-                        "details": full_text[:500] if full_text else summary[:500]  # Report excerpt
-                    })
-                
+                    intel471_actor_activity.append(
+                        {
+                            "actor": actor,
+                            "type": threat_type,
+                            "subject": summary[:200],  # Title
+                            "details": full_text[:500] if full_text else summary[:500],  # Report excerpt
+                        }
+                    )
+
                 # Collect breach information
                 if "BREACH" in threat_type:
                     # Include both subject and full report text for comprehensive analysis
                     full_text = item.get("full_text", "")
-                    intel471_breach_summary.append({
-                        "subject": summary[:500],  # Report title
-                        "full_text": full_text if full_text else summary,  # Full report body or fallback to subject
-                        "date": item.get("date", ""),
-                        "uid": item.get("uid", "")
-                    })
-        
+                    intel471_breach_summary.append(
+                        {
+                            "subject": summary[:500],  # Report title
+                            "full_text": full_text if full_text else summary,  # Full report body or fallback to subject
+                            "date": item.get("date", ""),
+                            "uid": item.get("uid", ""),
+                        }
+                    )
+
         # Merge both sources - prefer CrowdStrike if both exist (more real-time)
         combined_cve_map = {**rapid7_cve_map, **crowdstrike_cve_map}
-        
-        exposure_correlation_note = ""
+
         if combined_cve_map:
             # Create explicit examples for the AI
             example_mappings = []
             for cve_id, exposure_value in list(combined_cve_map.items())[:5]:
                 # The exposure_value is already formatted (e.g., "1 system", "7 systems")
                 example_mappings.append(f'  - {cve_id}: {exposure_value} → set "exposure": "{exposure_value}"')
-            
-            exposure_correlation_note = f"""
+
+            f"""
 CRITICAL - VULNERABILITY EXPOSURE CORRELATION:
 The following CVEs have been detected in our environment by security scans:
 {json.dumps(combined_cve_map, indent=2)}
@@ -572,11 +602,11 @@ FILTERING REQUIREMENT:
 If a CVE is not in the exposure map above, DO NOT include it in your cve_analysis array.
 Your report should ONLY contain CVEs that are actually in our environment.
 """
-        
+
         # Add Intel471 correlation context
         intel471_context = ""
         if intel471_cve_mentions or intel471_breach_summary:
-            intel471_context = f"""
+            intel471_context = """
 INTEL471 UNDERGROUND INTELLIGENCE CORRELATION:
 """
             if intel471_cve_mentions:
@@ -590,11 +620,11 @@ If a CVE appears here, it means:
 - Set "exploited_by" to reflect Intel471 source (e.g., "Ransomware groups (Intel471 breach report)")
 - Increase priority - these are actively weaponized vulnerabilities
 """
-            
+
             if intel471_breach_summary:
                 intel471_context += f"""
 Recent Breach Intelligence from Intel471 (peer organizations):
-{json.dumps(intel471_breach_summary[:5], indent=2)}
+{_sanitize_for_prompt(intel471_breach_summary[:5])}
 
 Each breach report includes:
 - subject: Report title/headline
@@ -611,35 +641,35 @@ If industries are not mentioned in the subject or full_text, use general languag
 
 ONLY mention specific industries if they appear in the Intel471 text above.
 """
-            
+
             if intel471_actor_activity:
                 intel471_context += f"""
 Threat Actor Activity from Intel471 Underground:
-{json.dumps(intel471_actor_activity[:10], indent=2)}
+{_sanitize_for_prompt(intel471_actor_activity[:10])}
 
 Cross-reference with CrowdStrike actors when possible to provide:
 - Combined actor profiles (CrowdStrike TTPs + Intel471 underground activity)
 - Specific targeting information
 """
-        
+
         # Build OSINT context if we have articles
         osint_context = ""
         if osint_data:
             osint_articles = []
             for article in osint_data[:15]:
                 entry = {
-                    "title": article.get('title', 'No title'),
-                    "source": article.get('source', 'Unknown'),
-                    "url": article.get('url', ''),
-                    "summary": article.get('summary', '')[:150]
+                    "title": article.get("title", "No title"),
+                    "source": article.get("source", "Unknown"),
+                    "url": article.get("url", ""),
+                    "summary": article.get("summary", "")[:150],
                 }
                 if article.get("cves_mentioned"):
-                    entry["cves_mentioned"] = article['cves_mentioned']
+                    entry["cves_mentioned"] = article["cves_mentioned"]
                 osint_articles.append(entry)
 
             osint_context = f"""
 OSINT - CURATED PUBLIC INTELLIGENCE ({len(osint_data)} articles from vetted sources):
-{json.dumps(osint_articles, indent=2)}
+{_sanitize_for_prompt(osint_articles)}
 
 Use these OSINT articles to:
 1. INDUSTRY INCIDENTS (PRIMARY USE): Extract company breaches from article titles
@@ -976,32 +1006,38 @@ Do not use Hyphens."""
 
     def _build_context_aware_prompt(
         self,
-        data_summary: Dict[str, List],
-        cve_data: List,
-        intel471_data: List,
-        crowdstrike_data: List,
-        threatq_data: List,
-        rapid7_data: List,
-        rapid7_scans_data: List = None,
-        osint_data: List = None,
-        cve_trends: Dict[str, Any] = None,
-        actor_trends: Dict[str, Any] = None,
-        previous_contexts: List[Dict[str, Any]] = None
+        data_summary: dict[str, list],
+        cve_data: list,
+        intel471_data: list,
+        crowdstrike_data: list,
+        threatq_data: list,
+        rapid7_data: list,
+        rapid7_scans_data: list = None,
+        osint_data: list = None,
+        cve_trends: dict[str, Any] = None,
+        actor_trends: dict[str, Any] = None,
+        previous_contexts: list[dict[str, Any]] = None,
     ) -> str:
         """
         Build context-aware analysis prompt with historical trends.
-        
+
         This extends the standard prompt with trend information from previous reports.
         """
         # Start with the standard prompt
         base_prompt = self._build_analysis_prompt(
-            data_summary, cve_data, intel471_data, crowdstrike_data,
-            threatq_data, rapid7_data, rapid7_scans_data, osint_data
+            data_summary,
+            cve_data,
+            intel471_data,
+            crowdstrike_data,
+            threatq_data,
+            rapid7_data,
+            rapid7_scans_data,
+            osint_data,
         )
-        
+
         # Add historical context section
         context_section = "\n\n=== HISTORICAL CONTEXT & TRENDS ===\n"
-        
+
         if cve_trends:
             trend_summary = cve_trends.get("trend_summary", "")
             new_cves = cve_trends.get("new_cves", [])
@@ -1009,18 +1045,18 @@ Do not use Hyphens."""
             resolved_cves = cve_trends.get("resolved_cves", [])
             recurrent_cves = cve_trends.get("recurrent_cves", [])
             weeks_analyzed = cve_trends.get("weeks_analyzed", 1)
-            
+
             context_section += f"""
 CVE TRENDS (analyzing {weeks_analyzed} report periods):
 Summary: {trend_summary}
 
-NEW CVEs ({len(new_cves)}): {', '.join(new_cves[:10])}{'...' if len(new_cves) > 10 else ''}
-PERSISTENT CVEs ({len(persistent_cves)}): {', '.join(persistent_cves[:10])}{'...' if len(persistent_cves) > 10 else ''}
-RESOLVED CVEs ({len(resolved_cves)}): {', '.join(resolved_cves[:10])}{'...' if len(resolved_cves) > 10 else ''}
+NEW CVEs ({len(new_cves)}): {", ".join(new_cves[:10])}{"..." if len(new_cves) > 10 else ""}
+PERSISTENT CVEs ({len(persistent_cves)}): {", ".join(persistent_cves[:10])}{"..." if len(persistent_cves) > 10 else ""}
+RESOLVED CVEs ({len(resolved_cves)}): {", ".join(resolved_cves[:10])}{"..." if len(resolved_cves) > 10 else ""}
 """
             if recurrent_cves:
                 context_section += f"RECURRENT CVEs ({len(recurrent_cves)}): {', '.join(recurrent_cves[:5])}\n"
-            
+
             context_section += """
 ANALYSIS INSTRUCTIONS FOR TRENDS:
 - Highlight NEW CVEs as emerging threats requiring immediate attention
@@ -1029,20 +1065,20 @@ ANALYSIS INSTRUCTIONS FOR TRENDS:
 - Flag RECURRENT CVEs as potential patching/remediation issues
 - Use trend data to provide week-over-week context in your executive summary
 """
-        
+
         if actor_trends:
             trend_summary = actor_trends.get("trend_summary", "")
             new_actors = actor_trends.get("new_actors", [])
             persistent_actors = actor_trends.get("persistent_actors", [])
             inactive_actors = actor_trends.get("inactive_actors", [])
-            
+
             context_section += f"""
 THREAT ACTOR TRENDS:
 Summary: {trend_summary}
 
-NEW threat actors identified: {', '.join(new_actors[:10]) if new_actors else 'None'}
-PERSISTENT threat actors (active in previous report): {', '.join(persistent_actors[:10]) if persistent_actors else 'None'}
-INACTIVE actors (reduced activity): {', '.join(inactive_actors[:10]) if inactive_actors else 'None'}
+NEW threat actors identified: {", ".join(new_actors[:10]) if new_actors else "None"}
+PERSISTENT threat actors (active in previous report): {", ".join(persistent_actors[:10]) if persistent_actors else "None"}
+INACTIVE actors (reduced activity): {", ".join(inactive_actors[:10]) if inactive_actors else "None"}
 
 ANALYSIS INSTRUCTIONS FOR ACTOR TRENDS:
 - Highlight NEW actors as emerging threats to monitor
@@ -1050,7 +1086,7 @@ ANALYSIS INSTRUCTIONS FOR ACTOR TRENDS:
 - Mention INACTIVE actors if they represent reduced risk
 - Use actor trends to show threat landscape evolution
 """
-        
+
         if previous_contexts:
             context_section += f"""
 HISTORICAL BASELINE:
@@ -1059,7 +1095,7 @@ HISTORICAL BASELINE:
 - Reference week-over-week changes in your executive summary
 - Show metric trends (CVE counts, actor activity, incidents) if significant
 """
-        
+
         # Add enhanced output requirements
         context_section += """
 ENHANCED OUTPUT REQUIREMENTS WITH TRENDS:
@@ -1072,16 +1108,15 @@ ENHANCED OUTPUT REQUIREMENTS WITH TRENDS:
 
 IMPORTANT: Continue to follow all standard JSON schema requirements from the base prompt above.
 """
-        
+
         # Combine base prompt with context section
         enhanced_prompt = base_prompt.replace(
-            "Respond ONLY with valid JSON",
-            context_section + "\n\nRespond ONLY with valid JSON"
+            "Respond ONLY with valid JSON", context_section + "\n\nRespond ONLY with valid JSON"
         )
-        
+
         return enhanced_prompt
 
-    def _parse_response(self, response_text: str) -> Dict[str, Any]:
+    def _parse_response(self, response_text: str) -> dict[str, Any]:
         """
         Robustly parse the AI response into a dictionary, handling control
         characters, truncated JSON, missing delimiters, and other common
@@ -1103,7 +1138,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
             pass
 
         # Attempt 2: strip control characters (except newline/tab used in formatting)
-        cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', ' ', response_text)
+        cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", " ", response_text)
         try:
             return json.loads(cleaned)
         except json.JSONDecodeError:
@@ -1118,7 +1153,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
             pass
 
         # Attempt 4: fix missing commas between } and { or } and "
-        fixed2 = re.sub(r'\}\s*\{', '},{', fixed)
+        fixed2 = re.sub(r"\}\s*\{", "},{", fixed)
         fixed2 = re.sub(r'\}\s*"', '},"', fixed2)
         fixed2 = re.sub(r'"\s*\{', '",{', fixed2)
         # Missing comma between "value" and "key"
@@ -1156,7 +1191,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                 result.append(ch)
                 escape_next = False
                 continue
-            if ch == '\\' and in_string:
+            if ch == "\\" and in_string:
                 result.append(ch)
                 escape_next = True
                 continue
@@ -1165,17 +1200,17 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                 result.append(ch)
                 continue
             if in_string:
-                if ch == '\n':
-                    result.append('\\n')
+                if ch == "\n":
+                    result.append("\\n")
                     continue
-                if ch == '\r':
-                    result.append('\\r')
+                if ch == "\r":
+                    result.append("\\r")
                     continue
-                if ch == '\t':
-                    result.append('\\t')
+                if ch == "\t":
+                    result.append("\\t")
                     continue
             result.append(ch)
-        return ''.join(result)
+        return "".join(result)
 
     @staticmethod
     def _repair_truncated_json(text: str) -> str | None:
@@ -1183,20 +1218,20 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
         If the AI output was cut off mid-JSON, close any open braces/brackets
         and truncate the last incomplete value.
         """
-        if not text or text[-1] in ('}', ']'):
+        if not text or text[-1] in ("}", "]"):
             return None
 
         # Strip trailing partial value (after last complete comma-separated item)
         truncated = text
-        for end_marker in ['},', '"],', '",', 'null,', 'true,', 'false,']:
+        for end_marker in ["},", '"],', '",', "null,", "true,", "false,"]:
             idx = truncated.rfind(end_marker)
             if idx != -1:
-                candidate = truncated[:idx + len(end_marker) - 1]  # drop trailing comma
+                candidate = truncated[: idx + len(end_marker) - 1]  # drop trailing comma
                 # Count open/close braces and brackets
-                open_braces = candidate.count('{') - candidate.count('}')
-                open_brackets = candidate.count('[') - candidate.count(']')
+                open_braces = candidate.count("{") - candidate.count("}")
+                open_brackets = candidate.count("[") - candidate.count("]")
                 if open_braces >= 0 and open_brackets >= 0:
-                    candidate += ']' * open_brackets + '}' * open_braces
+                    candidate += "]" * open_brackets + "}" * open_braces
                     return candidate
 
         return None
@@ -1207,7 +1242,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
         Find the first top-level { and attempt to parse progressively
         larger substrings until we get the largest valid JSON object.
         """
-        start = text.find('{')
+        start = text.find("{")
         if start == -1:
             return None
 
@@ -1221,7 +1256,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
             if escape_next:
                 escape_next = False
                 continue
-            if ch == '\\' and in_string:
+            if ch == "\\" and in_string:
                 escape_next = True
                 continue
             if ch == '"':
@@ -1229,12 +1264,12 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                 continue
             if in_string:
                 continue
-            if ch == '{':
+            if ch == "{":
                 depth += 1
-            elif ch == '}':
+            elif ch == "}":
                 depth -= 1
                 if depth == 0:
-                    candidate = text[start:i + 1]
+                    candidate = text[start : i + 1]
                     try:
                         parsed = json.loads(candidate)
                         if isinstance(parsed, dict):
@@ -1250,15 +1285,15 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
 
     def _fill_gaps_from_backup(
         self,
-        analysis_result: Dict[str, Any],
-        cve_data: List[Dict],
-        rapid7_data: List[Dict],
-        rapid7_scans_data: List[Dict] = None,
-        kev_lookup: Dict[str, dict] = None,
-        epss_lookup: Dict[str, dict] = None,
-        intel471_data: List[Dict] = None,
-        crowdstrike_data: List[Dict] = None,
-    ) -> Dict[str, Any]:
+        analysis_result: dict[str, Any],
+        cve_data: list[dict],
+        rapid7_data: list[dict],
+        rapid7_scans_data: list[dict] = None,
+        kev_lookup: dict[str, dict] = None,
+        epss_lookup: dict[str, dict] = None,
+        intel471_data: list[dict] = None,
+        crowdstrike_data: list[dict] = None,
+    ) -> dict[str, Any]:
         """
         Patch AI analysis results with Rapid7/NVD/KEV/EPSS backup data where
         the AI left gaps (N/A exposure, missing product names, etc.).
@@ -1390,22 +1425,28 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
 
         # Recompute priority using weighted scoring
         apt_cve_map = self._build_apt_cve_map(
-            intel471_data or [], crowdstrike_data or [],
+            intel471_data or [],
+            crowdstrike_data or [],
         )
         for cve_entry in cve_analysis:
             label, num_score, justification = self.compute_priority(
-                cve_entry, kev_lookup or {}, epss_lookup or {}, apt_cve_map,
+                cve_entry,
+                kev_lookup or {},
+                epss_lookup or {},
+                apt_cve_map,
             )
             cve_entry["priority"] = label
             cve_entry["priority_score"] = num_score
             cve_entry["priority_justification"] = justification
 
         priority_order = {"P1": 0, "P2": 1, "P3": 2}
-        cve_analysis.sort(key=lambda x: (
-            priority_order.get(x.get("priority", "P3"), 3),
-            -x.get("priority_score", 0),
-            -self._extract_count(x.get("exposure", "0")),
-        ))
+        cve_analysis.sort(
+            key=lambda x: (
+                priority_order.get(x.get("priority", "P3"), 3),
+                -x.get("priority_score", 0),
+                -self._extract_count(x.get("exposure", "0")),
+            )
+        )
 
         # Recount after re-scoring
         stats = analysis_result.get("statistics", {})
@@ -1430,24 +1471,24 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
 
     def _get_default_analysis(
         self,
-        cve_data: List[Dict],
-        intel471_data: List[Dict],
-        crowdstrike_data: List[Dict],
-        threatq_data: List[Dict],
-        rapid7_data: List[Dict],
-        rapid7_scans_data: List[Dict] = None,
-        kev_lookup: Dict[str, dict] = None,
-        epss_lookup: Dict[str, dict] = None,
-    ) -> Dict[str, Any]:
+        cve_data: list[dict],
+        intel471_data: list[dict],
+        crowdstrike_data: list[dict],
+        threatq_data: list[dict],
+        rapid7_data: list[dict],
+        rapid7_scans_data: list[dict] = None,
+        kev_lookup: dict[str, dict] = None,
+        epss_lookup: dict[str, dict] = None,
+    ) -> dict[str, Any]:
         """
         Generate a default analysis structure when AI analysis fails.
-        Uses Rapid7 scan data to filter to only detected CVEs and 
+        Uses Rapid7 scan data to filter to only detected CVEs and
         cross-references with NVD data for product names and severity.
         """
         rapid7_scans_data = rapid7_scans_data or []
         kev_lookup = kev_lookup or {}
         epss_lookup = epss_lookup or {}
-        
+
         # Build exposure map and scan enrichment from Rapid7 scans
         rapid7_cve_map = {}
         rapid7_scan_lookup = {}
@@ -1456,20 +1497,22 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
             cve_exposure_map = scan_summary.get("cve_exposure_map", {})
             for cve_id, exposure_info in cve_exposure_map.items():
                 if isinstance(exposure_info, dict):
-                    rapid7_cve_map[cve_id] = exposure_info.get("exposure", f"{exposure_info.get('asset_count', 0)} systems")
+                    rapid7_cve_map[cve_id] = exposure_info.get(
+                        "exposure", f"{exposure_info.get('asset_count', 0)} systems"
+                    )
                     rapid7_scan_lookup[cve_id] = exposure_info
-        
+
         logger.info(f"Default analysis: {len(rapid7_cve_map)} CVEs from Rapid7 scans")
-        
+
         # Build NVD lookup for product names, severity, descriptions
         nvd_lookup = {}
         for cve in cve_data:
             cve_id = cve.get("cve_id", "")
             if cve_id:
                 nvd_lookup[cve_id] = cve
-        
+
         logger.info(f"Default analysis: {len(nvd_lookup)} CVEs in NVD data for enrichment")
-        
+
         # Build Rapid7 vulnerability definitions lookup for extra product info
         rapid7_vuln_lookup = {}
         if rapid7_data and len(rapid7_data) > 0:
@@ -1477,7 +1520,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
             for vuln in rapid7_summary.get("top_vulnerabilities", []):
                 for cve_id in vuln.get("cve_ids", []):
                     rapid7_vuln_lookup[cve_id] = vuln
-        
+
         # Build CVE analysis from Rapid7-detected CVEs only
         cve_analysis = []
         if rapid7_cve_map:
@@ -1485,7 +1528,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                 nvd_info = nvd_lookup.get(cve_id, {})
                 rapid7_vuln = rapid7_vuln_lookup.get(cve_id, {})
                 r7_scan = rapid7_scan_lookup.get(cve_id, {})
-                
+
                 # Get affected product from KEV, NVD CPE, scan title, or Rapid7 vuln title
                 affected_product = (
                     build_affected_product_from_kev(cve_id, kev_lookup)
@@ -1499,7 +1542,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                 )
                 if affected_product == "N/A":
                     affected_product = "Unknown"
-                
+
                 severity = nvd_info.get("severity", rapid7_vuln.get("severity", "HIGH"))
                 exploited = nvd_info.get("exploited", rapid7_vuln.get("exploitable", False))
                 description = nvd_info.get("description", rapid7_vuln.get("description", ""))[:200]
@@ -1521,37 +1564,44 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                         exploited_by = "Exploit available"
                 else:
                     exploited_by = "None known"
-                
-                cve_analysis.append({
-                    "cve_id": cve_id,
-                    "priority": "P3",
-                    "severity": severity,
-                    "exploited": exploited,
-                    "description": description,
-                    "impact": "Detected in environment - requires assessment",
-                    "affected_product": affected_product,
-                    "exploited_by": exploited_by,
-                    "exposure": exposure_string,
-                    "weeks_detected": r7_scan.get("weeks_detected", 1),
-                })
-            
+
+                cve_analysis.append(
+                    {
+                        "cve_id": cve_id,
+                        "priority": "P3",
+                        "severity": severity,
+                        "exploited": exploited,
+                        "description": description,
+                        "impact": "Detected in environment - requires assessment",
+                        "affected_product": affected_product,
+                        "exploited_by": exploited_by,
+                        "exposure": exposure_string,
+                        "weeks_detected": r7_scan.get("weeks_detected", 1),
+                    }
+                )
+
             # Weighted priority scoring
             apt_cve_map = self._build_apt_cve_map(intel471_data, crowdstrike_data)
             for cve_entry in cve_analysis:
                 label, num_score, justification = self.compute_priority(
-                    cve_entry, kev_lookup, epss_lookup, apt_cve_map,
+                    cve_entry,
+                    kev_lookup,
+                    epss_lookup,
+                    apt_cve_map,
                 )
                 cve_entry["priority"] = label
                 cve_entry["priority_score"] = num_score
                 cve_entry["priority_justification"] = justification
 
             priority_order = {"P1": 0, "P2": 1, "P3": 2}
-            cve_analysis.sort(key=lambda x: (
-                priority_order.get(x.get("priority", "P3"), 3),
-                -x.get("priority_score", 0),
-                -self._extract_count(x.get("exposure", "0")),
-            ))
-        
+            cve_analysis.sort(
+                key=lambda x: (
+                    priority_order.get(x.get("priority", "P3"), 3),
+                    -x.get("priority_score", 0),
+                    -self._extract_count(x.get("exposure", "0")),
+                )
+            )
+
         total_cves = len(cve_analysis)
         p1_count = sum(1 for c in cve_analysis if c.get("priority") == "P1")
         p2_count = sum(1 for c in cve_analysis if c.get("priority") == "P2")
@@ -1559,7 +1609,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
         critical_count = sum(1 for c in cve_analysis if c.get("severity") in ("CRITICAL", "Critical"))
         high_count = sum(1 for c in cve_analysis if c.get("severity") in ("HIGH", "High", "Severe"))
         exploited_count = sum(1 for c in cve_analysis if c.get("exploited"))
-        
+
         if total_cves == 0:
             executive_summary = """No vulnerabilities were detected in our environment during this reporting period.
 Continue monitoring for emerging threats and ensure all security controls remain active."""
@@ -1577,7 +1627,7 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                 {
                     "threat": f"{total_cves} vulnerabilities detected in environment via Rapid7 scans",
                     "priority": "P1" if p1_count > 0 else "P2",
-                    "justification": f"{p1_count} critical, {exploited_count} actively exploited"
+                    "justification": f"{p1_count} critical, {exploited_count} actively exploited",
                 }
             ],
             "cve_analysis": cve_analysis,
@@ -1591,16 +1641,18 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                         else "Unknown"
                     ),
                     "ttps": actor.get("ttps", [])[:5],
-                    "relevance": "Requires manual assessment"
+                    "relevance": "Requires manual assessment",
                 }
                 for actor in crowdstrike_data[:5]
-            ] if crowdstrike_data else [],
+            ]
+            if crowdstrike_data
+            else [],
             "recommendations": [
                 "Review P1 vulnerabilities immediately and initiate patching within 24-48 hours",
                 "Validate Rapid7 scan coverage to ensure all critical assets are being assessed",
                 "Cross-reference detected CVEs with CISA KEV catalog for exploitation status",
                 "Prioritize remediation based on exposure count (higher count = more risk)",
-                "Schedule follow-up analysis once AI analysis is available for deeper threat correlation"
+                "Schedule follow-up analysis once AI analysis is available for deeper threat correlation",
             ],
             "statistics": {
                 "total_cves": total_cves,
@@ -1610,8 +1662,8 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                 "apt_groups": len([item for item in crowdstrike_data if item.get("type") == "actor"]),
                 "p1_count": p1_count,
                 "p2_count": p2_count,
-                "p3_count": p3_count
-            }
+                "p3_count": p3_count,
+            },
         }
 
     @staticmethod
@@ -1624,10 +1676,10 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
 
     @staticmethod
     def compute_priority(
-        cve_entry: Dict[str, Any],
-        kev_lookup: Dict[str, dict],
-        epss_lookup: Dict[str, dict],
-        apt_cve_map: Dict[str, str],
+        cve_entry: dict[str, Any],
+        kev_lookup: dict[str, dict],
+        epss_lookup: dict[str, dict],
+        apt_cve_map: dict[str, str],
     ) -> tuple:
         """
         Deterministic weighted priority scoring (0-100 scale).
@@ -1739,18 +1791,18 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
 
     @staticmethod
     def _build_apt_cve_map(
-        intel471_data: List[Dict],
-        crowdstrike_data: List[Dict],
-    ) -> Dict[str, str]:
+        intel471_data: list[dict],
+        crowdstrike_data: list[dict],
+    ) -> dict[str, str]:
         """
         Build CVE-ID -> actor-label mapping from Intel471 reports and
         CrowdStrike actor data so the priority scorer can give credit for
         threat-actor association.
         """
-        apt_cve_map: Dict[str, str] = {}
-        cve_pattern = re.compile(r'CVE-\d{4}-\d{4,7}')
+        apt_cve_map: dict[str, str] = {}
+        cve_pattern = re.compile(r"CVE-\d{4}-\d{4,7}")
 
-        for item in (intel471_data or []):
+        for item in intel471_data or []:
             actor = item.get("threat_actor", "")
             if not actor or actor == "Unknown":
                 actor = item.get("threat_type", "Intel471 report")
@@ -1759,7 +1811,7 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                 if cve_id not in apt_cve_map:
                     apt_cve_map[cve_id] = actor
 
-        for actor in (crowdstrike_data or []):
+        for actor in crowdstrike_data or []:
             actor_name = actor.get("actor_name", actor.get("name", ""))
             if not actor_name:
                 continue
@@ -1777,9 +1829,10 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
         if not description:
             return ""
         import re
+
         patterns = [
-            r'^([\w\s]+(?:Server|Client|Browser|Framework|Library|Engine|Platform))',
-            r'(?:in|affecting|vulnerability in)\s+([\w\s\.]+?)(?:\s+(?:before|prior|through|allows|via|could))',
+            r"^([\w\s]+(?:Server|Client|Browser|Framework|Library|Engine|Platform))",
+            r"(?:in|affecting|vulnerability in)\s+([\w\s\.]+?)(?:\s+(?:before|prior|through|allows|via|could))",
         ]
         for pattern in patterns:
             match = re.search(pattern, description, re.IGNORECASE)
@@ -1804,19 +1857,20 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
         if not title:
             return ""
         import re
+
         # Strip the CVE-XXXX-XXXX: portion and everything after it
-        cleaned = re.split(r'\s*:\s*CVE-\d{4}-\d+', title)[0].strip()
+        cleaned = re.split(r"\s*:\s*CVE-\d{4}-\d+", title)[0].strip()
         if cleaned and len(cleaned) > 2:
             return cleaned
         return title.split(":")[0].strip() if ":" in title else title
 
     async def analyze_strategic(
         self,
-        intel471_data: List[Dict],
-        crowdstrike_data: List[Dict],
-        breach_data: List[Dict] | None = None,
-        illumina_context: str = ""
-    ) -> Dict[str, Any]:
+        intel471_data: list[dict],
+        crowdstrike_data: list[dict],
+        breach_data: list[dict] | None = None,
+        illumina_context: str = "",
+    ) -> dict[str, Any]:
         """
         Analyze threat intelligence data for quarterly strategic reports.
 
@@ -1859,10 +1913,7 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
 
             # Get response from GPT
             logger.info("Sending strategic analysis request to Azure OpenAI")
-            response = await self.chat_service.get_chat_message_content(
-                chat_history=chat_history,
-                settings=settings
-            )
+            response = await self.chat_service.get_chat_message_content(chat_history=chat_history, settings=settings)
 
             # Parse response
             response_text = str(response)
@@ -1872,7 +1923,7 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
 
             if analysis_result:
                 logger.info("Successfully parsed strategic analysis results")
-                
+
                 # Debug: Log if osint_sources_used is present
                 osint_sources = analysis_result.get("osint_sources_used", [])
                 logger.info(f"AI returned {len(osint_sources)} OSINT sources")
@@ -1880,104 +1931,94 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                     logger.info(f"OSINT sources: {osint_sources}")
                 else:
                     logger.warning("AI did not return any osint_sources_used - may need prompt adjustment")
-                
+
                 # Validate AI output quality
                 from src.validation import QuarterlyReportValidator
+
                 validator = QuarterlyReportValidator()
                 is_valid = validator.validate(analysis_result, illumina_context)
-                
+
                 if not is_valid:
                     logger.error("AI output failed validation checks")
                     logger.error(f"Validation summary: {validator.get_summary()}")
-                    
+
                     # Check if validation failed due to generic company names
-                    if validator.issues and any('generic term' in issue.lower() for issue in validator.issues):
+                    if validator.issues and any("generic term" in issue.lower() for issue in validator.issues):
                         logger.warning("Validation failed due to generic company names in breach examples")
                         logger.warning("Filtering problematic breaches from incidents_by_type to fix the report")
-                        
+
                         # Remove incidents with generic terms
                         analysis_result = self._filter_generic_breaches(analysis_result, validator.issues)
                         logger.info("Filtered out breaches with generic terms - report should now pass validation")
-                
+
                 analysis_result = self._fill_strategic_gaps(
                     analysis_result, intel471_data, crowdstrike_data, breach_data
                 )
                 return analysis_result
             else:
-                return self._get_default_strategic_analysis(
-                    intel471_data, crowdstrike_data, breach_data
-                )
+                return self._get_default_strategic_analysis(intel471_data, crowdstrike_data, breach_data)
 
         except Exception as e:
             logger.error(f"Error during strategic analysis: {e}", exc_info=True)
-            return self._get_default_strategic_analysis(
-                intel471_data, crowdstrike_data, breach_data
-            )
+            return self._get_default_strategic_analysis(intel471_data, crowdstrike_data, breach_data)
 
-    def _filter_generic_breaches(
-        self,
-        analysis_result: Dict[str, Any],
-        validation_issues: List[str]
-    ) -> Dict[str, Any]:
+    def _filter_generic_breaches(self, analysis_result: dict[str, Any], validation_issues: list[str]) -> dict[str, Any]:
         """
         Remove incidents with generic company names from the breach landscape.
-        
+
         Args:
             analysis_result: The AI analysis result
             validation_issues: List of validation issue messages
-            
+
         Returns:
             Updated analysis_result with generic breaches filtered out
         """
         breach_landscape = analysis_result.get("breach_landscape", {})
         incidents = breach_landscape.get("incidents_by_type", [])
-        
+
         if not incidents:
             return analysis_result
-        
+
         # Extract incident types to remove from validation issues
         types_to_remove = set()
         for issue in validation_issues:
-            if 'generic term' in issue.lower():
+            if "generic term" in issue.lower():
                 # Issue format: "Data Exposure notable_example uses generic term..."
                 # Extract the incident type (first word/phrase before "notable_example" or " uses")
-                if 'notable_example' in issue:
-                    incident_type = issue.split(' notable_example')[0].strip()
-                elif ' uses ' in issue:
-                    incident_type = issue.split(' uses ')[0].strip()
+                if "notable_example" in issue:
+                    incident_type = issue.split(" notable_example")[0].strip()
+                elif " uses " in issue:
+                    incident_type = issue.split(" uses ")[0].strip()
                 else:
                     # Fallback: try to extract first phrase
-                    parts = issue.split(':')
+                    parts = issue.split(":")
                     if parts:
                         incident_type = parts[0].strip()
                     else:
                         continue
-                
+
                 types_to_remove.add(incident_type)
                 logger.info(f"Will remove incident type: {incident_type}")
-        
+
         # Filter out problematic incidents
-        filtered_incidents = [
-            incident for incident in incidents
-            if incident.get('type') not in types_to_remove
-        ]
-        
+        filtered_incidents = [incident for incident in incidents if incident.get("type") not in types_to_remove]
+
         removed_count = len(incidents) - len(filtered_incidents)
         if removed_count > 0:
             logger.info(f"Removed {removed_count} incident type(s) with generic company names")
             logger.info(f"Kept {len(filtered_incidents)} incident types with actual company names")
             breach_landscape["incidents_by_type"] = filtered_incidents
             analysis_result["breach_landscape"] = breach_landscape
-        
+
         return analysis_result
 
     def _fill_strategic_gaps(
         self,
-        analysis_result: Dict[str, Any],
-        intel471_data: List[Dict],
-        crowdstrike_data: List[Dict],
-        breach_data: List[Dict] | None
-    ) -> Dict[str, Any]:
+        analysis_result: dict[str, Any],
+        intel471_data: list[dict],
+        crowdstrike_data: list[dict],
+        breach_data: list[dict] | None,
+    ) -> dict[str, Any]:
         """
         Patch AI strategic analysis with backup data where the AI left gaps.
         Ensures breach counts, actor counts, and risk assessments are populated.
@@ -2000,7 +2041,7 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                 prev_ransomware = bl.get("prev_ransomware", 0)
                 records_exposed = bl.get("records_exposed_millions", 0)
                 prev_records = bl.get("prev_records", 0)
-                
+
                 def calc_pct_change(current, prior):
                     if not prior or prior == 0:
                         return "+0%"
@@ -2018,15 +2059,16 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                             return "0%"
                     except (ValueError, TypeError):
                         return "0%"
-                
+
                 # Determine quarter labels
                 from datetime import datetime
+
                 today = datetime.now()
                 current_q = (today.month - 1) // 3 + 1
                 current_year = today.year
                 prior_q = current_q - 1 if current_q > 1 else 4
                 prior_year = current_year if current_q > 1 else current_year - 1
-                
+
                 analysis_result["breach_landscape"] = {
                     "scope_note": f"Publicly disclosed incidents affecting life sciences, pharmaceutical, biotechnology, healthcare, and advanced manufacturing organizations during Q{current_q} {current_year}.",
                     "stat_cards": [
@@ -2035,57 +2077,84 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                             "label": "Total Incidents",
                             "prior_label": f"Q{prior_q} {prior_year}",
                             "prior_value": str(prev_total),
-                            "change_pct": calc_pct_change(total_incidents, prev_total)
+                            "change_pct": calc_pct_change(total_incidents, prev_total),
                         },
                         {
                             "value": f"${total_impact}M",
                             "label": "Est. Total Impact",
                             "prior_label": f"Q{prior_q} {prior_year}",
                             "prior_value": f"${prev_impact}M",
-                            "change_pct": calc_pct_change(total_impact, prev_impact)
+                            "change_pct": calc_pct_change(total_impact, prev_impact),
                         },
                         {
                             "value": str(ransomware_count),
                             "label": "Ransomware",
                             "prior_label": f"Q{prior_q} {prior_year}",
                             "prior_value": str(prev_ransomware),
-                            "change_pct": calc_pct_change(ransomware_count, prev_ransomware)
+                            "change_pct": calc_pct_change(ransomware_count, prev_ransomware),
                         },
                         {
                             "value": f"{records_exposed}M",
                             "label": "Records Exposed",
                             "prior_label": f"Q{prior_q} {prior_year}",
                             "prior_value": f"{prev_records}M",
-                            "change_pct": calc_pct_change(records_exposed, prev_records)
-                        }
+                            "change_pct": calc_pct_change(records_exposed, prev_records),
+                        },
                     ],
                     "incidents_by_type": analysis_result.get("incidents_by_type", []),
                     "current_quarter_label": f"Q{current_q} {current_year}",
                     "prior_quarter_label": f"Q{prior_q} {prior_year}",
-                    "common_factors": analysis_result.get("common_factors", "Analysis pending - manual review of threat data recommended")
+                    "common_factors": analysis_result.get(
+                        "common_factors", "Analysis pending - manual review of threat data recommended"
+                    ),
                 }
                 gaps_filled += 1
         elif breach_data:
             # No breach_landscape at all, create minimal one
             from datetime import datetime
+
             today = datetime.now()
             current_q = (today.month - 1) // 3 + 1
             current_year = today.year
             prior_q = current_q - 1 if current_q > 1 else 4
             prior_year = current_year if current_q > 1 else current_year - 1
-            
+
             analysis_result["breach_landscape"] = {
                 "scope_note": f"Publicly disclosed incidents affecting life sciences, pharmaceutical, biotechnology, healthcare, and advanced manufacturing organizations during Q{current_q} {current_year}.",
                 "stat_cards": [
-                    {"value": "0", "label": "Total Incidents", "prior_label": f"Q{prior_q} {prior_year}", "prior_value": "0", "change_pct": "0%"},
-                    {"value": "$0M", "label": "Est. Total Impact", "prior_label": f"Q{prior_q} {prior_year}", "prior_value": "$0M", "change_pct": "0%"},
-                    {"value": "0", "label": "Ransomware", "prior_label": f"Q{prior_q} {prior_year}", "prior_value": "0", "change_pct": "0%"},
-                    {"value": "0M", "label": "Records Exposed", "prior_label": f"Q{prior_q} {prior_year}", "prior_value": "0M", "change_pct": "0%"}
+                    {
+                        "value": "0",
+                        "label": "Total Incidents",
+                        "prior_label": f"Q{prior_q} {prior_year}",
+                        "prior_value": "0",
+                        "change_pct": "0%",
+                    },
+                    {
+                        "value": "$0M",
+                        "label": "Est. Total Impact",
+                        "prior_label": f"Q{prior_q} {prior_year}",
+                        "prior_value": "$0M",
+                        "change_pct": "0%",
+                    },
+                    {
+                        "value": "0",
+                        "label": "Ransomware",
+                        "prior_label": f"Q{prior_q} {prior_year}",
+                        "prior_value": "0",
+                        "change_pct": "0%",
+                    },
+                    {
+                        "value": "0M",
+                        "label": "Records Exposed",
+                        "prior_label": f"Q{prior_q} {prior_year}",
+                        "prior_value": "0M",
+                        "change_pct": "0%",
+                    },
                 ],
                 "incidents_by_type": [],
                 "current_quarter_label": f"Q{current_q} {current_year}",
                 "prior_quarter_label": f"Q{prior_q} {prior_year}",
-                "common_factors": "Analysis pending - manual review of threat data recommended"
+                "common_factors": "Analysis pending - manual review of threat data recommended",
             }
             gaps_filled += 1
 
@@ -2099,13 +2168,13 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                 "supply_chain": "MEDIUM",
                 "supply_chain_trend": "Unchanged",
                 "insider": "LOW",
-                "insider_trend": "Unchanged"
+                "insider_trend": "Unchanged",
             }
             gaps_filled += 1
 
         # Fill geopolitical_threats if missing or empty
         geo = analysis_result.get("geopolitical_threats", [])
-        
+
         # Handle both old dict format and new list format
         if isinstance(geo, dict):
             # Old format - convert to new format or skip
@@ -2113,40 +2182,46 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
             china_count = len([a for a in crowdstrike_data if self._is_china_related(a)])
             russia_count = len([a for a in crowdstrike_data if self._is_russia_related(a)])
             nk_count = len([a for a in crowdstrike_data if self._is_nk_related(a)])
-            
+
             # Convert old dict to new list format
             converted_list = []
             if geo.get("china"):
-                converted_list.append({
-                    "name": "China",
-                    "level": "HIGH",
-                    "vector": "Espionage — IP theft",
-                    "exposure": "CRITICAL",
-                    "relevance": [geo["china"].get("strategic_context", "")],
-                    "activity": [geo["china"].get("activity", "")],
-                    "risk": [geo["china"].get("implications", "")]
-                })
+                converted_list.append(
+                    {
+                        "name": "China",
+                        "level": "HIGH",
+                        "vector": "Espionage — IP theft",
+                        "exposure": "CRITICAL",
+                        "relevance": [geo["china"].get("strategic_context", "")],
+                        "activity": [geo["china"].get("activity", "")],
+                        "risk": [geo["china"].get("implications", "")],
+                    }
+                )
             if geo.get("russia"):
-                converted_list.append({
-                    "name": "Russia",
-                    "level": "HIGH",
-                    "vector": "Ransomware — Disruption",
-                    "exposure": "HIGH",
-                    "relevance": [geo["russia"].get("strategic_context", "")],
-                    "activity": [geo["russia"].get("activity", "")],
-                    "risk": [geo["russia"].get("implications", "")]
-                })
+                converted_list.append(
+                    {
+                        "name": "Russia",
+                        "level": "HIGH",
+                        "vector": "Ransomware — Disruption",
+                        "exposure": "HIGH",
+                        "relevance": [geo["russia"].get("strategic_context", "")],
+                        "activity": [geo["russia"].get("activity", "")],
+                        "risk": [geo["russia"].get("implications", "")],
+                    }
+                )
             if geo.get("north_korea"):
-                converted_list.append({
-                    "name": "North Korea",
-                    "level": "MEDIUM",
-                    "vector": "Financial theft — Dual-use IP",
-                    "exposure": "MEDIUM",
-                    "relevance": [geo["north_korea"].get("strategic_context", "")],
-                    "activity": [geo["north_korea"].get("activity", "")],
-                    "risk": [geo["north_korea"].get("implications", "")]
-                })
-            
+                converted_list.append(
+                    {
+                        "name": "North Korea",
+                        "level": "MEDIUM",
+                        "vector": "Financial theft — Dual-use IP",
+                        "exposure": "MEDIUM",
+                        "relevance": [geo["north_korea"].get("strategic_context", "")],
+                        "activity": [geo["north_korea"].get("activity", "")],
+                        "risk": [geo["north_korea"].get("implications", "")],
+                    }
+                )
+
             analysis_result["geopolitical_threats"] = converted_list
             gaps_filled += 1
         elif not geo:
@@ -2162,7 +2237,7 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                     "exposure": "CRITICAL",
                     "relevance": ["China designates biotechnology as a strategic priority."],
                     "activity": [f"Observed {china_count} China-linked actor groups this quarter."],
-                    "risk": ["Potential IP theft risk for proprietary research."]
+                    "risk": ["Potential IP theft risk for proprietary research."],
                 },
                 {
                     "name": "Russia",
@@ -2171,7 +2246,7 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                     "exposure": "HIGH",
                     "relevance": ["Russian criminal groups pose significant ransomware risk."],
                     "activity": [f"Observed {russia_count} Russia-linked actor groups this quarter."],
-                    "risk": ["Ransomware incidents can cause major operational disruption."]
+                    "risk": ["Ransomware incidents can cause major operational disruption."],
                 },
                 {
                     "name": "North Korea",
@@ -2180,8 +2255,8 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                     "exposure": "MEDIUM",
                     "relevance": ["NK cyber operations target pharmaceutical and healthcare sectors."],
                     "activity": [f"Observed {nk_count} North Korea-linked actor groups this quarter."],
-                    "risk": ["Social engineering risk for research personnel."]
-                }
+                    "risk": ["Social engineering risk for research personnel."],
+                },
             ]
             gaps_filled += 1
 
@@ -2192,38 +2267,37 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
             if isinstance(looking_ahead.get("watch_items"), str):
                 logger.warning("looking_ahead is old format (watch_items is string), converting to new format")
                 from datetime import datetime
+
                 today = datetime.now()
                 next_q = (today.month - 1) // 3 + 2
                 next_year = today.year
                 if next_q > 4:
                     next_q = 1
                     next_year += 1
-                
+
                 # Convert old string-based format to new list format
                 analysis_result["looking_ahead"] = {
                     "next_quarter_label": f"Q{next_q} {next_year}",
                     "watch_items": [
                         {
                             "subject": "Threat landscape monitoring",
-                            "detail": "continues to be essential as adversary capabilities evolve and targeting patterns shift."
+                            "detail": "continues to be essential as adversary capabilities evolve and targeting patterns shift.",
                         }
-                    ]
+                    ],
                 }
                 gaps_filled += 1
         else:
             # No looking_ahead at all, create minimal one
             from datetime import datetime
+
             today = datetime.now()
             next_q = (today.month - 1) // 3 + 2
             next_year = today.year
             if next_q > 4:
                 next_q = 1
                 next_year += 1
-            
-            analysis_result["looking_ahead"] = {
-                "next_quarter_label": f"Q{next_q} {next_year}",
-                "watch_items": []
-            }
+
+            analysis_result["looking_ahead"] = {"next_quarter_label": f"Q{next_q} {next_year}", "watch_items": []}
             gaps_filled += 1
 
         # Fill recommendations if missing or using old tuple format
@@ -2237,21 +2311,18 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
                     new_items = []
                     for rec in recommendations[:3]:  # Take first 3
                         if isinstance(rec, (tuple, list)) and len(rec) >= 2:
-                            new_items.append({
-                                "title": rec[0],
-                                "body": rec[1]
-                            })
-                    
+                            new_items.append({"title": rec[0], "body": rec[1]})
+
                     analysis_result["recommendations"] = {
                         "intro_note": "Three prioritized actions informed by quarterly intelligence findings.",
-                        "items": new_items
+                        "items": new_items,
                     }
                     gaps_filled += 1
         else:
             # No recommendations at all, create minimal one
             analysis_result["recommendations"] = {
                 "intro_note": "Recommendations pending - manual review of threat data recommended.",
-                "items": []
+                "items": [],
             }
             gaps_filled += 1
 
@@ -2262,10 +2333,10 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
 
     def _build_strategic_prompt(
         self,
-        intel471_data: List[Dict],
-        crowdstrike_data: List[Dict],
-        breach_data: List[Dict] | None,
-        illumina_context: str = ""
+        intel471_data: list[dict],
+        crowdstrike_data: list[dict],
+        breach_data: list[dict] | None,
+        illumina_context: str = "",
     ) -> str:
         """Build the strategic analysis prompt for quarterly reports."""
         breach_data = breach_data or []
@@ -2277,13 +2348,13 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
 
         # Get target industries from config
         target_industries = ", ".join(industry_filter_config.target_industries)
-        
+
         # Build Illumina context section if available
         illumina_context_section = ""
         if illumina_context:
             logger.info(f"Including Illumina context in prompt ({len(illumina_context)} chars)")
             logger.debug(f"Illumina context: {illumina_context[:200]}...")
-            
+
             # Pre-flight checklist
             logger.info("=" * 60)
             logger.info("PRE-FLIGHT CHECKLIST - AI Should:")
@@ -2293,7 +2364,7 @@ Rapid7 scan results cross-referenced with NVD severity ratings. Only CVEs detect
             logger.info("  ✓ Include actual company names in notable_example fields")
             logger.info("  ✓ List cited sources in osint_sources_used array")
             logger.info("=" * 60)
-            
+
             illumina_context_section = f"""
 ## Current Illumina Company Context (sourced from public disclosures this quarter)
 
@@ -2311,7 +2382,7 @@ CRITICAL: If you reference any Illumina articles from the context above in your 
 
 No current context available from public sources. Fall back to general life sciences sector exposure
 when writing "relevance" bullets, and note this limitation."""
-        
+
         return f"""Analyze this threat intelligence data and provide a QUARTERLY STRATEGIC BRIEF for executive leadership.
 
 IMPORTANT: 
@@ -2810,35 +2881,33 @@ Before returning your JSON, verify each item:
 If any item is unchecked, fix it before returning.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
-    def _is_china_related(self, actor: Dict) -> bool:
+    def _is_china_related(self, actor: dict) -> bool:
         """Check if an actor is China-related."""
         country = str(actor.get("country", "")).lower()
         name = str(actor.get("actor_name", actor.get("name", ""))).lower()
         return "china" in country or "panda" in name or "apt41" in name or "apt40" in name
 
-    def _is_russia_related(self, actor: Dict) -> bool:
+    def _is_russia_related(self, actor: dict) -> bool:
         """Check if an actor is Russia-related."""
         country = str(actor.get("country", "")).lower()
         name = str(actor.get("actor_name", actor.get("name", ""))).lower()
         return "russia" in country or "bear" in name or "apt29" in name or "apt28" in name
 
-    def _is_nk_related(self, actor: Dict) -> bool:
+    def _is_nk_related(self, actor: dict) -> bool:
         """Check if an actor is North Korea-related."""
         country = str(actor.get("country", "")).lower()
         name = str(actor.get("actor_name", actor.get("name", ""))).lower()
         return "korea" in country or "lazarus" in name or "kimsuky" in name or "chollima" in name
 
     def _get_default_strategic_analysis(
-        self,
-        intel471_data: List[Dict],
-        crowdstrike_data: List[Dict],
-        breach_data: List[Dict] | None
-    ) -> Dict[str, Any]:
+        self, intel471_data: list[dict], crowdstrike_data: list[dict], breach_data: list[dict] | None
+    ) -> dict[str, Any]:
         """Generate default strategic analysis when AI analysis fails."""
         breach_data = breach_data or []
-        
+
         # Determine current and prior quarter labels
         from datetime import datetime
+
         today = datetime.now()
         current_q = (today.month - 1) // 3 + 1
         current_year = today.year
@@ -2861,7 +2930,7 @@ measures remain essential.""",
                 "supply_chain": "MEDIUM",
                 "supply_chain_trend": "Unchanged",
                 "insider": "LOW",
-                "insider_trend": "Unchanged"
+                "insider_trend": "Unchanged",
             },
             "breach_landscape": {
                 "scope_note": f"Publicly disclosed incidents affecting life sciences, pharmaceutical, biotechnology, healthcare, and advanced manufacturing organizations during Q{current_q} {current_year}.",
@@ -2871,34 +2940,34 @@ measures remain essential.""",
                         "label": "Total Incidents",
                         "prior_label": f"Q{prior_q} {prior_year}",
                         "prior_value": "N/A",
-                        "change_pct": "0%"
+                        "change_pct": "0%",
                     },
                     {
                         "value": "$0M",
                         "label": "Est. Total Impact",
                         "prior_label": f"Q{prior_q} {prior_year}",
                         "prior_value": "N/A",
-                        "change_pct": "0%"
+                        "change_pct": "0%",
                     },
                     {
                         "value": "0",
                         "label": "Ransomware",
                         "prior_label": f"Q{prior_q} {prior_year}",
                         "prior_value": "N/A",
-                        "change_pct": "0%"
+                        "change_pct": "0%",
                     },
                     {
                         "value": "0M",
                         "label": "Records Exposed",
                         "prior_label": f"Q{prior_q} {prior_year}",
                         "prior_value": "N/A",
-                        "change_pct": "0%"
-                    }
+                        "change_pct": "0%",
+                    },
                 ],
                 "incidents_by_type": [],
                 "current_quarter_label": f"Q{current_q} {current_year}",
                 "prior_quarter_label": f"Q{prior_q} {prior_year}",
-                "common_factors": "Analysis pending - manual review of threat data recommended"
+                "common_factors": "Analysis pending - manual review of threat data recommended",
             },
             "geopolitical_threats": [
                 {
@@ -2907,17 +2976,25 @@ measures remain essential.""",
                     "vector": "Espionage — IP theft",
                     "exposure": "CRITICAL",
                     "relevance": ["China's national plans designate biotechnology as a strategic priority."],
-                    "activity": [f"Observed {len([a for a in crowdstrike_data if self._is_china_related(a)])} China-linked actor groups."],
-                    "risk": ["Potential IP theft risk for proprietary research and manufacturing processes."]
+                    "activity": [
+                        f"Observed {len([a for a in crowdstrike_data if self._is_china_related(a)])} China-linked actor groups."
+                    ],
+                    "risk": ["Potential IP theft risk for proprietary research and manufacturing processes."],
                 },
                 {
                     "name": "Russia",
                     "level": "HIGH",
                     "vector": "Ransomware — Disruption",
                     "exposure": "HIGH",
-                    "relevance": ["Russian-speaking criminal groups pose significant ransomware risk to healthcare and life sciences."],
-                    "activity": [f"Observed {len([a for a in crowdstrike_data if self._is_russia_related(a)])} Russia-linked actor groups."],
-                    "risk": ["Ransomware incidents can result in significant operational disruption and recovery costs."]
+                    "relevance": [
+                        "Russian-speaking criminal groups pose significant ransomware risk to healthcare and life sciences."
+                    ],
+                    "activity": [
+                        f"Observed {len([a for a in crowdstrike_data if self._is_russia_related(a)])} Russia-linked actor groups."
+                    ],
+                    "risk": [
+                        "Ransomware incidents can result in significant operational disruption and recovery costs."
+                    ],
                 },
                 {
                     "name": "North Korea",
@@ -2925,34 +3002,36 @@ measures remain essential.""",
                     "vector": "Financial theft — Dual-use IP",
                     "exposure": "MEDIUM",
                     "relevance": ["North Korean cyber operations target pharmaceutical and healthcare sectors."],
-                    "activity": [f"Observed {len([a for a in crowdstrike_data if self._is_nk_related(a)])} North Korea-linked actor groups."],
-                    "risk": ["Social engineering risk for research and executive personnel."]
-                }
+                    "activity": [
+                        f"Observed {len([a for a in crowdstrike_data if self._is_nk_related(a)])} North Korea-linked actor groups."
+                    ],
+                    "risk": ["Social engineering risk for research and executive personnel."],
+                },
             ],
             "looking_ahead": {
                 "next_quarter_label": f"Q{(current_q % 4) + 1} {current_year if current_q < 4 else current_year + 1}",
                 "watch_items": [
                     {
                         "subject": "Threat landscape evolution",
-                        "detail": "continues to require monitoring as adversary capabilities and targeting patterns shift."
+                        "detail": "continues to require monitoring as adversary capabilities and targeting patterns shift.",
                     }
-                ]
+                ],
             },
             "recommendations": {
                 "intro_note": "Three prioritized actions based on quarterly intelligence findings.",
                 "items": [
                     {
                         "title": "Executive Awareness",
-                        "body": "Consider targeted security awareness for executives and key research personnel given sustained social engineering campaigns via professional networks."
+                        "body": "Consider targeted security awareness for executives and key research personnel given sustained social engineering campaigns via professional networks.",
                     },
                     {
                         "title": "Vendor Risk Review",
-                        "body": "Evaluate security posture of critical software and laboratory equipment vendors given supply chain compromise activity observed this quarter."
+                        "body": "Evaluate security posture of critical software and laboratory equipment vendors given supply chain compromise activity observed this quarter.",
                     },
                     {
                         "title": "Manufacturing Security",
-                        "body": "Review network segmentation between IT and OT/manufacturing systems. Ensure incident response plans address manufacturing disruption scenarios."
-                    }
-                ]
-            }
+                        "body": "Review network segmentation between IT and OT/manufacturing systems. Ensure incident response plans address manufacturing disruption scenarios.",
+                    },
+                ],
+            },
         }

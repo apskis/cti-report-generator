@@ -4,20 +4,21 @@ Collector registry for dynamic collector management.
 Provides a central registry for all available collectors,
 enabling easy addition/removal of data sources.
 """
+
 import asyncio
 import logging
-from typing import Dict, Type, List, Any
+from typing import Any
 
 from src.collectors.base import BaseCollector
-from src.collectors.nvd_collector import NVDCollector
-from src.collectors.intel471_collector import Intel471Collector
 from src.collectors.crowdstrike_collector import CrowdStrikeCollector
-from src.collectors.threatq_collector import ThreatQCollector
+from src.collectors.illumina_osint_collector import IlluminaOSINTCollector
+from src.collectors.intel471_collector import Intel471Collector
+from src.collectors.nvd_collector import NVDCollector
+from src.collectors.osint_collector import OSINTCollector
+from src.collectors.rapid7_bulk_export_collector import Rapid7BulkExportCollector
 from src.collectors.rapid7_collector import Rapid7Collector
 from src.collectors.rapid7_scan_collector import Rapid7ScanCollector
-from src.collectors.rapid7_bulk_export_collector import Rapid7BulkExportCollector
-from src.collectors.osint_collector import OSINTCollector
-from src.collectors.illumina_osint_collector import IlluminaOSINTCollector
+from src.collectors.threatq_collector import ThreatQCollector
 from src.core.config import get_enabled_collectors
 from src.core.models import CollectorResult
 
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 # Registry of all available collectors
-COLLECTOR_REGISTRY: Dict[str, Type[BaseCollector]] = {
+COLLECTOR_REGISTRY: dict[str, type[BaseCollector]] = {
     "nvd": NVDCollector,
     "intel471": Intel471Collector,
     "crowdstrike": CrowdStrikeCollector,
@@ -38,7 +39,7 @@ COLLECTOR_REGISTRY: Dict[str, Type[BaseCollector]] = {
 }
 
 
-def get_collector(name: str, credentials: Dict[str, str], report_type: str = "weekly") -> BaseCollector | None:
+def get_collector(name: str, credentials: dict[str, str], report_type: str = "weekly") -> BaseCollector | None:
     """
     Get a collector instance by name.
 
@@ -56,7 +57,7 @@ def get_collector(name: str, credentials: Dict[str, str], report_type: str = "we
     return None
 
 
-def get_enabled_collector_instances(credentials: Dict[str, str], report_type: str = "weekly") -> List[BaseCollector]:
+def get_enabled_collector_instances(credentials: dict[str, str], report_type: str = "weekly") -> list[BaseCollector]:
     """
     Get instances of only enabled collectors.
 
@@ -83,10 +84,8 @@ def get_enabled_collector_instances(credentials: Dict[str, str], report_type: st
 
 
 async def collect_all(
-    credentials: Dict[str, str],
-    parallel: bool = True,
-    report_type: str = "weekly"
-) -> Dict[str, CollectorResult]:
+    credentials: dict[str, str], parallel: bool = True, report_type: str = "weekly"
+) -> dict[str, CollectorResult]:
     """
     Run all enabled collectors and return results.
 
@@ -98,16 +97,18 @@ async def collect_all(
         Dictionary mapping source name to CollectorResult
     """
     collectors = get_enabled_collector_instances(credentials, report_type=report_type)
-    logger.info(f"Running {len(collectors)} collectors: {[c.source_name for c in collectors]} (report_type: {report_type})")
+    logger.info(
+        f"Running {len(collectors)} collectors: {[c.source_name for c in collectors]} (report_type: {report_type})"
+    )
 
-    results: Dict[str, CollectorResult] = {}
+    results: dict[str, CollectorResult] = {}
 
     if parallel:
         # Run all collectors in parallel, passing report_type
         tasks = [collector.safe_collect(report_type=report_type) for collector in collectors]
         collector_results = await asyncio.gather(*tasks)
 
-        for collector, result in zip(collectors, collector_results):
+        for collector, result in zip(collectors, collector_results, strict=True):
             results[collector.source_name] = result
     else:
         # Run sequentially (useful for debugging)
@@ -123,7 +124,7 @@ async def collect_all(
     return results
 
 
-def get_data_by_source(results: Dict[str, CollectorResult]) -> Dict[str, List[Dict[str, Any]]]:
+def get_data_by_source(results: dict[str, CollectorResult]) -> dict[str, list[dict[str, Any]]]:
     """
     Extract data from collector results, organized by source.
 
@@ -133,14 +134,10 @@ def get_data_by_source(results: Dict[str, CollectorResult]) -> Dict[str, List[Di
     Returns:
         Dictionary mapping source name to data list
     """
-    return {
-        source: result.data
-        for source, result in results.items()
-        if result.success
-    }
+    return {source: result.data for source, result in results.items() if result.success}
 
 
-def list_available_collectors() -> List[str]:
+def list_available_collectors() -> list[str]:
     """
     List all available collector names.
 

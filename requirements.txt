@@ -14,7 +14,8 @@ semantic-kernel>=1.0.0,<2.0.0
 python-docx>=1.1.0,<2.0.0
 
 # HTTP client
-aiohttp>=3.9.0,<4.0.0
+# >=3.9.4 avoids CVE-2024-23334 (path traversal) and CVE-2024-30251 (DoS)
+aiohttp>=3.9.4,<4.0.0
 
 # Console output formatting
 colorama>=0.4.6,<1.0.0
@@ -25,7 +26,8 @@ beautifulsoup4>=4.12.0,<5.0.0
 pyyaml>=6.0,<7.0
 
 # Rapid7 Bulk Export - Parquet file parsing
-pyarrow>=14.0.0,<15.0.0
+# >=14.0.1 avoids CVE-2023-47248 (deserialization RCE)
+pyarrow>=14.0.1,<15.0.0
 pandas>=2.0.0,<3.0.0
 
 # Uncomment to enable Azure Monitor OpenTelemetry
