@@ -1,12 +1,13 @@
 """
 Unit tests for src/core/keyvault.py — Key Vault credential retrieval.
 """
-import pytest
-from unittest.mock import patch, MagicMock
 
+from unittest.mock import MagicMock, patch
+
+import pytest
 from azure.core.exceptions import ResourceNotFoundError
 
-from src.core.keyvault import get_secret, get_all_api_keys, clear_cache
+from src.core.keyvault import clear_cache, get_all_api_keys, get_secret
 
 
 @pytest.fixture(autouse=True)
@@ -66,23 +67,6 @@ class TestGetAllApiKeys:
         assert "openai_endpoint" in keys
         assert "storage_account_name" in keys
         assert "nvd_key" in keys
-
-    @patch("src.core.keyvault.get_secret")
-    @patch("src.core.config.AzureConfig.get_key_vault_url", return_value=VAULT_URL)
-    def test_optional_threatq_missing_returns_empty_string(self, mock_vault_url, mock_get_secret):
-        def side_effect(vault_url, secret_name):
-            if "threatq" in secret_name:
-                raise ResourceNotFoundError("not found")
-            return "test-value"
-
-        mock_get_secret.side_effect = side_effect
-
-        # Enable ThreatQ for this test
-        with patch("src.core.config.get_enabled_collectors", return_value=["nvd", "threatq"]):
-            keys = get_all_api_keys(VAULT_URL)
-
-        assert keys.get("threatq_client_id") == ""
-        assert keys.get("threatq_client_secret") == ""
 
     @patch("src.core.keyvault.get_secret")
     @patch("src.core.config.AzureConfig.get_key_vault_url", return_value=VAULT_URL)

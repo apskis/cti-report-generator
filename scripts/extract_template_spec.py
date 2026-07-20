@@ -14,6 +14,7 @@ Use the spec to:
   Vulnerability Exposure table, Sector Threat Activity, Exploitation Indicators, Recommended Actions, footer.
 - Match table styling: header row shading, cell shading_hex, and run-level formatting in cells.
 """
+
 from __future__ import annotations
 
 import json
@@ -178,17 +179,11 @@ def extract_template_spec(docx_path: Path) -> dict:
         tag = element.tag
         if qn("w:p") in tag or tag.endswith("}p"):
             if para_idx < len(doc.paragraphs):
-                body_ordered.append({
-                    "type": "paragraph",
-                    "content": _serialize_paragraph(doc.paragraphs[para_idx])
-                })
+                body_ordered.append({"type": "paragraph", "content": _serialize_paragraph(doc.paragraphs[para_idx])})
                 para_idx += 1
         elif qn("w:tbl") in tag or tag.endswith("}tbl"):
             if tbl_idx < len(doc.tables):
-                body_ordered.append({
-                    "type": "table",
-                    "content": _serialize_table(doc.tables[tbl_idx])
-                })
+                body_ordered.append({"type": "table", "content": _serialize_table(doc.tables[tbl_idx])})
                 tbl_idx += 1
 
     # Prefer body_ordered; if it undercounts, fall back to body
@@ -206,13 +201,13 @@ def extract_template_spec(docx_path: Path) -> dict:
 
 
 def main() -> None:
-    template_path = REPO_ROOT / "CTI_Weekly_Report_Template_Example.docx"
+    template_path = REPO_ROOT / "assets" / "CTI_Weekly_Report_Template_Example.docx"
     if not template_path.exists():
         print(f"Template not found: {template_path}", file=sys.stderr)
         sys.exit(1)
 
     spec = extract_template_spec(template_path)
-    out_path = REPO_ROOT / "CTI_Weekly_Report_Template_Spec.json"
+    out_path = REPO_ROOT / "assets" / "CTI_Weekly_Report_Template_Spec.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(spec, f, indent=2, ensure_ascii=False)
 

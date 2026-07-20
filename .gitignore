@@ -62,3 +62,15 @@ test_final_success/
 
 # Cursor IDE
 .cursor/
+
+# Generated report outputs (keep only *_Example/*_Template templates)
+CTI_Weekly_Report_*_Week*.docx
+CTI_Quarterly_Strategic_Brief_*.docx
+
+# MS Office lock/temp files
+~$*
+
+# Local debug dumps
+rapid7_*.txt
+*_debug.txt
+*_traceback.txt

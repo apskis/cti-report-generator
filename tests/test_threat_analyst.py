@@ -1,21 +1,22 @@
 """
 Unit tests for src/agents/threat_analyst.py — AI threat analysis.
 """
-import pytest
-import json
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from src.agents.threat_analyst import (
+    DEFAULT_SYSTEM_PROMPT,
     ThreatAnalystAgent,
     _sanitize_for_prompt,
     load_system_prompt,
-    DEFAULT_SYSTEM_PROMPT,
 )
-
 
 # =============================================================================
 # _sanitize_for_prompt
 # =============================================================================
+
 
 class TestSanitizeForPrompt:
     def test_basic_serialization(self):
@@ -52,6 +53,7 @@ class TestSanitizeForPrompt:
 
     def test_non_serializable_uses_str_default(self):
         from datetime import datetime
+
         data = {"timestamp": datetime(2024, 1, 1)}
         result = _sanitize_for_prompt(data)
         assert "2024" in result
@@ -60,6 +62,7 @@ class TestSanitizeForPrompt:
 # =============================================================================
 # load_system_prompt
 # =============================================================================
+
 
 class TestLoadSystemPrompt:
     def test_returns_default_when_file_missing(self):
@@ -74,14 +77,13 @@ class TestLoadSystemPrompt:
 # ThreatAnalystAgent
 # =============================================================================
 
+
 class TestThreatAnalystAgent:
     @patch("src.agents.threat_analyst.AzureChatCompletion")
     @patch("src.agents.threat_analyst.Kernel")
     def test_init_creates_kernel_and_service(self, mock_kernel_cls, mock_chat_cls):
         agent = ThreatAnalystAgent(
-            openai_endpoint="https://test.openai.azure.com",
-            openai_key="test-key",
-            deployment_name="gpt-test"
+            openai_endpoint="https://test.openai.azure.com", openai_key="test-key", deployment_name="gpt-test"
         )
         assert agent.deployment_name == "gpt-test"
         mock_kernel_cls.assert_called_once()
@@ -112,7 +114,7 @@ class TestThreatAnalystAgent:
     @patch("src.agents.threat_analyst.Kernel")
     def test_default_analysis_with_no_data(self, mock_kernel, mock_chat):
         agent = ThreatAnalystAgent("https://test.openai.azure.com", "key")
-        result = agent._get_default_analysis([], [], [], [], [])
+        result = agent._get_default_analysis([], [], [])
         assert "executive_summary" in result
         assert "recommendations" in result
         assert len(result["recommendations"]) > 0
@@ -122,9 +124,8 @@ class TestThreatAnalystAgent:
     def test_default_analysis_with_data(self, mock_kernel, mock_chat):
         cves = [{"cve_id": "CVE-2024-001", "severity": "CRITICAL", "exploited": True, "description": "Test"}]
         actors = [{"actor_name": "PANDA", "country": "China", "motivations": ["Espionage"]}]
-        rapid7_scans = [{"cve_exposure_map": {"CVE-2024-001": {"asset_count": 3, "exposure": "3 servers"}}}]
         agent = ThreatAnalystAgent("https://test.openai.azure.com", "key")
-        result = agent._get_default_analysis(cves, [], actors, [], [], rapid7_scans)
+        result = agent._get_default_analysis(cves, [], actors)
         assert result["statistics"]["total_cves"] == 1
         assert result["statistics"]["critical_count"] == 1
         assert len(result["cve_analysis"]) == 1
@@ -157,6 +158,6 @@ class TestThreatAnalystAgent:
         agent = ThreatAnalystAgent("https://test.openai.azure.com", "key")
         agent.chat_service = mock_service
 
-        result = await agent.analyze_threats([], [], [], [], [])
+        result = await agent.analyze_threats([], [], [], [])
         assert "executive_summary" in result
         assert "recommendations" in result

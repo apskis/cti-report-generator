@@ -3,12 +3,11 @@ Base collector class for threat intelligence data sources.
 
 All collectors should inherit from BaseCollector and implement the collect() method.
 """
+
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
 
-from src.core.config import collector_config
 from src.core.models import CollectorResult
 
 
@@ -28,7 +27,7 @@ class BaseCollector(ABC):
     - collect(): Main data collection method
     """
 
-    def __init__(self, credentials: Dict[str, str], report_type: str = "weekly"):
+    def __init__(self, credentials: dict[str, str], report_type: str = "weekly"):
         """
         Initialize collector with credentials.
 
@@ -100,24 +99,13 @@ class BaseCollector(ABC):
         try:
             if not self.enabled:
                 self.logger.info(f"{self.source_name} collector is disabled, skipping")
-                return CollectorResult(
-                    source=self.source_name,
-                    success=True,
-                    data=[],
-                    record_count=0
-                )
+                return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
             return await self.collect(report_type=report_type)
         except Exception as e:
             self.logger.error(f"Unexpected error in {self.source_name} collector: {e}", exc_info=True)
-            return CollectorResult(
-                source=self.source_name,
-                success=False,
-                data=[],
-                error=str(e),
-                record_count=0
-            )
+            return CollectorResult(source=self.source_name, success=False, data=[], error=str(e), record_count=0)
 
-    def _is_relevant_biotech(self, text: str, tags: List[str] | None = None) -> bool:
+    def _is_relevant_biotech(self, text: str, tags: list[str] | None = None) -> bool:
         """
         Check if content is relevant to biotech/healthcare sector.
 
@@ -145,7 +133,7 @@ class BaseCollector(ABC):
 
         return False
 
-    def _is_relevant_industry(self, industries: List[str]) -> bool:
+    def _is_relevant_industry(self, industries: list[str]) -> bool:
         """
         Check if target industries are relevant.
 

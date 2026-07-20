@@ -1,9 +1,10 @@
 """Tests for escape pattern detection: gate bleed, prose leakage, OSINT promotion, missing clearance marker."""
+
 from __future__ import annotations
 
 import pytest
 
-from gates.escape_handler import (
+from src.gates.escape_handler import (
     EscapeDetectedError,
     EscapeType,
     detect_gate_bleed,
@@ -12,7 +13,7 @@ from gates.escape_handler import (
     detect_prose_leakage,
     get_recovery_prompt,
 )
-from gates.models import OpenSignal
+from src.gates.models import OpenSignal
 
 
 def test_gate_bleed_catches_two_completion_markers():
@@ -23,7 +24,7 @@ def test_gate_bleed_catches_two_completion_markers():
 
 
 def test_gate_bleed_passes_single_marker():
-    response = "| Source | Records |\n|---|---|\n| ThreatQ | 5 |\n\nGATE 1 COMPLETE. AWAITING CLEARANCE."
+    response = "| Source | Records |\n|---|---|\n| Intel471 | 5 |\n\nGATE 1 COMPLETE. AWAITING CLEARANCE."
     detect_gate_bleed(response, expected_gate_id="1")
 
 
@@ -43,7 +44,7 @@ def test_prose_leakage_passes_table_only_gate_2_response():
     response = (
         "| Type | Value | Sources |\n"
         "|---|---|---|\n"
-        "| ip | 1.2.3.4 | ThreatQ |\n"
+        "| ip | 1.2.3.4 | Intel471 |\n"
         "| domain | evil.com | Intel471 |\n"
         "GATE 2 COMPLETE. AWAITING CLEARANCE."
     )
@@ -74,14 +75,14 @@ def test_osint_promotion_catches_open_signal_in_threat_findings():
 
 def test_osint_promotion_passes_when_value_only_in_open_signals():
     assembly = {
-        "top_iocs": [{"value": "1.2.3.4", "sources": ["ThreatQ"]}],
+        "top_iocs": [{"value": "1.2.3.4", "sources": ["Intel471"]}],
     }
     open_signals = [OpenSignal(article_id="A001", signal_type="ioc", value="EVIL.COM", context_quote="q")]
     detect_osint_promotion(assembly, open_signals)
 
 
 def test_missing_clearance_marker_catches_missing_marker():
-    response = "| Source | Records |\n| ThreatQ | 5 |\n"
+    response = "| Source | Records |\n| Intel471 | 5 |\n"
     with pytest.raises(EscapeDetectedError):
         detect_missing_clearance_marker(response, gate_id="1")
 

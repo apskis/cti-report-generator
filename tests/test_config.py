@@ -1,9 +1,11 @@
 """
 Unit tests for src/core/config.py.
 """
+
 import os
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from src.core.config import AzureConfig, get_enabled_collectors
 
@@ -31,9 +33,9 @@ class TestGetEnabledCollectors:
             assert "nvd" in result
 
     def test_custom_collectors_from_env(self):
-        with patch.dict(os.environ, {"ENABLED_COLLECTORS": "nvd, threatq"}):
+        with patch.dict(os.environ, {"ENABLED_COLLECTORS": "nvd, intel471"}):
             result = get_enabled_collectors()
-            assert result == ["nvd", "threatq"]
+            assert result == ["nvd", "intel471"]
 
     def test_returns_new_list_each_call(self):
         with patch.dict(os.environ, {}, clear=True):

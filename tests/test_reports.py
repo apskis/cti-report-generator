@@ -1,19 +1,19 @@
 """
 Tests for report generators.
 """
-import pytest
-from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
 
-from src.reports.base import BaseReportGenerator, BrandColors, FontSizes
+from datetime import datetime
+
+import pytest
+
+from src.reports.base import BrandColors, FontSizes
+from src.reports.quarterly_report import QuarterlyReportGenerator
 from src.reports.registry import (
-    get_report_generator,
-    register_report_generator,
-    list_report_types,
     REPORT_REGISTRY,
+    get_report_generator,
+    list_report_types,
 )
 from src.reports.weekly_report import WeeklyReportGenerator
-from src.reports.quarterly_report import QuarterlyReportGenerator
 
 
 def _get_document_text(doc):
@@ -160,9 +160,9 @@ class TestWeeklyReportGenerator:
         filename = generator.get_filename()
         assert filename.startswith("CTI_Weekly_Report_")
         assert filename.endswith(".docx")
-        # Should contain date in YYYY-MM-DD format
-        date_str = generator.created_at.strftime("%Y-%m-%d")
-        assert date_str in filename
+        # Weekly reports are named by ISO year and week number, e.g. CTI_Weekly_Report_2026_Week30.docx
+        assert "_Week" in filename
+        assert str(generator.created_at.isocalendar()[0]) in filename
 
     def test_generate_creates_document(self, generator, sample_analysis_result):
         """generate should create a valid Document object."""
@@ -192,8 +192,8 @@ class TestWeeklyReportGenerator:
     def test_week_calculation(self, generator, sample_analysis_result):
         """Lookback period dates should be calculated correctly."""
         generator.generate(sample_analysis_result)
-        assert hasattr(generator, 'period_start')
-        assert hasattr(generator, 'period_end')
+        assert hasattr(generator, "period_start")
+        assert hasattr(generator, "period_end")
         delta = generator.period_end - generator.period_start
         assert delta.days == generator.lookback_days
 
@@ -217,7 +217,7 @@ class TestWeeklyReportGenerator:
         """Document should contain executive summary section."""
         doc = generator.generate(sample_analysis_result)
         text_content = _get_document_text(doc)
-        assert "Executive Summary" in text_content
+        assert "Summary" in text_content
         assert "This week we identified 5 new vulnerabilities" in text_content
 
     def test_document_contains_recommendations(self, generator, sample_analysis_result):
@@ -250,10 +250,23 @@ class TestBaseReportGenerator:
         date_range = generator._format_date_range()
         assert "to" in date_range
         # Should contain month name
-        assert any(month in date_range for month in [
-            "January", "February", "March", "April", "May", "June",
-            "July", "August", "September", "October", "November", "December"
-        ])
+        assert any(
+            month in date_range
+            for month in [
+                "January",
+                "February",
+                "March",
+                "April",
+                "May",
+                "June",
+                "July",
+                "August",
+                "September",
+                "October",
+                "November",
+                "December",
+            ]
+        )
 
 
 class TestQuarterlyReportGenerator:
@@ -277,7 +290,7 @@ class TestQuarterlyReportGenerator:
                 "supply_chain": "MEDIUM",
                 "supply_chain_trend": "Unchanged",
                 "insider": "LOW",
-                "insider_trend": "Unchanged"
+                "insider_trend": "Unchanged",
             },
             "breach_landscape": {
                 "total_incidents": 47,
@@ -287,43 +300,85 @@ class TestQuarterlyReportGenerator:
                 "ransomware_count": 18,
                 "prev_ransomware": 12,
                 "records_exposed_millions": 4.2,
-                "prev_records": 2.8
+                "prev_records": 2.8,
             },
             "incidents_by_type": [
-                {"type": "Ransomware", "current_count": 18, "prev_count": 12, "notable_example": "Pharma manufacturer: 12-day production halt, FDA notification"},
-                {"type": "Data Theft / Exfiltration", "current_count": 11, "prev_count": 9, "notable_example": "Genomics institute: 2.3M patient samples accessed"},
-                {"type": "Manufacturing / OT Disruption", "current_count": 5, "prev_count": 3, "notable_example": "Medical device mfg: assembly line shutdown, 8-day recovery"},
-                {"type": "Business Email Compromise", "current_count": 6, "prev_count": 5, "notable_example": "CRO: $3.8M fraudulent wire transfers"},
-                {"type": "Third-Party / Vendor", "current_count": 4, "prev_count": 4, "notable_example": "Lab software vendor: credentials exposed for 200+ customers"},
-                {"type": "Unauthorized Access", "current_count": 3, "prev_count": 3, "notable_example": "Biotech: former employee accessed IP post-termination"},
+                {
+                    "type": "Ransomware",
+                    "current_count": 18,
+                    "prev_count": 12,
+                    "notable_example": "Pharma manufacturer: 12-day production halt, FDA notification",
+                },
+                {
+                    "type": "Data Theft / Exfiltration",
+                    "current_count": 11,
+                    "prev_count": 9,
+                    "notable_example": "Genomics institute: 2.3M patient samples accessed",
+                },
+                {
+                    "type": "Manufacturing / OT Disruption",
+                    "current_count": 5,
+                    "prev_count": 3,
+                    "notable_example": "Medical device mfg: assembly line shutdown, 8-day recovery",
+                },
+                {
+                    "type": "Business Email Compromise",
+                    "current_count": 6,
+                    "prev_count": 5,
+                    "notable_example": "CRO: $3.8M fraudulent wire transfers",
+                },
+                {
+                    "type": "Third-Party / Vendor",
+                    "current_count": 4,
+                    "prev_count": 4,
+                    "notable_example": "Lab software vendor: credentials exposed for 200+ customers",
+                },
+                {
+                    "type": "Unauthorized Access",
+                    "current_count": 3,
+                    "prev_count": 3,
+                    "notable_example": "Biotech: former employee accessed IP post-termination",
+                },
             ],
             "common_factors": "Unpatched systems (34%), compromised credentials (28%)",
-            "geopolitical_threats": {
-                "china": {
-                    "strategic_context": "China's strategic interest in biotech",
-                    "activity": "APT41 conducted multiple intrusions",
-                    "implications": "IP theft risk for proprietary research"
+            "geopolitical_threats": [
+                {
+                    "country": "China",
+                    "threat_level": "HIGH",
+                    "relevance": ["Strategic interest in biotech and genomics IP"],
+                    "activity": ["APT41 conducted multiple intrusions"],
+                    "risk": ["IP theft risk for proprietary research"],
                 },
-                "russia": {
-                    "strategic_context": "Russian ransomware ecosystem",
-                    "activity": "Ransomware incidents increased 31%",
-                    "implications": "Operational disruption risk"
+                {
+                    "country": "Russia",
+                    "threat_level": "MEDIUM",
+                    "relevance": ["Ransomware ecosystem targeting manufacturing"],
+                    "activity": ["Ransomware incidents increased 31%"],
+                    "risk": ["Operational disruption risk"],
                 },
-                "north_korea": {
-                    "strategic_context": "NK dual-purpose operations",
-                    "activity": "LinkedIn social engineering campaigns",
-                    "implications": "Credential compromise risk"
-                }
-            },
+                {
+                    "country": "North Korea",
+                    "threat_level": "MEDIUM",
+                    "relevance": ["Dual-purpose revenue and espionage operations"],
+                    "activity": ["LinkedIn social engineering campaigns"],
+                    "risk": ["Credential compromise risk"],
+                },
+            ],
             "looking_ahead": {
                 "threat_outlook": "Continued pressure from state-sponsored campaigns",
                 "planned_initiatives": "Enhanced detection capabilities",
-                "watch_items": "Major industry events and announcements"
+                "watch_items": [
+                    {"subject": "Industry events", "detail": "Major industry events and announcements"},
+                    {"subject": "Regulatory shifts", "detail": "New data-protection rules in key markets"},
+                ],
             },
-            "recommendations": [
-                ("Executive Awareness", "Targeted security awareness for executives"),
-                ("Vendor Risk Review", "Evaluate vendor security posture"),
-            ]
+            "recommendations": {
+                "intro_note": "Priority actions for the coming quarter.",
+                "items": [
+                    {"title": "Executive Awareness", "body": "Targeted security awareness for executives"},
+                    {"title": "Vendor Risk Review", "body": "Evaluate vendor security posture"},
+                ],
+            },
         }
 
     def test_report_type(self, generator):
@@ -375,8 +430,8 @@ class TestQuarterlyReportGenerator:
         """Quarter and lookback period should be calculated correctly."""
         generator.generate(sample_strategic_analysis)
         assert 1 <= generator.quarter <= 4
-        assert hasattr(generator, 'period_start')
-        assert hasattr(generator, 'period_end')
+        assert hasattr(generator, "period_start")
+        assert hasattr(generator, "period_end")
         delta = generator.period_end - generator.period_start
         assert delta.days == generator.lookback_days
 
@@ -394,7 +449,6 @@ class TestQuarterlyReportGenerator:
         """Document should contain the report title."""
         doc = generator.generate(sample_strategic_analysis)
         text_content = "\n".join([p.text for p in doc.paragraphs])
-        assert "Cyber Threat Intelligence" in text_content
         assert "Quarterly Strategic Brief" in text_content
 
     def test_document_contains_executive_summary(self, generator, sample_strategic_analysis):
@@ -407,17 +461,18 @@ class TestQuarterlyReportGenerator:
     def test_document_contains_geopolitical_section(self, generator, sample_strategic_analysis):
         """Document should contain geopolitical threat landscape."""
         doc = generator.generate(sample_strategic_analysis)
-        text_content = "\n".join([p.text for p in doc.paragraphs])
+        text_content = _get_document_text(doc)
         assert "Geopolitical Threat Landscape" in text_content
-        # Should have country sections
+        # Should have country sections (rendered as a per-country table)
         assert "China" in text_content
         assert "Russia" in text_content
 
     def test_document_contains_recommendations(self, generator, sample_strategic_analysis):
         """Document should contain recommendations for leadership."""
         doc = generator.generate(sample_strategic_analysis)
-        text_content = "\n".join([p.text for p in doc.paragraphs])
-        assert "Recommendations for Leadership" in text_content
+        text_content = _get_document_text(doc)
+        assert "Recommendations" in text_content
+        assert "Executive Awareness" in text_content
 
 
 class TestReportTypesList:

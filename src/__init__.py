@@ -9,21 +9,19 @@ This package contains all core functionality for the CTI Report Generator:
 """
 
 from src.core.config import (
-    collector_config,
-    industry_filter_config,
     analysis_config,
-    report_config,
     azure_config,
+    collector_config,
     get_enabled_collectors,
+    industry_filter_config,
+    report_config,
 )
 from src.core.models import (
-    CVERecord,
-    ThreatReport,
     APTActor,
-    ThreatIndicator,
-    VulnerabilitySummary,
-    ThreatAnalysisResult,
     CollectorResult,
+    CVERecord,
+    ThreatAnalysisResult,
+    ThreatReport,
 )
 
 __all__ = [
@@ -38,8 +36,6 @@ __all__ = [
     "CVERecord",
     "ThreatReport",
     "APTActor",
-    "ThreatIndicator",
-    "VulnerabilitySummary",
     "ThreatAnalysisResult",
     "CollectorResult",
 ]

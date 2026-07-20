@@ -5,13 +5,13 @@ Provides secure access to API keys and secrets stored in Azure Key Vault.
 Uses Azure Managed Identity in production, supports local development
 via Azure CLI authentication.
 """
+
 import logging
-from typing import Dict
 from concurrent.futures import ThreadPoolExecutor
 
+from azure.core.exceptions import ResourceNotFoundError  # type: ignore
 from azure.identity import DefaultAzureCredential  # type: ignore
 from azure.keyvault.secrets import SecretClient  # type: ignore
-from azure.core.exceptions import ResourceNotFoundError  # type: ignore
 
 from src.core.config import azure_config
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # Module-level credential instance for reuse
 # DefaultAzureCredential is thread-safe and should be reused
 _credential: DefaultAzureCredential | None = None
-_client_cache: Dict[str, SecretClient] = {}
+_client_cache: dict[str, SecretClient] = {}
 
 
 def _get_credential() -> DefaultAzureCredential:
@@ -85,7 +85,7 @@ def get_secret(vault_url: str, secret_name: str) -> str:
         raise
 
 
-def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
+def get_all_api_keys(vault_url: str | None = None) -> dict[str, str]:
     """
     Retrieve all API keys needed for threat intelligence collection.
 
@@ -99,68 +99,60 @@ def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
         Dictionary containing all API keys
     """
     from src.core.config import get_enabled_collectors
-    
+
     vault_url = vault_url or azure_config.get_key_vault_url()
     logger.info(f"Retrieving all API keys from vault: {vault_url}")
 
     # Get enabled collectors
     enabled_collectors = set(get_enabled_collectors())
-    
+
     # Define all secrets to retrieve, organized by collector
     # All credentials stored in Key Vault for security
     collector_secrets = {
-        'nvd': ['nvd_key'],
-        'threatq': ['threatq_client_id', 'threatq_client_secret', 'threatq_url'],
-        'intel471': ['intel471_email', 'intel471_key'],
-        'crowdstrike': ['crowdstrike_id', 'crowdstrike_secret', 'crowdstrike_base_url'],
-        'rapid7': ['rapid7_key', 'rapid7_region'],
-        'rapid7-scans': ['rapid7_key', 'rapid7_region'],
-        'rapid7-bulk-export': ['rapid7_key', 'rapid7_region'],
+        "nvd": ["nvd_key"],
+        "intel471": ["intel471_email", "intel471_key"],
+        "crowdstrike": ["crowdstrike_id", "crowdstrike_secret", "crowdstrike_base_url"],
     }
-    
+
     # Always required (not collector-specific)
     required_secrets = {
-        'openai_key': 'openai-api-key',
-        'openai_endpoint': 'openai-endpoint',
-        'storage_account_name': 'storage-account-name',
-        'storage_account_key': 'storage-account-key'
+        "openai_key": "openai-api-key",
+        "openai_endpoint": "openai-endpoint",
+        "storage_account_name": "storage-account-name",
+        "storage_account_key": "storage-account-key",
     }
-    
+
     # Map of key names to secret names
     secrets_map = {
         # Threat Intelligence API credentials
-        'nvd_key': 'nvd-api-key',
-        'threatq_client_id': 'threatq-client-id',
-        'threatq_client_secret': 'threatq-client-secret',
-        'threatq_url': 'threatq-url',
-        'intel471_email': 'intel471-email',
-        'intel471_key': 'intel471-api-key',
-        'crowdstrike_id': 'crowdstrike-client-id',
-        'crowdstrike_secret': 'crowdstrike-client-secret',
-        'crowdstrike_base_url': 'crowdstrike-base-url',
-        'rapid7_key': 'rapid7-api-key',
-        'rapid7_region': 'rapid7-region',
+        "nvd_key": "nvd-api-key",
+        "intel471_email": "intel471-email",
+        "intel471_key": "intel471-api-key",
+        "crowdstrike_id": "crowdstrike-client-id",
+        "crowdstrike_secret": "crowdstrike-client-secret",
+        "crowdstrike_base_url": "crowdstrike-base-url",
     }
-    
+
     # Add required secrets
     secrets_map.update(required_secrets)
-    
+
     # Build list of secrets to fetch based on enabled collectors
     secrets_to_fetch = {}
-    
+
     # Add required secrets (always needed)
     for key_name, secret_name in required_secrets.items():
         secrets_to_fetch[key_name] = secret_name
-    
+
     # Add collector-specific secrets for enabled collectors
     for collector_name, key_names in collector_secrets.items():
         if collector_name in enabled_collectors:
             for key_name in key_names:
                 if key_name in secrets_map:
                     secrets_to_fetch[key_name] = secrets_map[key_name]
-    
-    # Special handling: ThreatQ secrets are optional (collector handles missing gracefully)
-    optional_secrets = {'threatq_client_id', 'threatq_client_secret', 'threatq_url'}
+
+    # Optional secrets: fetched if present, but a missing value disables the
+    # dependent collector rather than failing the whole run. (None currently.)
+    optional_secrets: set[str] = set()
 
     api_keys = {}
 
@@ -171,10 +163,12 @@ def get_all_api_keys(vault_url: str | None = None) -> Dict[str, str]:
         try:
             return key_name, get_secret(vault_url, secret_name)
         except ResourceNotFoundError as e:
-            # ThreatQ secrets are optional - log warning but don't fail
+            # Optional secrets log a warning but don't fail the run
             if key_name in optional_secrets:
-                logger.warning(f"Optional secret '{key_name}' (secret: '{secret_name}') not found in vault. "
-                             f"ThreatQ collector will be disabled.")
+                logger.warning(
+                    f"Optional secret '{key_name}' (secret: '{secret_name}') not found in vault. "
+                    f"The dependent collector will be disabled."
+                )
                 return key_name, ""
             # For other secrets, raise exception
             logger.error(f"Failed to retrieve required API key '{key_name}' (secret: '{secret_name}'): {e}")

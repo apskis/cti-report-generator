@@ -7,16 +7,17 @@ add and enable will be collected.
 
 No API key required - uses public RSS/Atom feeds.
 """
+
 import logging
 import re
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import List, Dict, Any
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
+from pathlib import Path
+from typing import Any
 
-import yaml
-import feedparser
 import aiohttp
+import feedparser
+import yaml
 
 from src.collectors.base import BaseCollector
 from src.core.models import CollectorResult
@@ -26,13 +27,13 @@ logger = logging.getLogger(__name__)
 CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "osint_sources.yaml"
 
 
-def _load_osint_config(path: Path = CONFIG_PATH) -> Dict[str, Any]:
+def _load_osint_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
     """Load and validate the OSINT sources configuration file."""
     if not path.exists():
         logger.warning(f"OSINT config not found at {path}, no sources will be collected")
         return {"sources": [], "lookback_days": 7, "max_articles_per_source": 5, "max_total_articles": 30}
 
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
 
     return {
@@ -43,14 +44,15 @@ def _load_osint_config(path: Path = CONFIG_PATH) -> Dict[str, Any]:
     }
 
 
-def _parse_pub_date(entry: Dict) -> datetime | None:
+def _parse_pub_date(entry: dict) -> datetime | None:
     """Extract publication date from a feed entry."""
     for field in ("published_parsed", "updated_parsed"):
         tp = entry.get(field)
         if tp:
             try:
                 from time import mktime
-                return datetime.fromtimestamp(mktime(tp), tz=timezone.utc)
+
+                return datetime.fromtimestamp(mktime(tp), tz=UTC)
             except Exception:
                 pass
 
@@ -58,7 +60,7 @@ def _parse_pub_date(entry: Dict) -> datetime | None:
         raw = entry.get(field, "")
         if raw:
             try:
-                return parsedate_to_datetime(raw).replace(tzinfo=timezone.utc)
+                return parsedate_to_datetime(raw).replace(tzinfo=UTC)
             except Exception:
                 pass
     return None
@@ -93,27 +95,21 @@ class OSINTCollector(BaseCollector):
 
         if not sources:
             logger.info("No enabled OSINT sources in config")
-            return CollectorResult(
-                source=self.source_name,
-                success=True,
-                data=[],
-                record_count=0
-            )
+            return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
 
         max_per_source = config["max_articles_per_source"]
         max_total = config["max_total_articles"]
         lookback = config["lookback_days"]
 
         start_date, _ = self.get_date_range(days=lookback)
-        cutoff = start_date.replace(tzinfo=timezone.utc)
+        cutoff = start_date.replace(tzinfo=UTC)
 
         logger.info(f"Collecting OSINT from {len(sources)} enabled sources (lookback: {lookback} days)")
 
-        all_articles: List[Dict[str, Any]] = []
+        all_articles: list[dict[str, Any]] = []
 
         async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=15),
-            headers={"User-Agent": "CTI-Report-Generator/1.0"}
+            timeout=aiohttp.ClientTimeout(total=15), headers={"User-Agent": "CTI-Report-Generator/1.0"}
         ) as session:
             for source in sources:
                 if len(all_articles) >= max_total:
@@ -122,15 +118,13 @@ class OSINTCollector(BaseCollector):
                 name = source.get("name", "Unknown")
                 url = source.get("url", "")
                 category = source.get("category", "OSINT")
-                feed_type = source.get("type", "rss")
+                source.get("type", "rss")
 
                 if not url:
                     continue
 
                 try:
-                    articles = await self._fetch_rss(
-                        session, name, url, category, cutoff, max_per_source
-                    )
+                    articles = await self._fetch_rss(session, name, url, category, cutoff, max_per_source)
                     all_articles.extend(articles)
                     if articles:
                         logger.info(f"  {name}: {len(articles)} articles")
@@ -145,12 +139,7 @@ class OSINTCollector(BaseCollector):
 
         logger.info(f"OSINT collection complete: {len(all_articles)} articles from {len(sources)} sources")
 
-        return CollectorResult(
-            source=self.source_name,
-            success=True,
-            data=all_articles,
-            record_count=len(all_articles)
-        )
+        return CollectorResult(source=self.source_name, success=True, data=all_articles, record_count=len(all_articles))
 
     async def _fetch_rss(
         self,
@@ -159,8 +148,8 @@ class OSINTCollector(BaseCollector):
         url: str,
         category: str,
         cutoff: datetime,
-        max_articles: int
-    ) -> List[Dict[str, Any]]:
+        max_articles: int,
+    ) -> list[dict[str, Any]]:
         """Fetch and parse an RSS/Atom feed, returning recent articles."""
         async with session.get(url) as resp:
             if resp.status != 200:
@@ -193,15 +182,17 @@ class OSINTCollector(BaseCollector):
             cve_pattern = r"CVE-\d{4}-\d{4,7}"
             cves_found = list(set(re.findall(cve_pattern, f"{title} {summary}")))
 
-            articles.append({
-                "title": title,
-                "url": link,
-                "summary": summary,
-                "published_date": pub_date.isoformat() if pub_date else "",
-                "source": source_name,
-                "category": category,
-                "cves_mentioned": cves_found,
-                "type": "osint_article",
-            })
+            articles.append(
+                {
+                    "title": title,
+                    "url": link,
+                    "summary": summary,
+                    "published_date": pub_date.isoformat() if pub_date else "",
+                    "source": source_name,
+                    "category": category,
+                    "cves_mentioned": cves_found,
+                    "type": "osint_article",
+                }
+            )
 
         return articles

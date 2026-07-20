@@ -6,9 +6,9 @@ Sensitive values (API keys, secrets) should be stored in Azure Key Vault.
 Infrastructure config (URLs, resource names) should be in environment variables.
 Application settings (limits, timeouts, feature flags) are defined here.
 """
+
 import os
 from dataclasses import dataclass
-from typing import List
 from pathlib import Path
 
 import yaml
@@ -23,8 +23,6 @@ class CollectorConfig:
     intel471_lookback_days: int = 7
     intel471_quarterly_lookback_days: int = 90  # Quarter = 90 days
     crowdstrike_lookback_days: int = 7
-    threatq_lookback_days: int = 7
-    rapid7_lookback_days: int = 30
 
     # Result limits per source
     nvd_max_results: int = 100
@@ -35,11 +33,6 @@ class CollectorConfig:
     crowdstrike_actors_limit: int = 50
     crowdstrike_indicators_limit: int = 50
     crowdstrike_spotlight_limit: int = 200  # Max vulnerabilities from Spotlight for exposure counts
-    threatq_indicators_limit: int = 100
-    rapid7_max_results: int = 500
-
-    # Minimum score thresholds
-    threatq_min_score: int = 7
 
     # Retry settings
     max_retries: int = 3
@@ -56,33 +49,54 @@ class IndustryFilterConfig:
 
     # Keywords for biotech/healthcare filtering
     biotech_keywords: tuple = (
-        "biotech", "genomics", "healthcare", "hospital", "medical",
-        "pharmaceutical", "life sciences", "research", "clinical",
-        "patient", "health", "laboratory", "diagnostics", "bioinformatics",
-        "genetic", "therapy", "drug", "vaccine", "clinical trial"
+        "biotech",
+        "genomics",
+        "healthcare",
+        "hospital",
+        "medical",
+        "pharmaceutical",
+        "life sciences",
+        "research",
+        "clinical",
+        "patient",
+        "health",
+        "laboratory",
+        "diagnostics",
+        "bioinformatics",
+        "genetic",
+        "therapy",
+        "drug",
+        "vaccine",
+        "clinical trial",
     )
 
     # Target industries for CrowdStrike filtering
     target_industries: tuple = (
-        "Technology", "Healthcare", "Pharmaceutical",
-        "Life Sciences", "Biotechnology", "Medical Devices",
-        "Research", "Education", "Manufacturing"
+        "Technology",
+        "Healthcare",
+        "Pharmaceutical",
+        "Life Sciences",
+        "Biotechnology",
+        "Medical Devices",
+        "Research",
+        "Education",
+        "Manufacturing",
     )
 
 
 @dataclass(frozen=True)
 class EnrichmentConfig:
     """Configuration for data enrichment."""
-    
-    # Enable/disable web search for filling data gaps
-    # When enabled, will search the web for missing CVE product information
-    # When disabled, uses only CISA KEV catalog and pattern matching
-    enable_web_search: bool = True
-    
+
+    # Enable/disable web search for filling data gaps.
+    # NOTE: web search is not yet implemented (see cve_enricher), so this defaults
+    # to False; enrichment uses only the CISA KEV catalog and pattern matching.
+    enable_web_search: bool = os.getenv("ENABLE_WEB_SEARCH", "false").lower() in {"1", "true", "yes"}
+
     # Web search settings
     web_search_timeout_seconds: int = 5
     max_web_searches_per_run: int = 10  # Limit to avoid excessive API calls
-    
+
     # CISA KEV cache duration (hours)
     kev_cache_duration_hours: int = 24
 
@@ -98,9 +112,6 @@ class AnalysisConfig:
     max_cves_for_analysis: int = 50
     max_intel471_for_analysis: int = 30
     max_crowdstrike_for_analysis: int = 30
-    max_threatq_for_analysis: int = 30
-    max_rapid7_for_analysis: int = 20
-
 
 
 @dataclass(frozen=True)
@@ -110,6 +121,11 @@ class ReportConfig:
     # Blob storage settings
     container_name: str = "reports"
     sas_expiry_days: int = 7
+    # When True, sign SAS URLs with an AAD user-delegation key (revocable, no
+    # account key needed) instead of the storage account key. Requires the
+    # function's identity to hold a role such as "Storage Blob Data Contributor".
+    # Defaults False to preserve the existing account-key behavior.
+    use_user_delegation_sas: bool = os.getenv("USE_USER_DELEGATION_SAS", "false").lower() == "true"
 
     # Document styling
     table_style: str = "Light Grid Accent 1"
@@ -121,7 +137,7 @@ class FeatureConfig:
 
     # Gate framework validation pipeline
     gate_framework_enabled: bool = False
-    
+
     # Gate framework interactive mode (manual clearance after each gate)
     gate_framework_interactive: bool = False
 
@@ -149,11 +165,46 @@ class AzureConfig:
         """
         url = os.environ.get("KEY_VAULT_URL")
         if not url:
-            raise EnvironmentError(
+            raise OSError(
                 "KEY_VAULT_URL environment variable is not set. "
                 "Set it to your Azure Key Vault URL, e.g. 'https://kv-cti-rep-prod.vault.azure.net/'"
             )
         return url
+
+
+@dataclass(frozen=True)
+class CustomerProfile:
+    """Organization-specific identity used across reports and analysis.
+
+    Loaded from config/customer_profile.yaml (or the path in CUSTOMER_PROFILE_PATH).
+    The defaults below preserve the original single-tenant behavior when no
+    profile file is present, so nothing changes for existing deployments.
+    """
+
+    name: str = "Illumina"
+    brand_color_hex: str = "005DAA"  # hex without leading '#'
+    security_contact: str = "secops@illumina.com"
+    osint_source_name: str = "Illumina-OSINT"
+    # Short industry/sector descriptor used to ground strategic analysis prompts.
+    industry: str = "genomics, life sciences, and precision manufacturing"
+    # Short phrase naming the org's key products/platforms, used in strategic
+    # prompt examples and fallback analysis (e.g. "ICA and BaseSpace").
+    products: str = "ICA and BaseSpace"
+    # A single flagship product example used in prompt guidance.
+    flagship_product: str = "NovaSeq X"
+    # Lowercase keywords (company name + product/platform names) used to detect
+    # company-specific grounding in geopolitical relevance bullets.
+    product_keywords: tuple[str, ...] = (
+        "illumina",
+        "novaseq",
+        "nextseq",
+        "iseq",
+        "miseq",
+        "sequencing platform",
+        "ica",
+        "basespace",
+        "dragen",
+    )
 
 
 # Global configuration instances
@@ -169,25 +220,24 @@ _COLLECTORS_YAML = Path(__file__).resolve().parent.parent.parent / "config" / "c
 _FEATURES_YAML = Path(__file__).resolve().parent.parent.parent / "config" / "features.yaml"
 
 
-def _load_collectors_from_yaml() -> List[str]:
+def _load_collectors_from_yaml() -> list[str]:
     """Read config/collectors.yaml and return names of enabled collectors."""
     if not _COLLECTORS_YAML.exists():
         raise FileNotFoundError(
             f"Collectors config not found: {_COLLECTORS_YAML}\n"
             "Please create config/collectors.yaml to define your enabled collectors."
         )
-    with open(_COLLECTORS_YAML, "r", encoding="utf-8") as f:
+    with open(_COLLECTORS_YAML, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
     collectors = cfg.get("collectors", [])
     if not collectors:
         raise ValueError(
-            f"No collectors defined in {_COLLECTORS_YAML}\n"
-            "Add at least one collector with 'enabled: true'."
+            f"No collectors defined in {_COLLECTORS_YAML}\nAdd at least one collector with 'enabled: true'."
         )
     return [c["name"] for c in collectors if c.get("enabled", True)]
 
 
-def get_enabled_collectors() -> List[str]:
+def get_enabled_collectors() -> list[str]:
     """
     Get list of enabled collectors.
 
@@ -206,41 +256,71 @@ def _load_features_from_yaml() -> FeatureConfig:
     if not _FEATURES_YAML.exists():
         # If features.yaml doesn't exist, return defaults
         return FeatureConfig()
-    
-    with open(_FEATURES_YAML, "r", encoding="utf-8") as f:
+
+    with open(_FEATURES_YAML, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
-    
+
     features = cfg.get("features", {})
     gate_framework = features.get("gate_framework", {})
-    
+
     return FeatureConfig(
         gate_framework_enabled=gate_framework.get("enabled", False),
-        gate_framework_interactive=gate_framework.get("interactive_mode", False)
+        gate_framework_interactive=gate_framework.get("interactive_mode", False),
     )
 
 
 def get_feature_config() -> FeatureConfig:
     """
     Get feature configuration.
-    
+
     Priority order:
       1. Environment variable overrides (e.g., ENABLE_GATE_FRAMEWORK=1)
       2. config/features.yaml settings
       3. Default values (all features disabled)
     """
     config = _load_features_from_yaml()
-    
-    # Environment variable override for gate framework
-    env_gate_enabled = os.environ.get("ENABLE_GATE_FRAMEWORK", "").lower() in {"1", "true", "yes"}
-    if env_gate_enabled:
-        # Can't modify frozen dataclass, so create new instance
+
+    # Environment variable override for the gate framework (bidirectional):
+    # ENABLE_GATE_FRAMEWORK can force it on OR off, taking precedence over YAML.
+    env_val = os.environ.get("ENABLE_GATE_FRAMEWORK", "").strip().lower()
+    if env_val:
+        forced = env_val in {"1", "true", "yes"}
+        # Can't mutate a frozen dataclass, so create a new instance.
         return FeatureConfig(
-            gate_framework_enabled=True,
-            gate_framework_interactive=config.gate_framework_interactive
+            gate_framework_enabled=forced, gate_framework_interactive=config.gate_framework_interactive
         )
-    
+
     return config
 
 
-# Lazy-loaded feature config (call get_feature_config() to get current state)
-feature_config = get_feature_config()
+_CUSTOMER_PROFILE_YAML = Path(__file__).resolve().parent.parent.parent / "config" / "customer_profile.yaml"
+
+
+def _load_customer_profile() -> CustomerProfile:
+    """Load the customer profile from YAML, falling back to defaults if absent."""
+    path = Path(os.environ.get("CUSTOMER_PROFILE_PATH", _CUSTOMER_PROFILE_YAML))
+    defaults = CustomerProfile()
+    if not path.exists():
+        return defaults
+    with open(path, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+    keywords = cfg.get("product_keywords")
+    return CustomerProfile(
+        name=cfg.get("name", defaults.name),
+        brand_color_hex=str(cfg.get("brand_color_hex", defaults.brand_color_hex)),
+        security_contact=cfg.get("security_contact", defaults.security_contact),
+        osint_source_name=cfg.get("osint_source_name", defaults.osint_source_name),
+        industry=cfg.get("industry", defaults.industry),
+        products=cfg.get("products", defaults.products),
+        flagship_product=cfg.get("flagship_product", defaults.flagship_product),
+        product_keywords=tuple(k.lower() for k in keywords) if keywords else defaults.product_keywords,
+    )
+
+
+def get_customer_profile() -> CustomerProfile:
+    """Return the active customer profile (config/customer_profile.yaml or defaults)."""
+    return _load_customer_profile()
+
+
+# Eagerly-loaded customer profile singleton.
+customer_profile = _load_customer_profile()
