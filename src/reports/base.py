@@ -3,19 +3,20 @@ Base report generator class.
 
 Provides common functionality for all report types.
 """
+
+import logging
+import os
 from abc import ABC, abstractmethod
 from datetime import datetime
 from io import BytesIO
-import logging
-from typing import Dict, Any
+from typing import Any
 
 from docx import Document
-from docx.shared import Pt, RGBColor, Inches
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.section import WD_ORIENT
-from docx.oxml.ns import qn, nsmap
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
-import os
+from docx.oxml.ns import qn
+from docx.shared import Inches, Pt, RGBColor
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,9 @@ class BrandColors:
     YELLOW_P1 = "FFFF00"  # Yellow highlight for P1
     GREEN_LOW = RGBColor(0x00, 0x80, 0x00)  # Green for LOW risk
     GREEN_RESOLVED = RGBColor(0x2E, 0xCC, 0x71)  # Green #2ECC71 for Resolved / positive metrics
-    RED_HIGH_RISK = RGBColor(0xFF, 0x3B, 0x3B)  # Red #FF3B3B for high-risk, Actively Exploited, Actor Groups, Total Exposed
+    RED_HIGH_RISK = RGBColor(
+        0xFF, 0x3B, 0x3B
+    )  # Red #FF3B3B for high-risk, Actively Exploited, Actor Groups, Total Exposed
     ORANGE_TABLE_HEADER = "E65100"  # Orange for table headers (hex string for shading)
     DARK_BG_HEX = "1E1E1E"  # Dark page background (design reference)
     METRIC_BOX_DARK = "2A2A2A"  # Slightly lighter than page for metric boxes (#2A2A2A)
@@ -139,7 +142,7 @@ class BaseReportGenerator(ABC):
         pass
 
     @abstractmethod
-    def generate(self, analysis_result: Dict[str, Any]) -> Document:
+    def generate(self, analysis_result: dict[str, Any]) -> Document:
         """
         Generate the report document.
 
@@ -154,25 +157,25 @@ class BaseReportGenerator(ABC):
     def get_filename(self, report_week_start: datetime = None) -> str:
         """
         Generate the filename for this report.
-        
+
         Args:
             report_week_start: Optional date representing the start of the reporting week.
                              If provided, the ISO week number is used instead of a date.
-        
+
         Returns:
             Filename string in format: {prefix}_Week{WW}_MOCK.docx or {prefix}_Week{WW}.docx
         """
         # Use report week start if provided, otherwise use creation date
         date_to_use = report_week_start if report_week_start else self.created_at
-        
+
         # Get ISO week number and year
         iso_calendar = date_to_use.isocalendar()
         year = iso_calendar[0]
         week = iso_calendar[1]
-        
+
         # Add _MOCK suffix if using mock data
         mock_suffix = "_MOCK" if self.use_mock_data else ""
-        
+
         return f"{self.filename_prefix}_{year}_Week{week:02d}{mock_suffix}.docx"
 
     def to_bytes(self) -> bytes:
@@ -226,16 +229,16 @@ class BaseReportGenerator(ABC):
     def _set_cell_shading_rgb(self, cell, r: int, g: int, b: int) -> None:
         """Apply background shading to a table cell using RGB values."""
         tc_pr = cell._element.get_or_add_tcPr()
-        
+
         # Remove any existing shading first
         existing_shd = tc_pr.find(qn("w:shd"))
         if existing_shd is not None:
             tc_pr.remove(existing_shd)
-        
+
         # Create new shading element
         shd = OxmlElement("w:shd")
         tc_pr.append(shd)
-        
+
         # Convert RGB to hex (Word uses hex format)
         # RGB(55, 46, 0) = #372E00
         color_hex = f"{r:02X}{g:02X}{b:02X}"
@@ -246,14 +249,14 @@ class BaseReportGenerator(ABC):
     def _set_cell_borders(self, cell, color_hex: str = "808080", size: str = "4") -> None:
         """
         Apply borders to a table cell.
-        
+
         Args:
             cell: The table cell to apply borders to
             color_hex: Border color in hex format (default: "808080" for gray)
             size: Border size (default: "4" for thin border)
         """
         tc_pr = cell._element.get_or_add_tcPr()
-        
+
         # Create border elements
         def create_border(side: str):
             border = OxmlElement(f"w:{side}")
@@ -262,13 +265,13 @@ class BaseReportGenerator(ABC):
             border.set(qn("w:space"), "0")
             border.set(qn("w:color"), color_hex)
             return border
-        
+
         # Get or create tcBorders element
         tc_borders = tc_pr.find(qn("w:tcBorders"))
         if tc_borders is None:
             tc_borders = OxmlElement("w:tcBorders")
             tc_pr.append(tc_borders)
-        
+
         # Add all borders
         tc_borders.append(create_border("top"))
         tc_borders.append(create_border("bottom"))
@@ -348,7 +351,7 @@ class BaseReportGenerator(ABC):
         bold: bool = False,
         italic: bool = False,
         color: RGBColor | None = None,
-        font_name: str = "Arial"
+        font_name: str = "Arial",
     ) -> None:
         """Set font properties for a paragraph's runs."""
         for run in paragraph.runs:
@@ -368,7 +371,7 @@ class BaseReportGenerator(ABC):
         italic: bool = False,
         color: RGBColor | None = None,
         alignment: WD_ALIGN_PARAGRAPH | None = None,
-        style: str | None = None
+        style: str | None = None,
     ):
         """Add a paragraph with custom styling."""
         if style:
@@ -389,10 +392,7 @@ class BaseReportGenerator(ABC):
 
         return para
 
-    def _create_metric_card_table(
-        self,
-        metrics: list[tuple[str, str, str]]
-    ):
+    def _create_metric_card_table(self, metrics: list[tuple[str, str, str]]):
         """
         Create a metric card table (like "4 New This Week" cards).
 
@@ -444,6 +444,7 @@ class BaseReportGenerator(ABC):
         if start_date is None:
             # Default to 7 days before end_date for weekly
             from datetime import timedelta
+
             start_date = end_date - timedelta(days=6)
 
         return f"{start_date.strftime('%B %d')} to {end_date.strftime('%d, %Y')}"
@@ -459,28 +460,28 @@ class BaseReportGenerator(ABC):
     def _get_banner_path(self) -> str | None:
         """
         Get the path to the report banner image.
-        
+
         Returns:
             Path to Bulletin_banner.jpg if found, None otherwise
         """
         # Try root directory first
         root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         banner_path = os.path.join(root_dir, "Bulletin_banner.jpg")
-        
+
         if os.path.exists(banner_path):
             return banner_path
-        
+
         # Try current working directory
         alt_path = "Bulletin_banner.jpg"
         if os.path.exists(alt_path):
             return alt_path
-        
+
         return None
 
     def _add_image(self, image_path: str, width: Inches | None = None, height: Inches | None = None) -> None:
         """
         Add an image to the document.
-        
+
         Args:
             image_path: Path to the image file
             width: Optional width in Inches (defaults to page width)
@@ -489,82 +490,84 @@ class BaseReportGenerator(ABC):
         if not os.path.exists(image_path):
             logger.warning(f"Image file not found: {image_path}")
             return
-        
+
         para = self.doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
+
         run = para.add_run()
-        
+
         # Default to page width if not specified
         if width is None:
             width = Inches(6.5)  # Standard page width minus margins
-        
+
         run.add_picture(image_path, width=width, height=height)
 
     def _set_default_font(self, font_name: str = "Arial") -> None:
         """
         Set the default font for the entire document.
-        
+
         Args:
             font_name: Name of the font to use (default: "Arial")
         """
         if self.doc is None:
             return
-        
+
         # Set font for Normal style (default paragraph style)
-        normal_style = self.doc.styles['Normal']
+        normal_style = self.doc.styles["Normal"]
         normal_font = normal_style.font
         normal_font.name = font_name
-        
+
         # Also set for Heading styles
-        for style_name in ['Heading 1', 'Heading 2', 'Heading 3']:
+        for style_name in ["Heading 1", "Heading 2", "Heading 3"]:
             if style_name in self.doc.styles:
                 heading_style = self.doc.styles[style_name]
                 heading_font = heading_style.font
                 heading_font.name = font_name
                 # Set Heading 1 font size to 14pt
-                if style_name == 'Heading 1':
+                if style_name == "Heading 1":
                     heading_font.size = Pt(14)
 
     @staticmethod
     def _add_hyperlink(paragraph, text, url):
         """
         Add a hyperlink to a paragraph.
-        
+
         Args:
             paragraph: The paragraph to add the hyperlink to
             text: The display text for the hyperlink
             url: The URL to link to
-            
+
         Returns:
             The hyperlink run
         """
         # Create the hyperlink element
         part = paragraph.part
-        r_id = part.relate_to(url, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink", is_external=True)
-        
-        hyperlink = OxmlElement('w:hyperlink')
-        hyperlink.set(qn('r:id'), r_id)
-        
+        r_id = part.relate_to(
+            url, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink", is_external=True
+        )
+
+        hyperlink = OxmlElement("w:hyperlink")
+        hyperlink.set(qn("r:id"), r_id)
+
         # Create a run element with the link text
-        new_run = OxmlElement('w:r')
-        rPr = OxmlElement('w:rPr')
-        
+        new_run = OxmlElement("w:r")
+        rPr = OxmlElement("w:rPr")
+
         # Style the hyperlink (blue, underlined)
-        color = OxmlElement('w:color')
-        color.set(qn('w:val'), '0563C1')
+        color = OxmlElement("w:color")
+        color.set(qn("w:val"), "0563C1")
         rPr.append(color)
-        
-        u = OxmlElement('w:u')
-        u.set(qn('w:val'), 'single')
+
+        u = OxmlElement("w:u")
+        u.set(qn("w:val"), "single")
         rPr.append(u)
-        
+
         new_run.append(rPr)
         new_run.text = text
         hyperlink.append(new_run)
-        
+
         paragraph._p.append(hyperlink)
-        
+
         return new_run
 
     def _configure_page_settings(self) -> None:
@@ -652,7 +655,7 @@ class BaseReportGenerator(ABC):
     def _apply_font_to_run(self, run, font_name: str = "Arial") -> None:
         """
         Apply font name to a text run.
-        
+
         Args:
             run: The text run to apply font to
             font_name: Name of the font to use (default: "Arial")
@@ -666,18 +669,18 @@ class BaseReportGenerator(ABC):
         """
         if self.doc is None:
             return
-        
+
         divider_para = self.doc.add_paragraph()
         divider_para.paragraph_format.space_before = Pt(0)  # No space before (tight with content above)
         divider_para.paragraph_format.space_after = Pt(12)  # Space after (before next section title)
-        
+
         # Add bottom border to create divider line
         p_pr = divider_para._element.get_or_add_pPr()
         p_bdr = p_pr.find(qn("w:pBdr"))
         if p_bdr is None:
             p_bdr = OxmlElement("w:pBdr")
             p_pr.append(p_bdr)
-        
+
         # Create bottom border (gray, 20% opacity = light gray)
         bottom_border = OxmlElement("w:bottom")
         bottom_border.set(qn("w:val"), "single")
@@ -704,14 +707,14 @@ class BaseReportGenerator(ABC):
             # Get the document section and its header
             section = self.doc.sections[0]
             header = section.header
-            
+
             # Clear any existing content in the header
             header.paragraphs[0].clear()
-            
+
             # Add the banner image to the header
             header_para = header.paragraphs[0]
             header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            
+
             run = header_para.add_run()
             # Calculate width to fit within margins (page width minus left and right margins)
             # Standard page width is 8.5", minus left (0.75") and right (0.75") margins = 7"

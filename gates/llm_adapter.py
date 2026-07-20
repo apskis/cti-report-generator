@@ -13,10 +13,10 @@ A real Azure OpenAI adapter can be added here later; it must expose the same
 `.complete` interface and is responsible for synchronizing its async client
 behind a synchronous facade if the orchestrator is invoked from sync code.
 """
+
 from __future__ import annotations
 
 import re
-
 
 _GATE_MARKER_RE = re.compile(r"GATE\s+([0-9]+B?)\s+", re.IGNORECASE)
 

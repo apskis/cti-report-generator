@@ -6,10 +6,11 @@ analyst clearance requirement: a gate cannot run until the previous gate has
 been cleared (interactive mode), or auto-clears in run_full_sequence (automated
 mode) only when status is COMPLETE with no halt or escape.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from . import (
     gate1_tier1_inventory,
@@ -29,7 +30,6 @@ from .escape_handler import EscapeDetectedError
 from .halt import GateHaltError
 from .models import GateInput, GateResult
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -39,7 +39,20 @@ logger = logging.getLogger(__name__)
 # Note: Gate 1F (Source Audit) runs BEFORE Gate 1E (AI Quality) so audit logs are always visible
 _GATE_SEQUENCES = {
     "weekly": ["1", "1A", "1B", "2", "3", "4", "5", "6"],  # Removed 1C - no environment/technology data
-    "quarterly": ["1", "1A", "1B", "2", "3", "4", "5", "1F", "1E", "1C", "1D", "6"],  # Source audit shows "work", then quality gates enforce standards
+    "quarterly": [
+        "1",
+        "1A",
+        "1B",
+        "2",
+        "3",
+        "4",
+        "5",
+        "1F",
+        "1E",
+        "1C",
+        "1D",
+        "6",
+    ],  # Source audit shows "work", then quality gates enforce standards
 }
 
 _GATE_RUNNERS = {
@@ -156,11 +169,9 @@ class GateOrchestrator:
             raise RuntimeError(f"Cannot clear Gate {gate_id}: it has not been run")
         r = self.session[gate_id]
         if r.status != "COMPLETE" and not (gate_id == "6" and r.status in {"PASS", "BLOCK"}):
-            raise RuntimeError(
-                f"Cannot clear Gate {gate_id}: status is {r.status}, not COMPLETE"
-            )
+            raise RuntimeError(f"Cannot clear Gate {gate_id}: status is {r.status}, not COMPLETE")
         self.cleared_gates.add(gate_id)
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(UTC).isoformat()
         self.clearance_log.append((gate_id, timestamp))
         logger.info(f"Gate {gate_id} cleared at {timestamp}")
 
@@ -192,7 +203,7 @@ class GateOrchestrator:
             # Gate 6 yields PASS or BLOCK rather than COMPLETE; auto-clear either way to allow downstream inspection.
             if result.status in {"COMPLETE", "PASS", "BLOCK"}:
                 self.cleared_gates.add(gate_id)
-                self.clearance_log.append((gate_id, datetime.now(timezone.utc).isoformat() + " [auto]"))
+                self.clearance_log.append((gate_id, datetime.now(UTC).isoformat() + " [auto]"))
             else:
                 raise RuntimeError(
                     f"Gate {gate_id} returned non-clearable status {result.status} during automated sequence"

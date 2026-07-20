@@ -5,6 +5,7 @@ in Gate 1. Severity is taken verbatim from source data; if a source provides
 no severity field, the IOC carries [NO SCORE IN SOURCE]. Halts if zero IOCs
 were extracted across all sources.
 """
+
 from __future__ import annotations
 
 import re
@@ -12,9 +13,8 @@ from typing import Any
 
 from .escape_handler import detect_gate_bleed, detect_prose_leakage
 from .halt import check_ioc_halt
-from .models import GateInput, GateResult, IOC
+from .models import IOC, GateInput, GateResult
 from .prompts import GATE_2_PROMPT_TEMPLATE, SYSTEM_PROMPT_GATE_2
-
 
 _IPV4_RE = re.compile(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b")
 _IPV6_RE = re.compile(r"\b(?:[A-Fa-f0-9]{1,4}:){2,7}[A-Fa-f0-9]{1,4}\b")
@@ -136,8 +136,7 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
 
     # Build a compact summary for the LLM (no record contents, just counts)
     gate1_summary = "\n".join(
-        f"{r.source_name}: {r.records_returned} records, status={r.status}"
-        for r in tier1_records
+        f"{r.source_name}: {r.records_returned} records, status={r.status}" for r in tier1_records
     )
     user_prompt = GATE_2_PROMPT_TEMPLATE.format(gate1_output=gate1_summary)
     llm_text = llm_client.complete(SYSTEM_PROMPT_GATE_2, user_prompt)

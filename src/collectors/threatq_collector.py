@@ -15,8 +15,9 @@ Key implementation notes:
     Indicators endpoint: GET /api/indicators
     Adversaries endpoint: GET /api/adversaries
 """
+
 import logging
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
 
 from src.collectors.base import BaseCollector
 from src.collectors.http_utils import HTTPClient, NonRetryableHTTPError, validate_url
@@ -73,27 +74,21 @@ class ThreatQCollector(BaseCollector):
         client_secret = self.credentials.get("threatq_client_secret", "")
 
         # Debug: Log what we received (without exposing secrets)
-        logger.info(f"ThreatQ credentials check - URL exists: {bool(threatq_url)}, "
-                   f"client_id exists: {bool(client_id)}, client_secret exists: {bool(client_secret)}")
+        logger.info(
+            f"ThreatQ credentials check - URL exists: {bool(threatq_url)}, "
+            f"client_id exists: {bool(client_id)}, client_secret exists: {bool(client_secret)}"
+        )
 
         if not threatq_url:
             logger.info("ThreatQ URL not provided, skipping ThreatQ data collection")
-            return CollectorResult(
-                source=self.source_name,
-                success=True,
-                data=[],
-                record_count=0
-            )
+            return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
 
         if not client_id or not client_secret:
-            logger.warning(f"ThreatQ OAuth credentials not provided - "
-                         f"client_id: {bool(client_id)}, client_secret: {bool(client_secret)}")
-            return CollectorResult(
-                source=self.source_name,
-                success=True,
-                data=[],
-                record_count=0
+            logger.warning(
+                f"ThreatQ OAuth credentials not provided - "
+                f"client_id: {bool(client_id)}, client_secret: {bool(client_secret)}"
             )
+            return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
 
         logger.info("Fetching data from ThreatQ API")
 
@@ -101,73 +96,45 @@ class ThreatQCollector(BaseCollector):
             threatq_url = validate_url(threatq_url)
 
             async with HTTPClient() as client:
-                access_token = await self._get_oauth_token(
-                    client, threatq_url, client_id, client_secret
-                )
+                access_token = await self._get_oauth_token(client, threatq_url, client_id, client_secret)
 
                 if not access_token:
                     return CollectorResult(
                         source=self.source_name,
                         success=False,
                         error="Failed to obtain OAuth token from ThreatQ",
-                        record_count=0
+                        record_count=0,
                     )
 
                 # Fetch both indicators and adversaries
-                indicators = await self._fetch_indicators(
-                    client, threatq_url, access_token
-                )
-                
-                adversaries = await self._fetch_adversaries(
-                    client, threatq_url, access_token
-                )
+                indicators = await self._fetch_indicators(client, threatq_url, access_token)
+
+                adversaries = await self._fetch_adversaries(client, threatq_url, access_token)
 
             # Combine data with type markers for downstream processing
             all_data = []
             for indicator in indicators:
                 indicator["data_type"] = "indicator"
                 all_data.append(indicator)
-            
+
             for adversary in adversaries:
                 adversary["data_type"] = "adversary"
                 all_data.append(adversary)
 
-            logger.info(
-                f"Retrieved {len(indicators)} indicators and "
-                f"{len(adversaries)} adversaries from ThreatQ"
-            )
-            
-            return CollectorResult(
-                source=self.source_name,
-                success=True,
-                data=all_data,
-                record_count=len(all_data)
-            )
+            logger.info(f"Retrieved {len(indicators)} indicators and {len(adversaries)} adversaries from ThreatQ")
+
+            return CollectorResult(source=self.source_name, success=True, data=all_data, record_count=len(all_data))
 
         except NonRetryableHTTPError as e:
             logger.error(f"ThreatQ API error: {e}")
-            return CollectorResult(
-                source=self.source_name,
-                success=False,
-                error=str(e),
-                record_count=0
-            )
+            return CollectorResult(source=self.source_name, success=False, error=str(e), record_count=0)
         except Exception as e:
             logger.error(f"Error fetching ThreatQ data: {e}", exc_info=True)
-            return CollectorResult(
-                source=self.source_name,
-                success=False,
-                error=str(e),
-                record_count=0
-            )
+            return CollectorResult(source=self.source_name, success=False, error=str(e), record_count=0)
 
     async def _get_oauth_token(
-        self,
-        client: HTTPClient,
-        base_url: str,
-        client_id: str,
-        client_secret: str
-    ) -> Optional[str]:
+        self, client: HTTPClient, base_url: str, client_id: str, client_secret: str
+    ) -> str | None:
         """
         Obtain OAuth2 access token from ThreatQ using client credentials flow.
 
@@ -184,11 +151,7 @@ class ThreatQCollector(BaseCollector):
             Access token string or None on failure
         """
         token_url = f"{base_url}/api/token"
-        body = {
-            "grant_type": "client_credentials",
-            "client_id": client_id,
-            "client_secret": client_secret
-        }
+        body = {"grant_type": "client_credentials", "client_id": client_id, "client_secret": client_secret}
 
         logger.info(f"Requesting OAuth token from ThreatQ: {token_url}")
         logger.debug(f"ThreatQ OAuth body keys: {list(body.keys())}, grant_type: {body.get('grant_type')}")
@@ -208,22 +171,14 @@ class ThreatQCollector(BaseCollector):
                     logger.debug(f"Token response keys: {list(token_response.keys())}")
             else:
                 response_text = await response.text()
-                logger.error(
-                    f"ThreatQ OAuth token request failed with status {response.status}: "
-                    f"{response_text[:500]}"
-                )
+                logger.error(f"ThreatQ OAuth token request failed with status {response.status}: {response_text[:500]}")
 
         except Exception as e:
             logger.error(f"Error obtaining ThreatQ OAuth token: {e}")
 
         return None
 
-    async def _fetch_indicators(
-        self,
-        client: HTTPClient,
-        base_url: str,
-        access_token: str
-    ) -> List[Dict[str, Any]]:
+    async def _fetch_indicators(self, client: HTTPClient, base_url: str, access_token: str) -> list[dict[str, Any]]:
         """
         Fetch high priority indicators from ThreatQ.
 
@@ -245,20 +200,18 @@ class ThreatQCollector(BaseCollector):
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
-            "Accept": "application/json"
+            "Accept": "application/json",
         }
         params = {
             "limit": collector_config.threatq_indicators_limit,
             "sort": "-score",
-            "with": "score,status,type,sources"
+            "with": "score,status,type,sources",
         }
 
-        indicators: List[Dict[str, Any]] = []
+        indicators: list[dict[str, Any]] = []
 
         try:
-            response = await client.get_raw_response(
-                indicators_url, headers=headers, params=params
-            )
+            response = await client.get_raw_response(indicators_url, headers=headers, params=params)
 
             if response.status == 200:
                 data = await response.json()
@@ -271,24 +224,20 @@ class ThreatQCollector(BaseCollector):
                         indicators.append(self._parse_indicator(indicator))
 
                 logger.info(
-                    f"Retrieved {len(raw_indicators)} total indicators, "
-                    f"{len(indicators)} meet minimum score threshold"
+                    f"Retrieved {len(raw_indicators)} total indicators, {len(indicators)} meet minimum score threshold"
                 )
             elif response.status == 401:
                 logger.error("ThreatQ authentication failed, token may have expired")
             else:
                 response_text = await response.text()
-                logger.error(
-                    f"ThreatQ indicators request failed with status {response.status}: "
-                    f"{response_text[:500]}"
-                )
+                logger.error(f"ThreatQ indicators request failed with status {response.status}: {response_text[:500]}")
 
         except Exception as e:
             logger.error(f"Error fetching ThreatQ indicators: {e}")
 
         return indicators
 
-    def _extract_score(self, indicator: Dict[str, Any]) -> int:
+    def _extract_score(self, indicator: dict[str, Any]) -> int:
         """
         Extract score value from indicator, handling nested structures.
 
@@ -311,7 +260,7 @@ class ThreatQCollector(BaseCollector):
 
         return score if isinstance(score, int) else 0
 
-    def _parse_indicator(self, indicator: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_indicator(self, indicator: dict[str, Any]) -> dict[str, Any]:
         """
         Parse ThreatQ indicator into standardized format.
 
@@ -357,20 +306,15 @@ class ThreatQCollector(BaseCollector):
             "source": self.source_name,
             "threatq_sources": source_names,
             "class": indicator.get("class", ""),
-            "hash": indicator.get("hash", "")
+            "hash": indicator.get("hash", ""),
         }
 
-    async def _fetch_adversaries(
-        self,
-        client: HTTPClient,
-        base_url: str,
-        access_token: str
-    ) -> List[Dict[str, Any]]:
+    async def _fetch_adversaries(self, client: HTTPClient, base_url: str, access_token: str) -> list[dict[str, Any]]:
         """
         Fetch adversaries from ThreatQ with their linked indicators.
 
         API endpoint: GET /api/adversaries
-        
+
         The ?with=indicators parameter returns indicator objects linked
         to each adversary, enabling IOC correlation.
 
@@ -386,19 +330,14 @@ class ThreatQCollector(BaseCollector):
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
-            "Accept": "application/json"
+            "Accept": "application/json",
         }
-        params = {
-            "limit": 100,
-            "with": "indicators,tags"
-        }
+        params = {"limit": 100, "with": "indicators,tags"}
 
-        adversaries: List[Dict[str, Any]] = []
+        adversaries: list[dict[str, Any]] = []
 
         try:
-            response = await client.get_raw_response(
-                adversaries_url, headers=headers, params=params
-            )
+            response = await client.get_raw_response(adversaries_url, headers=headers, params=params)
 
             if response.status == 200:
                 data = await response.json()
@@ -410,20 +349,17 @@ class ThreatQCollector(BaseCollector):
                 logger.info(f"Retrieved {len(adversaries)} adversaries from ThreatQ")
             else:
                 response_text = await response.text()
-                logger.error(
-                    f"ThreatQ adversaries request failed with status {response.status}: "
-                    f"{response_text[:500]}"
-                )
+                logger.error(f"ThreatQ adversaries request failed with status {response.status}: {response_text[:500]}")
 
         except Exception as e:
             logger.error(f"Error fetching ThreatQ adversaries: {e}")
 
         return adversaries
 
-    def _parse_adversary(self, adversary: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_adversary(self, adversary: dict[str, Any]) -> dict[str, Any]:
         """
         Parse ThreatQ adversary into standardized format.
-        
+
         Extracts linked indicator IDs for correlation with IOC data.
 
         Args:
@@ -463,15 +399,10 @@ class ThreatQCollector(BaseCollector):
             "event_count": len(adversary.get("events", [])),
             "updated_at": adversary.get("updated_at", ""),
             "source": self.source_name,
-            "data_type": "adversary"
+            "data_type": "adversary",
         }
 
-    async def _fetch_events(
-        self,
-        client: HTTPClient,
-        base_url: str,
-        access_token: str
-    ) -> List[Dict[str, Any]]:
+    async def _fetch_events(self, client: HTTPClient, base_url: str, access_token: str) -> list[dict[str, Any]]:
         """
         Fetch events from ThreatQ.
 
@@ -489,20 +420,14 @@ class ThreatQCollector(BaseCollector):
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
-            "Accept": "application/json"
+            "Accept": "application/json",
         }
-        params = {
-            "limit": 50,
-            "sort": "-created_at",
-            "with": "type,indicators"
-        }
+        params = {"limit": 50, "sort": "-created_at", "with": "type,indicators"}
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         try:
-            response = await client.get_raw_response(
-                events_url, headers=headers, params=params
-            )
+            response = await client.get_raw_response(events_url, headers=headers, params=params)
 
             if response.status == 200:
                 data = await response.json()
@@ -514,17 +439,14 @@ class ThreatQCollector(BaseCollector):
                 logger.info(f"Retrieved {len(events)} events from ThreatQ")
             else:
                 response_text = await response.text()
-                logger.error(
-                    f"ThreatQ events request failed with status {response.status}: "
-                    f"{response_text[:500]}"
-                )
+                logger.error(f"ThreatQ events request failed with status {response.status}: {response_text[:500]}")
 
         except Exception as e:
             logger.error(f"Error fetching ThreatQ events: {e}")
 
         return events
 
-    def _parse_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_event(self, event: dict[str, Any]) -> dict[str, Any]:
         """
         Parse ThreatQ event into standardized format.
 
@@ -550,22 +472,20 @@ class ThreatQCollector(BaseCollector):
             "indicator_count": len(event.get("indicators", [])),
             "updated_at": event.get("updated_at", ""),
             "source": self.source_name,
-            "data_type": "event"
+            "data_type": "event",
         }
 
 
-def separate_threatq_data(
-    threatq_data: List[Dict[str, Any]]
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+def separate_threatq_data(threatq_data: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """
     Utility function to separate ThreatQ collector data into indicators and adversaries.
-    
+
     The collector returns both types in a single list with data_type markers.
     This function splits them for use with the IOCCorrelator.
-    
+
     Args:
         threatq_data: Combined data from ThreatQ collector
-        
+
     Returns:
         Tuple of (indicators, adversaries)
     """

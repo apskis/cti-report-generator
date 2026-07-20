@@ -4,23 +4,24 @@ Unit tests for CTI collectors.
 These tests use mocked HTTP responses to test collector logic
 without making actual API calls.
 """
+
+from unittest.mock import AsyncMock, patch
+
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
+
+from src.collectors.crowdstrike_collector import CrowdStrikeCollector
+from src.collectors.intel471_collector import Intel471Collector
 
 # Import collectors
 from src.collectors.nvd_collector import NVDCollector
-from src.collectors.intel471_collector import Intel471Collector
-from src.collectors.crowdstrike_collector import CrowdStrikeCollector
-from src.collectors.threatq_collector import ThreatQCollector
 from src.collectors.rapid7_collector import Rapid7Collector
-from src.collectors.registry import collect_all, get_collector, list_available_collectors
-
+from src.collectors.registry import get_collector, list_available_collectors
+from src.collectors.threatq_collector import ThreatQCollector
 
 # =============================================================================
 # Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def mock_credentials():
@@ -35,7 +36,7 @@ def mock_credentials():
         "threatq_key": "test-threatq-key",
         "threatq_url": "https://threatq.example.com",
         "rapid7_key": "test-rapid7-key",
-        "rapid7_region": "us"
+        "rapid7_region": "us",
     }
 
 
@@ -48,59 +49,26 @@ def nvd_api_response():
                 "cve": {
                     "id": "CVE-2024-1234",
                     "published": "2024-01-15T10:00:00.000",
-                    "descriptions": [
-                        {"lang": "en", "value": "A critical vulnerability in Example Software"}
-                    ],
-                    "metrics": {
-                        "cvssMetricV31": [
-                            {
-                                "cvssData": {
-                                    "baseScore": 9.8,
-                                    "baseSeverity": "CRITICAL"
-                                }
-                            }
-                        ]
-                    }
+                    "descriptions": [{"lang": "en", "value": "A critical vulnerability in Example Software"}],
+                    "metrics": {"cvssMetricV31": [{"cvssData": {"baseScore": 9.8, "baseSeverity": "CRITICAL"}}]},
                 }
             },
             {
                 "cve": {
                     "id": "CVE-2024-5678",
                     "published": "2024-01-16T10:00:00.000",
-                    "descriptions": [
-                        {"lang": "en", "value": "A high severity vulnerability"}
-                    ],
-                    "metrics": {
-                        "cvssMetricV31": [
-                            {
-                                "cvssData": {
-                                    "baseScore": 7.5,
-                                    "baseSeverity": "HIGH"
-                                }
-                            }
-                        ]
-                    }
+                    "descriptions": [{"lang": "en", "value": "A high severity vulnerability"}],
+                    "metrics": {"cvssMetricV31": [{"cvssData": {"baseScore": 7.5, "baseSeverity": "HIGH"}}]},
                 }
             },
             {
                 "cve": {
                     "id": "CVE-2024-9999",
                     "published": "2024-01-17T10:00:00.000",
-                    "descriptions": [
-                        {"lang": "en", "value": "A low severity vulnerability"}
-                    ],
-                    "metrics": {
-                        "cvssMetricV31": [
-                            {
-                                "cvssData": {
-                                    "baseScore": 3.1,
-                                    "baseSeverity": "LOW"
-                                }
-                            }
-                        ]
-                    }
+                    "descriptions": [{"lang": "en", "value": "A low severity vulnerability"}],
+                    "metrics": {"cvssMetricV31": [{"cvssData": {"baseScore": 3.1, "baseSeverity": "LOW"}}]},
                 }
-            }
+            },
         ]
     }
 
@@ -119,7 +87,7 @@ def intel471_reports_response():
                 "documentType": "Intelligence Report",
                 "admiraltyCode": "B1",
                 "motivation": ["Financial"],
-                "portalReportUrl": "https://portal.intel471.com/report/123"
+                "portalReportUrl": "https://portal.intel471.com/report/123",
             }
         ]
     }
@@ -137,10 +105,8 @@ def intel471_indicators_response():
                     "indicator_type": "domain",
                     "indicator_data": {"domain": "malicious.example.com"},
                     "confidence": "High",
-                    "threat": {
-                        "data": {"family": "Ransomware-X"}
-                    }
-                }
+                    "threat": {"data": {"family": "Ransomware-X"}},
+                },
             }
         ]
     }
@@ -163,7 +129,7 @@ def crowdstrike_actors_response():
                 "motivations": ["Espionage"],
                 "kill_chain": ["Reconnaissance", "Weaponization", "Delivery"],
                 "target_industries": ["Healthcare", "Technology"],
-                "last_modified_date": "2024-01-15T10:00:00Z"
+                "last_modified_date": "2024-01-15T10:00:00Z",
             }
         ]
     }
@@ -186,18 +152,17 @@ def rapid7_vulnerabilities_response():
                 "modified": "2024-01-16",
                 "description": {"text": "Remote code execution vulnerability"},
                 "riskScore": 950,
-                "categories": ["remote-code-execution"]
+                "categories": ["remote-code-execution"],
             }
         ],
-        "metadata": {
-            "totalResources": 100
-        }
+        "metadata": {"totalResources": 100},
     }
 
 
 # =============================================================================
 # NVD Collector Tests
 # =============================================================================
+
 
 class TestNVDCollector:
     """Tests for NVD collector."""
@@ -212,7 +177,7 @@ class TestNVDCollector:
         """Test successful CVE collection."""
         collector = NVDCollector(mock_credentials)
 
-        with patch('src.collectors.nvd_collector.HTTPClient') as MockHTTPClient:
+        with patch("src.collectors.nvd_collector.HTTPClient") as MockHTTPClient:
             mock_client = AsyncMock()
             mock_client.get = AsyncMock(return_value=nvd_api_response)
             MockHTTPClient.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -235,13 +200,7 @@ class TestNVDCollector:
     def test_extract_cvss_v31(self, mock_credentials):
         """Test CVSS extraction from v3.1 metrics."""
         collector = NVDCollector(mock_credentials)
-        cve = {
-            "metrics": {
-                "cvssMetricV31": [
-                    {"cvssData": {"baseScore": 9.8, "baseSeverity": "CRITICAL"}}
-                ]
-            }
-        }
+        cve = {"metrics": {"cvssMetricV31": [{"cvssData": {"baseScore": 9.8, "baseSeverity": "CRITICAL"}}]}}
         score, severity = collector._extract_cvss(cve)
         assert score == 9.8
         assert severity == "CRITICAL"
@@ -249,13 +208,7 @@ class TestNVDCollector:
     def test_extract_cvss_v2_fallback(self, mock_credentials):
         """Test CVSS extraction falls back to v2."""
         collector = NVDCollector(mock_credentials)
-        cve = {
-            "metrics": {
-                "cvssMetricV2": [
-                    {"cvssData": {"baseScore": 9.5}}
-                ]
-            }
-        }
+        cve = {"metrics": {"cvssMetricV2": [{"cvssData": {"baseScore": 9.5}}]}}
         score, severity = collector._extract_cvss(cve)
         assert score == 9.5
         assert severity == "CRITICAL"  # Derived from score
@@ -264,6 +217,7 @@ class TestNVDCollector:
 # =============================================================================
 # Intel471 Collector Tests
 # =============================================================================
+
 
 class TestIntel471Collector:
     """Tests for Intel471 collector."""
@@ -303,6 +257,7 @@ class TestIntel471Collector:
 # CrowdStrike Collector Tests
 # =============================================================================
 
+
 class TestCrowdStrikeCollector:
     """Tests for CrowdStrike collector."""
 
@@ -327,6 +282,7 @@ class TestCrowdStrikeCollector:
 # =============================================================================
 # ThreatQ Collector Tests
 # =============================================================================
+
 
 class TestThreatQCollector:
     """Tests for ThreatQ collector."""
@@ -357,6 +313,7 @@ class TestThreatQCollector:
 # Rapid7 Collector Tests
 # =============================================================================
 
+
 class TestRapid7Collector:
     """Tests for Rapid7 collector."""
 
@@ -386,6 +343,7 @@ class TestRapid7Collector:
 # =============================================================================
 # Registry Tests
 # =============================================================================
+
 
 class TestRegistry:
     """Tests for collector registry."""

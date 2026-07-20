@@ -3,13 +3,14 @@ Azure Blob Storage utilities for report upload.
 
 Shared functionality for uploading reports to Azure Blob Storage.
 """
-from datetime import datetime, timedelta
-import logging
-from typing import Dict, Any
 
-from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
+import logging
+from datetime import datetime, timedelta
+from typing import Any
+
 from azure.core.credentials import AzureNamedKeyCredential
-from azure.core.exceptions import ResourceExistsError, AzureError
+from azure.core.exceptions import AzureError, ResourceExistsError
+from azure.storage.blob import BlobSasPermissions, BlobServiceClient, generate_blob_sas
 
 from src.core.config import report_config
 from src.reports.base import BaseReportGenerator
@@ -18,10 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def upload_to_blob(
-    report: BaseReportGenerator,
-    storage_account_name: str,
-    storage_account_key: str,
-    container_name: str | None = None
+    report: BaseReportGenerator, storage_account_name: str, storage_account_key: str, container_name: str | None = None
 ) -> str:
     """
     Upload a report document to Azure Blob Storage.
@@ -40,13 +38,13 @@ def upload_to_blob(
     try:
         # Get document bytes
         doc_bytes = report.to_bytes()
-        
+
         # Get filename with report week start if available
-        if hasattr(report, '_report_week_start'):
+        if hasattr(report, "_report_week_start"):
             filename = report.get_filename(report_week_start=report._report_week_start)
         else:
             filename = report.get_filename()
-        
+
         logger.info(f"Uploading {filename} to Azure Blob Storage: {storage_account_name}/{container_name}")
 
         # Create BlobServiceClient using account URL
@@ -72,7 +70,7 @@ def upload_to_blob(
             storage_account_name=storage_account_name,
             storage_account_key=storage_account_key,
             container_name=container_name,
-            blob_name=filename
+            blob_name=filename,
         )
 
         return sas_url
@@ -90,7 +88,7 @@ def generate_sas_url(
     storage_account_key: str,
     container_name: str,
     blob_name: str,
-    expiry_days: int | None = None
+    expiry_days: int | None = None,
 ) -> str:
     """
     Generate a SAS URL for a blob.
@@ -113,7 +111,7 @@ def generate_sas_url(
         blob_name=blob_name,
         account_key=storage_account_key,
         permission=BlobSasPermissions(read=True),
-        expiry=datetime.utcnow() + timedelta(days=expiry_days)
+        expiry=datetime.utcnow() + timedelta(days=expiry_days),
     )
 
     account_url = f"https://{storage_account_name}.blob.core.windows.net"
@@ -124,11 +122,8 @@ def generate_sas_url(
 
 
 def create_and_upload_report(
-    report_type: str,
-    analysis_result: Dict[str, Any],
-    storage_account_name: str,
-    storage_account_key: str
-) -> Dict[str, Any]:
+    report_type: str, analysis_result: dict[str, Any], storage_account_name: str, storage_account_key: str
+) -> dict[str, Any]:
     """
     Generate a report and upload it to Azure Blob Storage.
 
@@ -149,18 +144,13 @@ def create_and_upload_report(
         # Get report generator
         generator = get_report_generator(report_type)
         if generator is None:
-            return {
-                "filename": None,
-                "url": None,
-                "success": False,
-                "error": f"Unknown report type: {report_type}"
-            }
+            return {"filename": None, "url": None, "success": False, "error": f"Unknown report type: {report_type}"}
 
         # Generate report
         generator.generate(analysis_result)
-        
+
         # Get filename with report week start if available
-        if hasattr(generator, '_report_week_start'):
+        if hasattr(generator, "_report_week_start"):
             filename = generator.get_filename(report_week_start=generator._report_week_start)
         else:
             filename = generator.get_filename()
@@ -170,17 +160,8 @@ def create_and_upload_report(
 
         logger.info(f"Report created and uploaded successfully: {filename}")
 
-        return {
-            "filename": filename,
-            "url": url,
-            "success": True
-        }
+        return {"filename": filename, "url": url, "success": True}
 
     except (AzureError, ValueError, OSError) as e:
         logger.error(f"Error creating and uploading report: {e}", exc_info=True)
-        return {
-            "filename": None,
-            "url": None,
-            "success": False,
-            "error": str(e)
-        }
+        return {"filename": None, "url": None, "success": False, "error": str(e)}

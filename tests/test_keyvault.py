@@ -1,12 +1,13 @@
 """
 Unit tests for src/core/keyvault.py — Key Vault credential retrieval.
 """
-import pytest
-from unittest.mock import patch, MagicMock
 
+from unittest.mock import MagicMock, patch
+
+import pytest
 from azure.core.exceptions import ResourceNotFoundError
 
-from src.core.keyvault import get_secret, get_all_api_keys, clear_cache
+from src.core.keyvault import clear_cache, get_all_api_keys, get_secret
 
 
 @pytest.fixture(autouse=True)

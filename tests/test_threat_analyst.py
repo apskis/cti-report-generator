@@ -1,21 +1,22 @@
 """
 Unit tests for src/agents/threat_analyst.py — AI threat analysis.
 """
-import pytest
-import json
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from src.agents.threat_analyst import (
+    DEFAULT_SYSTEM_PROMPT,
     ThreatAnalystAgent,
     _sanitize_for_prompt,
     load_system_prompt,
-    DEFAULT_SYSTEM_PROMPT,
 )
-
 
 # =============================================================================
 # _sanitize_for_prompt
 # =============================================================================
+
 
 class TestSanitizeForPrompt:
     def test_basic_serialization(self):
@@ -52,6 +53,7 @@ class TestSanitizeForPrompt:
 
     def test_non_serializable_uses_str_default(self):
         from datetime import datetime
+
         data = {"timestamp": datetime(2024, 1, 1)}
         result = _sanitize_for_prompt(data)
         assert "2024" in result
@@ -60,6 +62,7 @@ class TestSanitizeForPrompt:
 # =============================================================================
 # load_system_prompt
 # =============================================================================
+
 
 class TestLoadSystemPrompt:
     def test_returns_default_when_file_missing(self):
@@ -74,14 +77,13 @@ class TestLoadSystemPrompt:
 # ThreatAnalystAgent
 # =============================================================================
 
+
 class TestThreatAnalystAgent:
     @patch("src.agents.threat_analyst.AzureChatCompletion")
     @patch("src.agents.threat_analyst.Kernel")
     def test_init_creates_kernel_and_service(self, mock_kernel_cls, mock_chat_cls):
         agent = ThreatAnalystAgent(
-            openai_endpoint="https://test.openai.azure.com",
-            openai_key="test-key",
-            deployment_name="gpt-test"
+            openai_endpoint="https://test.openai.azure.com", openai_key="test-key", deployment_name="gpt-test"
         )
         assert agent.deployment_name == "gpt-test"
         mock_kernel_cls.assert_called_once()

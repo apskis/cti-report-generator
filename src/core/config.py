@@ -6,9 +6,9 @@ Sensitive values (API keys, secrets) should be stored in Azure Key Vault.
 Infrastructure config (URLs, resource names) should be in environment variables.
 Application settings (limits, timeouts, feature flags) are defined here.
 """
+
 import os
 from dataclasses import dataclass
-from typing import List
 from pathlib import Path
 
 import yaml
@@ -56,33 +56,54 @@ class IndustryFilterConfig:
 
     # Keywords for biotech/healthcare filtering
     biotech_keywords: tuple = (
-        "biotech", "genomics", "healthcare", "hospital", "medical",
-        "pharmaceutical", "life sciences", "research", "clinical",
-        "patient", "health", "laboratory", "diagnostics", "bioinformatics",
-        "genetic", "therapy", "drug", "vaccine", "clinical trial"
+        "biotech",
+        "genomics",
+        "healthcare",
+        "hospital",
+        "medical",
+        "pharmaceutical",
+        "life sciences",
+        "research",
+        "clinical",
+        "patient",
+        "health",
+        "laboratory",
+        "diagnostics",
+        "bioinformatics",
+        "genetic",
+        "therapy",
+        "drug",
+        "vaccine",
+        "clinical trial",
     )
 
     # Target industries for CrowdStrike filtering
     target_industries: tuple = (
-        "Technology", "Healthcare", "Pharmaceutical",
-        "Life Sciences", "Biotechnology", "Medical Devices",
-        "Research", "Education", "Manufacturing"
+        "Technology",
+        "Healthcare",
+        "Pharmaceutical",
+        "Life Sciences",
+        "Biotechnology",
+        "Medical Devices",
+        "Research",
+        "Education",
+        "Manufacturing",
     )
 
 
 @dataclass(frozen=True)
 class EnrichmentConfig:
     """Configuration for data enrichment."""
-    
+
     # Enable/disable web search for filling data gaps
     # When enabled, will search the web for missing CVE product information
     # When disabled, uses only CISA KEV catalog and pattern matching
     enable_web_search: bool = True
-    
+
     # Web search settings
     web_search_timeout_seconds: int = 5
     max_web_searches_per_run: int = 10  # Limit to avoid excessive API calls
-    
+
     # CISA KEV cache duration (hours)
     kev_cache_duration_hours: int = 24
 
@@ -100,7 +121,6 @@ class AnalysisConfig:
     max_crowdstrike_for_analysis: int = 30
     max_threatq_for_analysis: int = 30
     max_rapid7_for_analysis: int = 20
-
 
 
 @dataclass(frozen=True)
@@ -121,7 +141,7 @@ class FeatureConfig:
 
     # Gate framework validation pipeline
     gate_framework_enabled: bool = False
-    
+
     # Gate framework interactive mode (manual clearance after each gate)
     gate_framework_interactive: bool = False
 
@@ -149,7 +169,7 @@ class AzureConfig:
         """
         url = os.environ.get("KEY_VAULT_URL")
         if not url:
-            raise EnvironmentError(
+            raise OSError(
                 "KEY_VAULT_URL environment variable is not set. "
                 "Set it to your Azure Key Vault URL, e.g. 'https://kv-cti-rep-prod.vault.azure.net/'"
             )
@@ -169,25 +189,24 @@ _COLLECTORS_YAML = Path(__file__).resolve().parent.parent.parent / "config" / "c
 _FEATURES_YAML = Path(__file__).resolve().parent.parent.parent / "config" / "features.yaml"
 
 
-def _load_collectors_from_yaml() -> List[str]:
+def _load_collectors_from_yaml() -> list[str]:
     """Read config/collectors.yaml and return names of enabled collectors."""
     if not _COLLECTORS_YAML.exists():
         raise FileNotFoundError(
             f"Collectors config not found: {_COLLECTORS_YAML}\n"
             "Please create config/collectors.yaml to define your enabled collectors."
         )
-    with open(_COLLECTORS_YAML, "r", encoding="utf-8") as f:
+    with open(_COLLECTORS_YAML, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
     collectors = cfg.get("collectors", [])
     if not collectors:
         raise ValueError(
-            f"No collectors defined in {_COLLECTORS_YAML}\n"
-            "Add at least one collector with 'enabled: true'."
+            f"No collectors defined in {_COLLECTORS_YAML}\nAdd at least one collector with 'enabled: true'."
         )
     return [c["name"] for c in collectors if c.get("enabled", True)]
 
 
-def get_enabled_collectors() -> List[str]:
+def get_enabled_collectors() -> list[str]:
     """
     Get list of enabled collectors.
 
@@ -206,39 +225,36 @@ def _load_features_from_yaml() -> FeatureConfig:
     if not _FEATURES_YAML.exists():
         # If features.yaml doesn't exist, return defaults
         return FeatureConfig()
-    
-    with open(_FEATURES_YAML, "r", encoding="utf-8") as f:
+
+    with open(_FEATURES_YAML, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
-    
+
     features = cfg.get("features", {})
     gate_framework = features.get("gate_framework", {})
-    
+
     return FeatureConfig(
         gate_framework_enabled=gate_framework.get("enabled", False),
-        gate_framework_interactive=gate_framework.get("interactive_mode", False)
+        gate_framework_interactive=gate_framework.get("interactive_mode", False),
     )
 
 
 def get_feature_config() -> FeatureConfig:
     """
     Get feature configuration.
-    
+
     Priority order:
       1. Environment variable overrides (e.g., ENABLE_GATE_FRAMEWORK=1)
       2. config/features.yaml settings
       3. Default values (all features disabled)
     """
     config = _load_features_from_yaml()
-    
+
     # Environment variable override for gate framework
     env_gate_enabled = os.environ.get("ENABLE_GATE_FRAMEWORK", "").lower() in {"1", "true", "yes"}
     if env_gate_enabled:
         # Can't modify frozen dataclass, so create new instance
-        return FeatureConfig(
-            gate_framework_enabled=True,
-            gate_framework_interactive=config.gate_framework_interactive
-        )
-    
+        return FeatureConfig(gate_framework_enabled=True, gate_framework_interactive=config.gate_framework_interactive)
+
     return config
 
 

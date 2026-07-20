@@ -9,6 +9,7 @@ NOTE: Rapid7 removed from Tier 1 sources - reports now focus on threat intellige
 only (Intel471, CrowdStrike, NVD, ThreatQ, OSINT) without environment/vulnerability
 management data.
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,7 +19,6 @@ from .escape_handler import detect_gate_bleed, detect_prose_leakage
 from .halt import check_tier1_halt
 from .models import GateInput, GateResult, SourceRecord
 from .prompts import GATE_1_PROMPT_TEMPLATE, SYSTEM_PROMPT_GATE_1
-
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ def _build_source_record(
 
 def _get_enabled_tier1_sources(tier1_data: dict) -> list[str]:
     """Get list of Tier 1 sources that are enabled and actually provided to this gate.
-    
+
     Only check sources that are present in tier1_data (meaning they're enabled in collectors.yaml).
     This prevents coverage gap warnings for intentionally disabled sources like ThreatQ.
     """
@@ -76,25 +76,26 @@ def _get_enabled_tier1_sources(tier1_data: dict) -> list[str]:
         # If a source is disabled in collectors.yaml, it won't be in tier1_data at all
         if source in tier1_data:
             enabled_sources.append(source)
-    
+
     logger.info(f"Enabled Tier 1 sources (from collectors.yaml): {enabled_sources}")
     return enabled_sources
 
 
 def _load_collector_config() -> dict:
     """Load collectors.yaml to determine which sources are actually enabled."""
-    import yaml
     import os
-    
+
+    import yaml
+
     config_path = "config/collectors.yaml"
     if not os.path.exists(config_path):
         logger.warning(f"collectors.yaml not found at {config_path}, assuming all sources enabled")
         return {}
-    
+
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path) as f:
             config = yaml.safe_load(f)
-        
+
         # Build dict of source name -> enabled status
         enabled_map = {}
         for collector in config.get("collectors", []):
@@ -109,7 +110,7 @@ def _load_collector_config() -> dict:
                 enabled_map["CrowdStrike"] = enabled
             elif name.lower() == "nvd":
                 enabled_map["NVD"] = enabled
-        
+
         logger.info(f"Loaded collector config: {enabled_map}")
         return enabled_map
     except Exception as e:
@@ -126,18 +127,16 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     """
     # Load collector config to know which sources are actually enabled
     collector_config = _load_collector_config()
-    
+
     # Only check sources that are actually enabled in collectors.yaml
     tier1_sources = _get_enabled_tier1_sources(input.tier1_data)
-    
+
     tier1_records: list[SourceRecord] = []
     for source in tier1_sources:
         raw = input.tier1_data.get(source)
         # Mark whether this source is enabled in collectors.yaml
         enabled = collector_config.get(source, True)
-        tier1_records.append(
-            _build_source_record(source, raw, input.period_start, input.period_end, enabled)
-        )
+        tier1_records.append(_build_source_record(source, raw, input.period_start, input.period_end, enabled))
 
     # Build source data summary for the LLM (counts and statuses only, no record contents)
     summary_lines = [

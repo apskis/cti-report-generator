@@ -7,6 +7,7 @@ name extraction is left to the LLM analyst-facing pass; the structured signal
 list is generated deterministically from regex matches so the test fence does
 not depend on model output.
 """
+
 from __future__ import annotations
 
 import re
@@ -18,7 +19,6 @@ import yaml
 from .escape_handler import detect_gate_bleed, detect_prose_leakage
 from .models import GateInput, GateResult, OSINTArticle, OSINTSignal, SourceRecord
 from .prompts import GATE_1B_PROMPT_TEMPLATE, SYSTEM_PROMPT_GATE_1B
-
 
 _CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}")
 _IPV4_RE = re.compile(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b")
@@ -126,10 +126,12 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
         )
 
     # LLM produces the analyst-facing triage tables
-    article_data_block = "\n".join(
-        f"{a.article_id} | {a.source_name} | {a.title} | {a.published_date} | {a.url}"
-        for a in osint_articles
-    ) or "[NO ARTICLES COLLECTED]"
+    article_data_block = (
+        "\n".join(
+            f"{a.article_id} | {a.source_name} | {a.title} | {a.published_date} | {a.url}" for a in osint_articles
+        )
+        or "[NO ARTICLES COLLECTED]"
+    )
 
     user_prompt = GATE_1B_PROMPT_TEMPLATE.format(article_data=article_data_block)
     llm_text = llm_client.complete(SYSTEM_PROMPT_GATE_1B, user_prompt)

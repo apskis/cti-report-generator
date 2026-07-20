@@ -6,10 +6,11 @@ is grouped under [UNATTRIBUTED]. Actor names like APT29, Lazarus, or Sandworm
 are NEVER injected from training knowledge; only strings present in the
 source data appear in this gate's output.
 """
+
 from __future__ import annotations
 
 from .escape_handler import detect_gate_bleed, detect_prose_leakage
-from .models import ActorLink, GateInput, GateResult, IOC
+from .models import IOC, ActorLink, GateInput, GateResult
 from .prompts import GATE_3_PROMPT_TEMPLATE, SYSTEM_PROMPT_GATE_3
 
 
@@ -33,12 +34,7 @@ def _record_matches_ioc(record: dict, ioc: IOC) -> bool:
 
 
 def _pull_actor_fields(record: dict) -> dict[str, str | None]:
-    actor = (
-        record.get("actor")
-        or record.get("actor_name")
-        or record.get("threat_actor")
-        or record.get("adversary")
-    )
+    actor = record.get("actor") or record.get("actor_name") or record.get("threat_actor") or record.get("adversary")
     if isinstance(actor, dict):
         actor = actor.get("name") or actor.get("alias")
 

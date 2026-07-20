@@ -3,15 +3,15 @@ Report generator registry.
 
 Provides dynamic registration and lookup of report generators.
 """
+
 import logging
-from typing import Dict, Type
 
 from src.reports.base import BaseReportGenerator
 
 logger = logging.getLogger(__name__)
 
 # Registry mapping report type names to generator classes
-REPORT_REGISTRY: Dict[str, Type[BaseReportGenerator]] = {}
+REPORT_REGISTRY: dict[str, type[BaseReportGenerator]] = {}
 
 
 def register_report_generator(report_type: str):
@@ -23,12 +23,14 @@ def register_report_generator(report_type: str):
         class WeeklyReportGenerator(BaseReportGenerator):
             ...
     """
-    def decorator(cls: Type[BaseReportGenerator]):
+
+    def decorator(cls: type[BaseReportGenerator]):
         if report_type in REPORT_REGISTRY:
             logger.warning(f"Overwriting existing report generator: {report_type}")
         REPORT_REGISTRY[report_type] = cls
         logger.debug(f"Registered report generator: {report_type}")
         return cls
+
     return decorator
 
 

@@ -1,19 +1,19 @@
 """
 Tests for report generators.
 """
-import pytest
-from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
 
-from src.reports.base import BaseReportGenerator, BrandColors, FontSizes
+from datetime import datetime
+
+import pytest
+
+from src.reports.base import BrandColors, FontSizes
+from src.reports.quarterly_report import QuarterlyReportGenerator
 from src.reports.registry import (
-    get_report_generator,
-    register_report_generator,
-    list_report_types,
     REPORT_REGISTRY,
+    get_report_generator,
+    list_report_types,
 )
 from src.reports.weekly_report import WeeklyReportGenerator
-from src.reports.quarterly_report import QuarterlyReportGenerator
 
 
 def _get_document_text(doc):
@@ -192,8 +192,8 @@ class TestWeeklyReportGenerator:
     def test_week_calculation(self, generator, sample_analysis_result):
         """Lookback period dates should be calculated correctly."""
         generator.generate(sample_analysis_result)
-        assert hasattr(generator, 'period_start')
-        assert hasattr(generator, 'period_end')
+        assert hasattr(generator, "period_start")
+        assert hasattr(generator, "period_end")
         delta = generator.period_end - generator.period_start
         assert delta.days == generator.lookback_days
 
@@ -250,10 +250,23 @@ class TestBaseReportGenerator:
         date_range = generator._format_date_range()
         assert "to" in date_range
         # Should contain month name
-        assert any(month in date_range for month in [
-            "January", "February", "March", "April", "May", "June",
-            "July", "August", "September", "October", "November", "December"
-        ])
+        assert any(
+            month in date_range
+            for month in [
+                "January",
+                "February",
+                "March",
+                "April",
+                "May",
+                "June",
+                "July",
+                "August",
+                "September",
+                "October",
+                "November",
+                "December",
+            ]
+        )
 
 
 class TestQuarterlyReportGenerator:
@@ -277,7 +290,7 @@ class TestQuarterlyReportGenerator:
                 "supply_chain": "MEDIUM",
                 "supply_chain_trend": "Unchanged",
                 "insider": "LOW",
-                "insider_trend": "Unchanged"
+                "insider_trend": "Unchanged",
             },
             "breach_landscape": {
                 "total_incidents": 47,
@@ -287,43 +300,73 @@ class TestQuarterlyReportGenerator:
                 "ransomware_count": 18,
                 "prev_ransomware": 12,
                 "records_exposed_millions": 4.2,
-                "prev_records": 2.8
+                "prev_records": 2.8,
             },
             "incidents_by_type": [
-                {"type": "Ransomware", "current_count": 18, "prev_count": 12, "notable_example": "Pharma manufacturer: 12-day production halt, FDA notification"},
-                {"type": "Data Theft / Exfiltration", "current_count": 11, "prev_count": 9, "notable_example": "Genomics institute: 2.3M patient samples accessed"},
-                {"type": "Manufacturing / OT Disruption", "current_count": 5, "prev_count": 3, "notable_example": "Medical device mfg: assembly line shutdown, 8-day recovery"},
-                {"type": "Business Email Compromise", "current_count": 6, "prev_count": 5, "notable_example": "CRO: $3.8M fraudulent wire transfers"},
-                {"type": "Third-Party / Vendor", "current_count": 4, "prev_count": 4, "notable_example": "Lab software vendor: credentials exposed for 200+ customers"},
-                {"type": "Unauthorized Access", "current_count": 3, "prev_count": 3, "notable_example": "Biotech: former employee accessed IP post-termination"},
+                {
+                    "type": "Ransomware",
+                    "current_count": 18,
+                    "prev_count": 12,
+                    "notable_example": "Pharma manufacturer: 12-day production halt, FDA notification",
+                },
+                {
+                    "type": "Data Theft / Exfiltration",
+                    "current_count": 11,
+                    "prev_count": 9,
+                    "notable_example": "Genomics institute: 2.3M patient samples accessed",
+                },
+                {
+                    "type": "Manufacturing / OT Disruption",
+                    "current_count": 5,
+                    "prev_count": 3,
+                    "notable_example": "Medical device mfg: assembly line shutdown, 8-day recovery",
+                },
+                {
+                    "type": "Business Email Compromise",
+                    "current_count": 6,
+                    "prev_count": 5,
+                    "notable_example": "CRO: $3.8M fraudulent wire transfers",
+                },
+                {
+                    "type": "Third-Party / Vendor",
+                    "current_count": 4,
+                    "prev_count": 4,
+                    "notable_example": "Lab software vendor: credentials exposed for 200+ customers",
+                },
+                {
+                    "type": "Unauthorized Access",
+                    "current_count": 3,
+                    "prev_count": 3,
+                    "notable_example": "Biotech: former employee accessed IP post-termination",
+                },
             ],
             "common_factors": "Unpatched systems (34%), compromised credentials (28%)",
             "geopolitical_threats": {
                 "china": {
                     "strategic_context": "China's strategic interest in biotech",
                     "activity": "APT41 conducted multiple intrusions",
-                    "implications": "IP theft risk for proprietary research"
+                    "implications": "IP theft risk for proprietary research",
                 },
                 "russia": {
                     "strategic_context": "Russian ransomware ecosystem",
                     "activity": "Ransomware incidents increased 31%",
-                    "implications": "Operational disruption risk"
+                    "implications": "Operational disruption risk",
                 },
                 "north_korea": {
                     "strategic_context": "NK dual-purpose operations",
                     "activity": "LinkedIn social engineering campaigns",
-                    "implications": "Credential compromise risk"
-                }
+                    "implications": "Credential compromise risk",
+                },
             },
             "looking_ahead": {
                 "threat_outlook": "Continued pressure from state-sponsored campaigns",
                 "planned_initiatives": "Enhanced detection capabilities",
-                "watch_items": "Major industry events and announcements"
+                "watch_items": "Major industry events and announcements",
             },
             "recommendations": [
                 ("Executive Awareness", "Targeted security awareness for executives"),
                 ("Vendor Risk Review", "Evaluate vendor security posture"),
-            ]
+            ],
         }
 
     def test_report_type(self, generator):
@@ -375,8 +418,8 @@ class TestQuarterlyReportGenerator:
         """Quarter and lookback period should be calculated correctly."""
         generator.generate(sample_strategic_analysis)
         assert 1 <= generator.quarter <= 4
-        assert hasattr(generator, 'period_start')
-        assert hasattr(generator, 'period_end')
+        assert hasattr(generator, "period_start")
+        assert hasattr(generator, "period_end")
         delta = generator.period_end - generator.period_start
         assert delta.days == generator.lookback_days
 

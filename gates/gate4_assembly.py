@@ -15,14 +15,15 @@ combined here under strict labeling rules:
 
 Calls detect_osint_promotion on the assembled payload as a structural fence.
 """
+
 from __future__ import annotations
 
 from .escape_handler import detect_gate_bleed, detect_osint_promotion, detect_prose_leakage
 from .models import (
+    IOC,
     ActorLink,
     GateInput,
     GateResult,
-    IOC,
     OpenSignal,
     OSINTArticle,
     OSINTCorroboration,
@@ -31,7 +32,6 @@ from .models import (
 )
 from .prompts import GATE_4_PROMPT_TEMPLATE, SYSTEM_PROMPT_GATE_4
 
-
 _GOV_ADVISORY_SOURCES = {"CISA Alerts", "US-CERT Current Activity"}
 _GEOPOLITICAL_SOURCES = {"Intel471", "CrowdStrike"}
 
@@ -39,7 +39,11 @@ _GEOPOLITICAL_SOURCES = {"Intel471", "CrowdStrike"}
 def _severity_key(severity: str) -> tuple[int, str]:
     """Sort key: severity ranked, then by string for stable order. Higher = more severe."""
     rank_map = {
-        "critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0,
+        "critical": 4,
+        "high": 3,
+        "medium": 2,
+        "low": 1,
+        "info": 0,
         "informational": 0,
     }
     s = severity.lower() if isinstance(severity, str) else ""
@@ -96,24 +100,30 @@ def _build_open_signals(
             if ioc not in tier1_values:
                 open_signals.append(
                     OpenSignal(
-                        article_id=sig.article_id, signal_type="ioc",
-                        value=ioc, context_quote=sig.context_quote,
+                        article_id=sig.article_id,
+                        signal_type="ioc",
+                        value=ioc,
+                        context_quote=sig.context_quote,
                     )
                 )
         for cve in sig.cve_ids:
             if cve not in tier1_values:
                 open_signals.append(
                     OpenSignal(
-                        article_id=sig.article_id, signal_type="cve",
-                        value=cve, context_quote=sig.context_quote,
+                        article_id=sig.article_id,
+                        signal_type="cve",
+                        value=cve,
+                        context_quote=sig.context_quote,
                     )
                 )
         for actor in sig.actor_names:
             if actor not in tier1_values:
                 open_signals.append(
                     OpenSignal(
-                        article_id=sig.article_id, signal_type="actor",
-                        value=actor, context_quote=sig.context_quote,
+                        article_id=sig.article_id,
+                        signal_type="actor",
+                        value=actor,
+                        context_quote=sig.context_quote,
                     )
                 )
     return open_signals
@@ -123,13 +133,15 @@ def _build_top_iocs(iocs: list[IOC], limit: int = 10) -> list[dict]:
     ranked = sorted(iocs, key=lambda i: _severity_key(i.source_severity), reverse=True)
     top: list[dict] = []
     for ioc in ranked[:limit]:
-        top.append({
-            "type": ioc.ioc_type,
-            "value": ioc.value,
-            "sources": ioc.sources,
-            "severity": ioc.source_severity,
-            "cross_source_hit": ioc.cross_source_hit,
-        })
+        top.append(
+            {
+                "type": ioc.ioc_type,
+                "value": ioc.value,
+                "sources": ioc.sources,
+                "severity": ioc.source_severity,
+                "cross_source_hit": ioc.cross_source_hit,
+            }
+        )
     return top
 
 
@@ -140,16 +152,16 @@ def _collect_coverage_gaps(
     actor_links: list[ActorLink],
 ) -> list[str]:
     gaps: list[str] = []
-    
+
     # Only report gaps for ENABLED sources
     for r in tier1_sources:
         if r.enabled and r.status.startswith("GAP"):
             gaps.append(f"[NOT IN PROVIDED SOURCES] {r.source_name}: {r.status}")
-    
+
     for r in osint_sources:
         if r.enabled and r.records_returned == 0:
             gaps.append(f"[NO ARTICLES] {r.source_name}: no articles in lookback window")
-    
+
     if not iocs:
         gaps.append("[NO IOCs IN SOURCE: all Tier 1 sources]")
     if not any(link.actor_name != "[UNATTRIBUTED]" for link in actor_links):
@@ -174,12 +186,14 @@ def _build_geopolitical_signals(
             geo_context = rec.get("geopolitical_context") or rec.get("nation_state")
             if not (region or geo_context):
                 continue
-            signals.append({
-                "source": source,
-                "region": region,
-                "context": geo_context,
-                "actor": rec.get("actor") or rec.get("actor_name"),
-            })
+            signals.append(
+                {
+                    "source": source,
+                    "region": region,
+                    "context": geo_context,
+                    "actor": rec.get("actor") or rec.get("actor_name"),
+                }
+            )
     return signals
 
 
@@ -215,9 +229,12 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     # Actor summary: Tier 1 only, [UNATTRIBUTED] excluded
     actor_summary = [
         {
-            "ioc": link.ioc_value, "actor": link.actor_name,
-            "source": link.attribution_source, "campaign": link.campaign,
-            "confidence": link.confidence, "region": link.region,
+            "ioc": link.ioc_value,
+            "actor": link.actor_name,
+            "source": link.attribution_source,
+            "campaign": link.campaign,
+            "confidence": link.confidence,
+            "region": link.region,
         }
         for link in actor_links
         if link.actor_name != "[UNATTRIBUTED]"
@@ -238,16 +255,21 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
         "vulnerability_highlights": "[NOT IN PROVIDED SOURCES]",  # populated by LLM extraction text if needed
         "osint_corroboration": [
             {
-                "finding": c.finding_value, "article_id": c.article_id,
-                "source": c.source_name, "published": c.publication_date,
+                "finding": c.finding_value,
+                "article_id": c.article_id,
+                "source": c.source_name,
+                "published": c.publication_date,
                 "is_gov_advisory": c.is_gov_advisory,
             }
             for c in corroborations
         ],
         "open_signals": [
             {
-                "article_id": s.article_id, "type": s.signal_type,
-                "value": s.value, "context": s.context_quote, "label": s.label,
+                "article_id": s.article_id,
+                "type": s.signal_type,
+                "value": s.value,
+                "context": s.context_quote,
+                "label": s.label,
             }
             for s in open_signals
         ],

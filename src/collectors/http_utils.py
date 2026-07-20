@@ -3,9 +3,11 @@ HTTP utilities with retry logic for API collectors.
 
 Provides exponential backoff retry mechanism for transient failures.
 """
+
 import asyncio
 import logging
-from typing import Dict, Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import aiohttp  # type: ignore
 
@@ -16,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class RetryableHTTPError(Exception):
     """Exception for HTTP errors that should be retried."""
+
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
         self.message = message
@@ -24,6 +27,7 @@ class RetryableHTTPError(Exception):
 
 class NonRetryableHTTPError(Exception):
     """Exception for HTTP errors that should NOT be retried."""
+
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
         self.message = message
@@ -44,7 +48,7 @@ async def retry_with_backoff(
     max_retries: int | None = None,
     base_delay: float | None = None,
     max_delay: float | None = None,
-    retryable_exceptions: tuple = (RetryableHTTPError, aiohttp.ClientError, asyncio.TimeoutError)
+    retryable_exceptions: tuple = (RetryableHTTPError, aiohttp.ClientError, asyncio.TimeoutError),
 ):
     """
     Execute an async function with exponential backoff retry.
@@ -76,11 +80,8 @@ async def retry_with_backoff(
 
             if attempt < max_retries:
                 # Calculate delay with exponential backoff
-                delay = min(base_delay * (2 ** attempt), max_delay)
-                logger.warning(
-                    f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
-                    f"Retrying in {delay:.1f}s..."
-                )
+                delay = min(base_delay * (2**attempt), max_delay)
+                logger.warning(f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. Retrying in {delay:.1f}s...")
                 await asyncio.sleep(delay)
             else:
                 logger.error(f"All {max_retries + 1} attempts failed. Last error: {e}")
@@ -101,11 +102,7 @@ class HTTPClient:
             data = await client.get("https://api.example.com/data", headers={...})
     """
 
-    def __init__(
-        self,
-        timeout: int | None = None,
-        max_retries: int | None = None
-    ):
+    def __init__(self, timeout: int | None = None, max_retries: int | None = None):
         """
         Initialize HTTP client.
 
@@ -113,9 +110,7 @@ class HTTPClient:
             timeout: Request timeout in seconds
             max_retries: Maximum retry attempts for transient failures
         """
-        self.timeout = aiohttp.ClientTimeout(
-            total=timeout or collector_config.http_timeout_seconds
-        )
+        self.timeout = aiohttp.ClientTimeout(total=timeout or collector_config.http_timeout_seconds)
         self.max_retries = max_retries or collector_config.max_retries
         self._session: aiohttp.ClientSession | None = None
 
@@ -131,10 +126,8 @@ class HTTPClient:
             self._session = None
 
     async def _handle_response(
-        self,
-        response: aiohttp.ClientResponse,
-        expected_status: tuple = (200,)
-    ) -> Dict[str, Any]:
+        self, response: aiohttp.ClientResponse, expected_status: tuple = (200,)
+    ) -> dict[str, Any]:
         """
         Handle HTTP response and return JSON data.
 
@@ -168,19 +161,18 @@ class HTTPClient:
         """Return the active session or raise if not inside a context manager."""
         if self._session is None:
             raise RuntimeError(
-                "HTTPClient must be used as an async context manager: "
-                "'async with HTTPClient() as client: ...'"
+                "HTTPClient must be used as an async context manager: 'async with HTTPClient() as client: ...'"
             )
         return self._session
 
     async def get(
         self,
         url: str,
-        headers: Dict[str, str] | None = None,
-        params: Dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        params: dict[str, Any] | None = None,
         auth: aiohttp.BasicAuth | None = None,
-        expected_status: tuple = (200,)
-    ) -> Dict[str, Any]:
+        expected_status: tuple = (200,),
+    ) -> dict[str, Any]:
         """
         Perform GET request with retry logic.
 
@@ -197,9 +189,7 @@ class HTTPClient:
         session = self._ensure_session()
 
         async def _do_request():
-            async with session.get(
-                url, headers=headers, params=params, auth=auth
-            ) as response:
+            async with session.get(url, headers=headers, params=params, auth=auth) as response:
                 return await self._handle_response(response, expected_status)
 
         return await retry_with_backoff(_do_request, max_retries=self.max_retries)
@@ -207,12 +197,12 @@ class HTTPClient:
     async def post(
         self,
         url: str,
-        headers: Dict[str, str] | None = None,
-        data: Dict[str, Any] | None = None,
-        json_data: Dict[str, Any] | None = None,
-        params: Dict[str, Any] | None = None,
-        expected_status: tuple = (200, 201)
-    ) -> Dict[str, Any]:
+        headers: dict[str, str] | None = None,
+        data: dict[str, Any] | None = None,
+        json_data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        expected_status: tuple = (200, 201),
+    ) -> dict[str, Any]:
         """
         Perform POST request with retry logic.
 
@@ -230,9 +220,7 @@ class HTTPClient:
         session = self._ensure_session()
 
         async def _do_request():
-            async with session.post(
-                url, headers=headers, data=data, json=json_data, params=params
-            ) as response:
+            async with session.post(url, headers=headers, data=data, json=json_data, params=params) as response:
                 return await self._handle_response(response, expected_status)
 
         return await retry_with_backoff(_do_request, max_retries=self.max_retries)
@@ -240,9 +228,9 @@ class HTTPClient:
     async def get_raw_response(
         self,
         url: str,
-        headers: Dict[str, str] | None = None,
-        params: Dict[str, Any] | None = None,
-        auth: aiohttp.BasicAuth | None = None
+        headers: dict[str, str] | None = None,
+        params: dict[str, Any] | None = None,
+        auth: aiohttp.BasicAuth | None = None,
     ) -> aiohttp.ClientResponse:
         """
         Perform GET request and return raw response (for custom handling).
@@ -262,10 +250,10 @@ class HTTPClient:
     async def post_raw_response(
         self,
         url: str,
-        headers: Dict[str, str] | None = None,
-        data: Dict[str, Any] | None = None,
-        json_data: Dict[str, Any] | None = None,
-        params: Dict[str, Any] | None = None
+        headers: dict[str, str] | None = None,
+        data: dict[str, Any] | None = None,
+        json_data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> aiohttp.ClientResponse:
         """
         Perform POST request and return raw response (for custom handling).
@@ -280,9 +268,7 @@ class HTTPClient:
         Returns:
             Raw aiohttp response
         """
-        return await self._ensure_session().post(
-            url, headers=headers, data=data, json=json_data, params=params
-        )
+        return await self._ensure_session().post(url, headers=headers, data=data, json=json_data, params=params)
 
 
 def validate_url(url: str) -> str:

@@ -13,6 +13,7 @@ Report-type specific checks:
 - Quarterly Strategic: threat_findings, open_signals_appendix, coverage_gaps
 - Weekly Tactical: cve_analysis, apt_activity, industry_incidents, statistics
 """
+
 from __future__ import annotations
 
 import re
@@ -20,7 +21,6 @@ import re
 from .escape_handler import detect_gate_bleed
 from .models import GateInput, GateResult
 from .prompts import GATE_6_PROMPT_TEMPLATE, SYSTEM_PROMPT_GATE_6
-
 
 _FILLER_PHRASES = [
     "it is important to note",
@@ -57,9 +57,7 @@ def _scan_open_signal_leakage(report: dict) -> list[str]:
     leaked: list[str] = []
     for finding in report.get("threat_findings", []):
         if finding.get("value") in open_values:
-            leaked.append(
-                f"Open Signal value '{finding.get('value')}' appears in Threat Findings"
-            )
+            leaked.append(f"Open Signal value '{finding.get('value')}' appears in Threat Findings")
     return leaked
 
 
@@ -73,9 +71,7 @@ def _scan_osint_only_citations(report: dict) -> list[str]:
             continue
         tier1_present = any(s and not str(s).startswith("OSINT") for s in sources)
         if not tier1_present:
-            violations.append(
-                f"Threat Finding '{finding.get('value')}' is cited only from OSINT: {sources}"
-            )
+            violations.append(f"Threat Finding '{finding.get('value')}' is cited only from OSINT: {sources}")
     return violations
 
 
@@ -87,39 +83,40 @@ def _scan_gap_omissions(report: dict, gate4_gaps: list[str]) -> list[str]:
 def _scan_osint_overuse(report: dict, gate1b_article_count: int) -> list[str]:
     """
     Track B warning: Check if too many OSINT sources are being cited.
-    
+
     We collect ~30 OSINT articles but should only cite the ones actually used.
     If more than 15 are cited, likely the AI is being too inclusive.
     """
     violations: list[str] = []
-    
+
     # Check in resources section
     resources = report.get("resources", [])
     osint_resource_count = sum(1 for r in resources if isinstance(r, dict) and "osint" in str(r).lower())
-    
+
     if osint_resource_count > 15:
         violations.append(
             f"OSINT overuse: {osint_resource_count} OSINT sources cited out of {gate1b_article_count} collected. "
             f"Should be selective (aim for 5-10 max). Only cite articles actually used in analysis."
         )
-    
+
     return violations
 
 
 def _scan_disabled_sources_cited(report: dict, gate1_sources: list) -> list[str]:
     """
     Track B warning: Check if disabled sources are listed in resources.
-    
+
     If a source returned 0 records or has status GAP, it shouldn't be in the report.
     """
     violations: list[str] = []
-    
+
     # Get sources that had no data
     disabled_sources = [
-        src.source_name for src in gate1_sources 
+        src.source_name
+        for src in gate1_sources
         if src.records_returned == 0 or "GAP" in src.status or "DISABLED" in src.status
     ]
-    
+
     # Check if any of these appear in the report's resources
     resources_text = str(report.get("resources", [])).lower()
     for source in disabled_sources:
@@ -127,19 +124,19 @@ def _scan_disabled_sources_cited(report: dict, gate1_sources: list) -> list[str]
             violations.append(
                 f"Disabled/empty source cited: '{source}' returned 0 records but appears in resources section"
             )
-    
+
     return violations
 
 
 def _scan_api_source_citations(report: dict) -> list[str]:
     """
     Track B warning: Check if API sources are properly cited in CVE and APT analysis.
-    
+
     Weekly tactical reports should have source_citations arrays showing which APIs
     provided intelligence for each finding.
     """
     violations: list[str] = []
-    
+
     # Check CVE analysis for source citations
     cve_analysis = report.get("cve_analysis", [])
     if cve_analysis:
@@ -150,13 +147,13 @@ def _scan_api_source_citations(report: dict) -> list[str]:
                 citations = cve.get("source_citations", [])
                 if not citations or not isinstance(citations, list):
                     missing_citations.append(cve_id)
-        
+
         if missing_citations and len(missing_citations) > len(cve_analysis) * 0.5:
             violations.append(
                 f"{len(missing_citations)}/{len(cve_analysis)} CVEs missing source_citations array. "
                 f"Should track which APIs (NVD, CISA KEV, Intel471, CrowdStrike) provided each CVE."
             )
-    
+
     # Check APT activity for source citations
     apt_activity = report.get("apt_activity", [])
     if apt_activity:
@@ -167,136 +164,144 @@ def _scan_api_source_citations(report: dict) -> list[str]:
                 citations = apt.get("source_citations", [])
                 if not citations or not isinstance(citations, list):
                     missing_citations.append(actor)
-        
+
         if missing_citations and len(missing_citations) > len(apt_activity) * 0.5:
             violations.append(
                 f"{len(missing_citations)}/{len(apt_activity)} threat actors missing source_citations array. "
                 f"Should track which APIs (Intel471, CrowdStrike) provided each actor's intelligence."
             )
-    
+
     return violations
 
 
 def _scan_statistics_accuracy(report: dict) -> list[str]:
     """
     Track A violation: Check if statistics match actual data counts.
-    
+
     Weekly tactical reports have metric boxes - these should accurately reflect
     the actual counts in the data.
     """
     violations: list[str] = []
-    
+
     stats = report.get("statistics", {})
     if not stats:
         return violations
-    
+
     # Check threat actors count
     apt_activity = report.get("apt_activity", [])
     reported_actors = stats.get("threat_actors", 0)
     actual_actors = len([apt for apt in apt_activity if isinstance(apt, dict)])
-    
+
     if reported_actors != actual_actors:
-        violations.append(
-            f"Threat Actors metric mismatch: reported {reported_actors}, actual {actual_actors}"
-        )
-    
+        violations.append(f"Threat Actors metric mismatch: reported {reported_actors}, actual {actual_actors}")
+
     # Check exploited CVEs count
     cve_analysis = report.get("cve_analysis", [])
     reported_exploited = stats.get("exploited_cves", 0)
-    actual_exploited = len([
-        cve for cve in cve_analysis 
-        if isinstance(cve, dict) and (
-            cve.get("actively_exploited") or 
-            cve.get("targeted_by_actors") or 
-            cve.get("in_cisa_kev")
-        )
-    ])
-    
+    actual_exploited = len(
+        [
+            cve
+            for cve in cve_analysis
+            if isinstance(cve, dict)
+            and (cve.get("actively_exploited") or cve.get("targeted_by_actors") or cve.get("in_cisa_kev"))
+        ]
+    )
+
     if reported_exploited != actual_exploited:
-        violations.append(
-            f"Exploited CVEs metric mismatch: reported {reported_exploited}, actual {actual_exploited}"
-        )
-    
+        violations.append(f"Exploited CVEs metric mismatch: reported {reported_exploited}, actual {actual_exploited}")
+
     # Check peer incidents count
     reported_incidents = stats.get("peer_incidents", 0)
     industry_incidents = report.get("industry_incidents", [])
     actual_incidents = len(industry_incidents) if industry_incidents else 0
-    
+
     if reported_incidents != actual_incidents:
-        violations.append(
-            f"Peer Incidents metric mismatch: reported {reported_incidents}, actual {actual_incidents}"
-        )
-    
+        violations.append(f"Peer Incidents metric mismatch: reported {reported_incidents}, actual {actual_incidents}")
+
     return violations
 
 
 def _scan_exploited_cve_evidence(report: dict) -> list[str]:
     """
     Track B warning: Check if CVEs marked as exploited have proper evidence.
-    
+
     CVEs with actively_exploited=true should have exploited_by field populated.
     """
     violations: list[str] = []
-    
+
     cve_analysis = report.get("cve_analysis", [])
     missing_evidence = []
-    
+
     for cve in cve_analysis:
         if not isinstance(cve, dict):
             continue
-        
+
         cve_id = cve.get("cve_id", "Unknown")
         actively_exploited = cve.get("actively_exploited", False)
         exploited_by = cve.get("exploited_by", "")
-        
+
         if actively_exploited and not exploited_by:
             missing_evidence.append(cve_id)
-    
+
     if missing_evidence:
         violations.append(
             f"{len(missing_evidence)} CVE(s) marked actively_exploited but missing exploited_by evidence: "
             f"{', '.join(missing_evidence[:5])}"
         )
-    
+
     return violations
 
 
 def _scan_industry_incidents_quality(report: dict) -> tuple[list[str], list[str]]:
     """
     Check if industry incidents are structured and specific.
-    
+
     Returns: (track_a_violations, track_b_violations)
-    
+
     Track A (blocking): Vague/generic organization names
     Track B (quality): Missing citations or structure issues
-    
+
     NOTE: Empty industry_incidents array is acceptable - some weeks may have no named victims.
     """
     track_a = []
     track_b = []
-    
+
     industry_incidents = report.get("industry_incidents", [])
     osint_sources = report.get("osint_sources_used", [])
-    
+
     # Empty incidents array is OK - don't penalize for quiet weeks
     if not industry_incidents:
         return track_a, track_b
-    
+
     # Track B: Check if AI provided structure but no actual data
     if osint_sources and not industry_incidents:
         track_b.append(
             f"AI provided {len(osint_sources)} OSINT sources but no structured industry_incidents array. "
             f"Report had to fall back to unreliable keyword extraction. AI should explicitly identify breaches."
         )
-    
+
     # Track A: Check for vague/generic organization names (BLOCKING)
     vague_keywords = [
-        "sector", "industry", "healthcare", "biotech", "manufacturing", 
-        "life sciences", "health care", "companies", "organizations",
-        "databreach+", "site operated by", "unnamed", "multiple", "various",
-        "us law firms", "medical facilities", "no named", "not reported"
+        "sector",
+        "industry",
+        "healthcare",
+        "biotech",
+        "manufacturing",
+        "life sciences",
+        "health care",
+        "companies",
+        "organizations",
+        "databreach+",
+        "site operated by",
+        "unnamed",
+        "multiple",
+        "various",
+        "us law firms",
+        "medical facilities",
+        "no named",
+        "not reported",
     ]
-    
+
     vague_incidents = []
     for inc in industry_incidents:
         if isinstance(inc, dict):
@@ -307,14 +312,14 @@ def _scan_industry_incidents_quality(report: dict) -> tuple[list[str], list[str]
             # Or if it's suspiciously generic (very long or contains parenthetical descriptions)
             elif len(org.split()) > 6 or ("(named" in org or "(site" in org):
                 vague_incidents.append(inc.get("organization", "Unknown"))
-    
+
     if vague_incidents:
         track_a.append(
             f"{len(vague_incidents)} incident(s) have vague/generic organization names: "
             f"{', '.join(vague_incidents[:3])}. Must be SPECIFIC named organizations like 'Morrison & Foerster LLP', not sectors. "
             f"If no specific victims this week, return empty industry_incidents array."
         )
-    
+
     # Track B: Check if OSINT incidents have proper citation numbers (quality check)
     missing_citations = []
     for inc in industry_incidents:
@@ -325,29 +330,29 @@ def _scan_industry_incidents_quality(report: dict) -> tuple[list[str], list[str]
             # Skip if this is a placeholder/error entry
             if "Intel471" not in source and not inc.get("osint_citation_number") and "no named" not in org.lower():
                 missing_citations.append(org)
-    
+
     if missing_citations:
         track_b.append(
             f"{len(missing_citations)} OSINT incident(s) missing osint_citation_number: "
             f"{', '.join(missing_citations[:3])}"
         )
-    
+
     return track_a, track_b
 
 
 def _scan_narrative_cohesion(report: dict, gate2_iocs: list, report_type: str = "WEEKLY") -> list[str]:
     """
     Check for narrative cohesion issues between executive summary and detailed sections.
-    
+
     Track A violations:
     - CVEs mentioned in executive summary but not in CVE analysis section
     - CVEs in analysis not mentioned anywhere in narrative
-    
+
     NOTE: For weekly tactical reports (threat intelligence focused), we no longer validate
     against "detected in environment" since Rapid7 scanning is disabled. CVEs are threat intel only.
     """
     violations: list[str] = []
-    
+
     # Extract CVEs from executive summary - handle both string and dict formats
     exec_summary = report.get("executive_summary", "")
     if isinstance(exec_summary, dict):
@@ -356,11 +361,12 @@ def _scan_narrative_cohesion(report: dict, gate2_iocs: list, report_type: str = 
     elif not isinstance(exec_summary, str):
         # If it's something else, convert to string
         exec_summary = str(exec_summary) if exec_summary else ""
-    
+
     # Regex to find CVE IDs in text
     import re
-    summary_cves = set(re.findall(r'CVE-\d{4}-\d{4,}', exec_summary, re.IGNORECASE))
-    
+
+    summary_cves = set(re.findall(r"CVE-\d{4}-\d{4,}", exec_summary, re.IGNORECASE))
+
     # For weekly tactical reports: Compare against CVE analysis (threat intel CVEs)
     # For quarterly: Compare against threat findings
     if report_type.upper() == "WEEKLY":
@@ -371,7 +377,7 @@ def _scan_narrative_cohesion(report: dict, gate2_iocs: list, report_type: str = 
                 cve_id = cve.get("cve_id", "")
                 if cve_id:
                     analysis_cves.add(cve_id.upper())
-        
+
         # Check: CVEs in summary should appear in CVE analysis table
         orphaned_summary_cves = summary_cves - analysis_cves
         if orphaned_summary_cves:
@@ -389,50 +395,48 @@ def _scan_narrative_cohesion(report: dict, gate2_iocs: list, report_type: str = 
             value = finding.get("value", "")
             if isinstance(value, str) and value.startswith("CVE-"):
                 finding_cves.add(value.upper())
-        
+
         # Check: CVEs in summary should either be in findings or explicitly noted as external threats
         orphaned_summary_cves = summary_cves - finding_cves
         if orphaned_summary_cves:
             for cve in orphaned_summary_cves:
-                violations.append(
-                    f"CVE {cve} mentioned in executive summary but missing from threat findings table"
-                )
-    
+                violations.append(f"CVE {cve} mentioned in executive summary but missing from threat findings table")
+
     return violations
 
 
 def _scan_osint_citations(report: dict) -> list[str]:
     """
     Check that OSINT sources used have inline citations in the text.
-    
+
     Track B violations (quality issue, not blocking):
     - OSINT articles listed but never referenced in narrative or incidents table
     - Claims that should cite OSINT but don't
     """
     violations: list[str] = []
-    
+
     osint_sources = report.get("osint_sources_used", [])
     if not osint_sources:
         return violations
-    
+
     # Extract executive summary - handle both string and dict formats
     exec_summary = report.get("executive_summary", "")
     if isinstance(exec_summary, dict):
         exec_summary = str(exec_summary)
     elif not isinstance(exec_summary, str):
         exec_summary = str(exec_summary) if exec_summary else ""
-    
+
     # Check if any OSINT sources are cited inline (look for superscript numbers or [1] style refs)
     import re
-    has_exec_citations = bool(re.search(r'\[\d+\]|¹|²|³|⁴|⁵', exec_summary))
-    
+
+    has_exec_citations = bool(re.search(r"\[\d+\]|¹|²|³|⁴|⁵", exec_summary))
+
     # Check if OSINT is cited in industry incidents table
     industry_incidents = report.get("industry_incidents", [])
     osint_incidents_count = sum(
-        1 for inc in industry_incidents 
-        if isinstance(inc, dict) and inc.get("osint_citation_number")
+        1 for inc in industry_incidents if isinstance(inc, dict) and inc.get("osint_citation_number")
     )
-    
+
     # If OSINT sources are listed, they should appear SOMEWHERE
     if osint_sources and not has_exec_citations and osint_incidents_count == 0:
         violations.append(
@@ -445,7 +449,7 @@ def _scan_osint_citations(report: dict) -> list[str]:
             f"{len(osint_sources)} OSINT sources listed but only {osint_incidents_count} cited in incidents table. "
             f"Missing citations in executive summary. Add [1], [2] style references."
         )
-    
+
     return violations
 
 
@@ -497,7 +501,7 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     draft_text = g5.payload.get("draft_text", "")
     gate4_gaps = (g4.payload.get("assembly", {}).get("coverage_gaps") or []) if g4 else []
     gate2_iocs = (g2.payload.get("iocs") or []) if g2 else []
-    gate1b_article_count = len((g1b.payload.get("osint_articles") or [])) if g1b else 30
+    gate1b_article_count = len(g1b.payload.get("osint_articles") or []) if g1b else 30
     gate1_sources = (g1.payload.get("tier1_sources") or []) if g1 else []
 
     track_a: list[str] = []
@@ -507,7 +511,7 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     track_a.extend(_scan_open_signal_leakage(report))
     track_a.extend(_scan_osint_only_citations(report))
     track_a.extend(_scan_uncited_findings(report))
-    
+
     # Coverage gap validation: Different behavior for quarterly vs weekly
     # - Quarterly reports: Gaps are informational only, not blocking. Only block if AI cites empty sources.
     # - Weekly reports: Gaps are now informational (Track B) instead of blocking (Track A)
@@ -523,7 +527,7 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
                 f"{len(gap_omissions)} coverage gap(s) omitted from report (informational). "
                 f"Consider documenting: {'; '.join(gap_omissions[:2])}"
             )
-    
+
     # NEW: Narrative cohesion checks (Track A - blocking)
     track_a.extend(_scan_narrative_cohesion(report, gate2_iocs, report_type))
 
@@ -534,25 +538,25 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     em_count = _scan_em_dashes(draft_text)
     if em_count:
         track_b.append(f"{em_count} em dash(es) present; framework forbids em dashes")
-    
+
     # NEW: OSINT citation checks (Track B - quality)
     track_b.extend(_scan_osint_citations(report))
-    
+
     # NEW: OSINT overuse check (Track B - quality)
     track_b.extend(_scan_osint_overuse(report, gate1b_article_count))
-    
+
     # NEW: Disabled sources check (Track B - quality)
     track_b.extend(_scan_disabled_sources_cited(report, gate1_sources))
-    
+
     # NEW: API source citations check (Track B - quality)
     track_b.extend(_scan_api_source_citations(report))
-    
+
     # NEW: Statistics accuracy check (Track A - blocking)
     track_a.extend(_scan_statistics_accuracy(report))
-    
+
     # NEW: Exploited CVE evidence check (Track B - quality)
     track_b.extend(_scan_exploited_cve_evidence(report))
-    
+
     # NEW: Industry incidents quality check (Track A + Track B)
     incidents_track_a, incidents_track_b = _scan_industry_incidents_quality(report)
     track_a.extend(incidents_track_a)

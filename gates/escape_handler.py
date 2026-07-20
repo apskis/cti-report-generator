@@ -5,6 +5,7 @@ against the assembled payload structure) to catch fence breaches before they
 contaminate downstream gates. When a detector fires, the orchestrator stops
 and the analyst pastes the corresponding ESC prompt cold.
 """
+
 from __future__ import annotations
 
 import re

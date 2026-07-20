@@ -1,4 +1,5 @@
 """Tests for escape pattern detection: gate bleed, prose leakage, OSINT promotion, missing clearance marker."""
+
 from __future__ import annotations
 
 import pytest

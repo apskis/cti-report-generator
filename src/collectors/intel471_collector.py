@@ -3,10 +3,11 @@ Intel471 collector.
 
 Fetches threat intelligence reports and indicators from Intel471 Titan API.
 """
+
 import logging
 import re
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Any
 
 import aiohttp  # type: ignore
 
@@ -25,7 +26,7 @@ ADMIRALTY_CONFIDENCE_MAP = {
     "C": "Medium",
     "D": "Low",
     "E": "Very Low",
-    "F": "Cannot be judged"
+    "F": "Cannot be judged",
 }
 
 
@@ -62,7 +63,7 @@ class Intel471Collector(BaseCollector):
 
         For quarterly reports: Fetches all report types (BREACH ALERT, SPOT REPORT,
         SITUATION REPORT, MALWARE REPORT) going back 90 days. OpenAI will filter by industry.
-        
+
         For weekly reports: Fetches reports with keyword filtering.
 
         Returns:
@@ -76,18 +77,13 @@ class Intel471Collector(BaseCollector):
 
             if not email or not api_key:
                 logger.warning("Intel471 credentials not provided, skipping")
-                return CollectorResult(
-                    source=self.source_name,
-                    success=True,
-                    data=[],
-                    record_count=0
-                )
+                return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
 
             # Calculate date range
             start_date, end_date = self.get_date_range()
 
             auth = aiohttp.BasicAuth(email, api_key)
-            threats: List[Dict[str, Any]] = []
+            threats: list[dict[str, Any]] = []
 
             async with HTTPClient() as client:
                 if report_type == "quarterly":
@@ -109,81 +105,63 @@ class Intel471Collector(BaseCollector):
                 threats.extend(indicators)
 
             # DEBUG: Log what we collected
-            logger.info(f"Intel471 collection breakdown:")
-            logger.info(f"  - Regular reports: {len([t for t in threats if t.get('threat_type', '').upper() not in ['BREACH ALERT', 'INDICATOR']])}")
-            logger.info(f"  - Breach alerts: {len([t for t in threats if 'BREACH' in t.get('threat_type', '').upper()])}")
-            logger.info(f"  - Indicators: {len([t for t in threats if 'INDICATOR' in t.get('threat_type', '').upper()])}")
-            logger.info(f"Sample Intel471 subjects:")
+            logger.info("Intel471 collection breakdown:")
+            logger.info(
+                f"  - Regular reports: {len([t for t in threats if t.get('threat_type', '').upper() not in ['BREACH ALERT', 'INDICATOR']])}"
+            )
+            logger.info(
+                f"  - Breach alerts: {len([t for t in threats if 'BREACH' in t.get('threat_type', '').upper()])}"
+            )
+            logger.info(
+                f"  - Indicators: {len([t for t in threats if 'INDICATOR' in t.get('threat_type', '').upper()])}"
+            )
+            logger.info("Sample Intel471 subjects:")
             for threat in threats[:5]:
                 logger.info(f"  - [{threat.get('threat_type')}] {threat.get('summary', 'No subject')[:100]}")
 
             logger.info(f"Retrieved {len(threats)} total items from Intel471")
-            return CollectorResult(
-                source=self.source_name,
-                success=True,
-                data=threats,
-                record_count=len(threats)
-            )
+            return CollectorResult(source=self.source_name, success=True, data=threats, record_count=len(threats))
 
         except NonRetryableHTTPError as e:
             logger.error(f"Intel471 API error: {e}")
-            return CollectorResult(
-                source=self.source_name,
-                success=False,
-                error=str(e),
-                record_count=0
-            )
+            return CollectorResult(source=self.source_name, success=False, error=str(e), record_count=0)
         except Exception as e:
             logger.error(f"Error fetching Intel471 data: {e}", exc_info=True)
-            return CollectorResult(
-                source=self.source_name,
-                success=False,
-                error=str(e),
-                record_count=0
-            )
+            return CollectorResult(source=self.source_name, success=False, error=str(e), record_count=0)
 
-    async def _fetch_report_details(
-        self,
-        client: HTTPClient,
-        auth: aiohttp.BasicAuth,
-        uid: str
-    ) -> Dict[str, Any]:
+    async def _fetch_report_details(self, client: HTTPClient, auth: aiohttp.BasicAuth, uid: str) -> dict[str, Any]:
         """
         Fetch full details for a single report by UID.
-        
+
         The list endpoint (/reports) only returns metadata. To get the full report text,
         we need to fetch each report individually by UID.
-        
+
         Args:
             client: HTTP client
             auth: Basic auth credentials
             uid: Report UID
-            
+
         Returns:
             Full report data with rawText, executiveSummary, etc.
         """
         url = f"{self.BASE_URL}/reports/{uid}"
-        
+
         try:
             response = await client.get_raw_response(url, auth=auth)
-            
+
             if response.status == 200:
                 return await response.json()
             else:
                 logger.warning(f"Failed to fetch report {uid}: status {response.status}")
                 return {}
-                
+
         except Exception as e:
             logger.warning(f"Error fetching report details for {uid}: {e}")
             return {}
 
     async def _fetch_reports(
-        self,
-        client: HTTPClient,
-        auth: aiohttp.BasicAuth,
-        start_date: datetime,
-        end_date: datetime
-    ) -> List[Dict[str, Any]]:
+        self, client: HTTPClient, auth: aiohttp.BasicAuth, start_date: datetime, end_date: datetime
+    ) -> list[dict[str, Any]]:
         """
         Fetch threat reports from Intel471.
 
@@ -203,7 +181,7 @@ class Intel471Collector(BaseCollector):
             "from": self.format_date_timestamp_ms(start_date),
             "until": self.format_date_timestamp_ms(end_date),
             "count": collector_config.intel471_reports_limit,
-            "v": self.API_VERSION
+            "v": self.API_VERSION,
         }
 
         threats = []
@@ -250,12 +228,8 @@ class Intel471Collector(BaseCollector):
         return threats
 
     async def _fetch_all_report_types(
-        self,
-        client: HTTPClient,
-        auth: aiohttp.BasicAuth,
-        start_date: datetime,
-        end_date: datetime
-    ) -> List[Dict[str, Any]]:
+        self, client: HTTPClient, auth: aiohttp.BasicAuth, start_date: datetime, end_date: datetime
+    ) -> list[dict[str, Any]]:
         """
         Fetch all report types for quarterly reports: BREACH ALERT, SPOT REPORT,
         SITUATION REPORT, and MALWARE REPORT.
@@ -275,20 +249,22 @@ class Intel471Collector(BaseCollector):
         # Use /reports endpoint - it's the correct one for listing with date filters
         # The dedicated endpoints (/breachAlerts/{uid}, etc.) are for getting individual items
         reports_url = f"{self.BASE_URL}/reports"
-        
+
         all_reports = []
         max_count_per_request = 100
         max_requests = 20  # Fetch up to 2000 reports
-        
-        logger.info(f"Fetching all Intel471 reports going back {self.lookback_days} days (batches of {max_count_per_request})...")
-        
+
+        logger.info(
+            f"Fetching all Intel471 reports going back {self.lookback_days} days (batches of {max_count_per_request})..."
+        )
+
         # Fetch all reports in batches
         for request_num in range(max_requests):
             params = {
                 "from": self.format_date_timestamp_ms(start_date),
                 "until": self.format_date_timestamp_ms(end_date),
                 "count": max_count_per_request,
-                "v": self.API_VERSION
+                "v": self.API_VERSION,
             }
 
             try:
@@ -297,16 +273,16 @@ class Intel471Collector(BaseCollector):
                 if response.status == 200:
                     data = await response.json()
                     reports = data.get("reports", [])
-                    
+
                     if not reports:
                         logger.info(f"No more reports available (request {request_num + 1})")
                         break
-                    
+
                     all_reports.extend(reports)
                     logger.info(f"Fetched {len(reports)} reports (batch {request_num + 1}, total: {len(all_reports)})")
-                    
+
                     if len(reports) < max_count_per_request:
-                        logger.info(f"Reached end of available reports")
+                        logger.info("Reached end of available reports")
                         break
                 else:
                     response_text = await response.text()
@@ -322,8 +298,10 @@ class Intel471Collector(BaseCollector):
         for report in all_reports:
             doc_type = report.get("documentType", "MISSING")
             doc_type_counts[doc_type] = doc_type_counts.get(doc_type, 0) + 1
-        logger.info(f"DocumentType distribution in {len(all_reports)} reports: {dict(list(doc_type_counts.items())[:20])}")
-        
+        logger.info(
+            f"DocumentType distribution in {len(all_reports)} reports: {dict(list(doc_type_counts.items())[:20])}"
+        )
+
         # Filter for target report types
         # Based on actual API response, documentType values are:
         # - BREACH_REPORT (not BREACH ALERT)
@@ -336,18 +314,18 @@ class Intel471Collector(BaseCollector):
             "SITUATION REPORT",
             "MALWARE_REPORT",
             "MALWARE_CAMPAIGN",  # Actual API value
-            "MALWARE REPORT"  # Keep for backwards compatibility
+            "MALWARE REPORT",  # Keep for backwards compatibility
         }
-        
+
         filtered_threats = []
         for report in all_reports:
             document_type = report.get("documentType", "")
             document_type_upper = document_type.upper()
-            
+
             # Check if this is one of our target types
             is_target_type = False
             threat_type = None
-            
+
             # Exact match first
             if document_type_upper in target_types:
                 is_target_type = True
@@ -379,7 +357,7 @@ class Intel471Collector(BaseCollector):
             elif "MALWARE" in document_type_upper:
                 is_target_type = True
                 threat_type = "MALWARE REPORT"
-            
+
             if is_target_type:
                 # Fetch full report details by UID
                 uid = report.get("uid")
@@ -395,13 +373,14 @@ class Intel471Collector(BaseCollector):
                     threat["threat_type"] = threat_type
                     filtered_threats.append(threat)
 
-        logger.info(f"Retrieved {len(filtered_threats)} reports with full text matching target types (from {len(all_reports)} total reports)")
+        logger.info(
+            f"Retrieved {len(filtered_threats)} reports with full text matching target types (from {len(all_reports)} total reports)"
+        )
         logger.info(f"Breakdown: {self._count_by_type(filtered_threats)}")
-        
+
         return filtered_threats
 
-
-    def _count_by_type(self, threats: List[Dict[str, Any]]) -> str:
+    def _count_by_type(self, threats: list[dict[str, Any]]) -> str:
         """Count threats by type for logging."""
         counts = {}
         for threat in threats:
@@ -416,8 +395,8 @@ class Intel471Collector(BaseCollector):
         start_date: datetime,
         end_date: datetime,
         target_doc_type: str,
-        max_results: int = 100
-    ) -> List[Dict[str, Any]]:
+        max_results: int = 100,
+    ) -> list[dict[str, Any]]:
         """
         Fallback: Fetch all reports and filter by documentType client-side.
 
@@ -435,17 +414,19 @@ class Intel471Collector(BaseCollector):
 
         # Make multiple requests to get more data (API limit is 100 per request)
         max_count_per_request = 100
-        requests_needed = min((max_results + max_count_per_request - 1) // max_count_per_request, 10)  # Cap at 10 requests
+        requests_needed = min(
+            (max_results + max_count_per_request - 1) // max_count_per_request, 10
+        )  # Cap at 10 requests
         all_reports = []
-        
+
         for request_num in range(requests_needed):
             params = {
                 "from": self.format_date_timestamp_ms(start_date),
                 "until": self.format_date_timestamp_ms(end_date),
                 "count": max_count_per_request,  # API max is 100
-                "v": self.API_VERSION
+                "v": self.API_VERSION,
             }
-            
+
             # Try offset if API supports it
             if request_num > 0:
                 params["offset"] = request_num * max_count_per_request
@@ -457,9 +438,9 @@ class Intel471Collector(BaseCollector):
                     data = await response.json()
                     reports = data.get("reports", [])
                     all_reports.extend(reports)
-                    
+
                     logger.info(f"Fetched {len(reports)} reports (request {request_num + 1}) for filtering")
-                    
+
                     # If we got fewer than requested, we've reached the end
                     if len(reports) < max_count_per_request:
                         break
@@ -481,17 +462,15 @@ class Intel471Collector(BaseCollector):
                 threat["threat_type"] = target_doc_type
                 threats.append(threat)
 
-        logger.info(f"Retrieved {len(threats)} {target_doc_type} reports (client-side filtered from {len(all_reports)} total)")
+        logger.info(
+            f"Retrieved {len(threats)} {target_doc_type} reports (client-side filtered from {len(all_reports)} total)"
+        )
 
         return threats
 
     async def _fetch_breach_alerts(
-        self,
-        client: HTTPClient,
-        auth: aiohttp.BasicAuth,
-        start_date: datetime,
-        end_date: datetime
-    ) -> List[Dict[str, Any]]:
+        self, client: HTTPClient, auth: aiohttp.BasicAuth, start_date: datetime, end_date: datetime
+    ) -> list[dict[str, Any]]:
         """
         Fetch breach alerts from Intel471.
 
@@ -516,7 +495,7 @@ class Intel471Collector(BaseCollector):
             "until": self.format_date_timestamp_ms(end_date),
             "count": collector_config.intel471_breach_alerts_limit,
             "v": self.API_VERSION,
-            "documentType": "BREACH ALERT"  # Filter for breach alerts specifically
+            "documentType": "BREACH ALERT",  # Filter for breach alerts specifically
         }
 
         threats = []
@@ -561,12 +540,8 @@ class Intel471Collector(BaseCollector):
         return threats
 
     async def _fetch_breach_alerts_from_reports(
-        self,
-        client: HTTPClient,
-        auth: aiohttp.BasicAuth,
-        start_date: datetime,
-        end_date: datetime
-    ) -> List[Dict[str, Any]]:
+        self, client: HTTPClient, auth: aiohttp.BasicAuth, start_date: datetime, end_date: datetime
+    ) -> list[dict[str, Any]]:
         """
         Fallback method to fetch breach alerts from reports endpoint.
 
@@ -590,7 +565,7 @@ class Intel471Collector(BaseCollector):
             "until": self.format_date_timestamp_ms(end_date),
             "count": collector_config.intel471_breach_alerts_limit,
             "v": self.API_VERSION,
-            "documentType": "BREACH ALERT"
+            "documentType": "BREACH ALERT",
         }
 
         threats = []
@@ -609,7 +584,7 @@ class Intel471Collector(BaseCollector):
                     "from": self.format_date_timestamp_ms(start_date),
                     "until": self.format_date_timestamp_ms(end_date),
                     "count": collector_config.intel471_breach_alerts_limit * 2,  # Fetch more to account for filtering
-                    "v": self.API_VERSION
+                    "v": self.API_VERSION,
                 }
                 response = await client.get_raw_response(reports_url, auth=auth, params=params_no_filter)
                 if response.status == 200:
@@ -628,9 +603,9 @@ class Intel471Collector(BaseCollector):
 
                 # Check if this is a breach alert
                 is_breach = (
-                    "BREACH" in document_type or
-                    "breach" in subject or
-                    any("breach" in str(tag).lower() for tag in tags)
+                    "BREACH" in document_type
+                    or "breach" in subject
+                    or any("breach" in str(tag).lower() for tag in tags)
                 )
 
                 if is_breach:
@@ -648,12 +623,8 @@ class Intel471Collector(BaseCollector):
         return threats
 
     async def _fetch_indicators(
-        self,
-        client: HTTPClient,
-        auth: aiohttp.BasicAuth,
-        start_date: datetime,
-        end_date: datetime
-    ) -> List[Dict[str, Any]]:
+        self, client: HTTPClient, auth: aiohttp.BasicAuth, start_date: datetime, end_date: datetime
+    ) -> list[dict[str, Any]]:
         """
         Fetch threat indicators from Intel471 using the /indicators/stream endpoint.
 
@@ -673,7 +644,7 @@ class Intel471Collector(BaseCollector):
             "from": self.format_date_timestamp_ms(start_date),
             "until": self.format_date_timestamp_ms(end_date),
             "count": collector_config.intel471_indicators_limit,
-            "v": self.API_VERSION
+            "v": self.API_VERSION,
         }
 
         threats = []
@@ -686,7 +657,7 @@ class Intel471Collector(BaseCollector):
 
                 # Try multiple possible response keys
                 indicators = data.get("indicators", data.get("data", []))
-                
+
                 for indicator in indicators:
                     threat = self._parse_indicator(indicator)
                     threats.append(threat)
@@ -707,21 +678,17 @@ class Intel471Collector(BaseCollector):
         return threats
 
     async def _fetch_indicators_fallback(
-        self,
-        client: HTTPClient,
-        auth: aiohttp.BasicAuth,
-        start_date: datetime,
-        end_date: datetime
-    ) -> List[Dict[str, Any]]:
+        self, client: HTTPClient, auth: aiohttp.BasicAuth, start_date: datetime, end_date: datetime
+    ) -> list[dict[str, Any]]:
         """
         Fallback method to fetch indicators from the /indicators endpoint.
-        
+
         Args:
             client: HTTP client
             auth: Basic auth credentials
             start_date: Start of date range
             end_date: End of date range
-            
+
         Returns:
             List of indicator dictionaries
         """
@@ -731,7 +698,7 @@ class Intel471Collector(BaseCollector):
             "from": self.format_date_timestamp_ms(start_date),
             "until": self.format_date_timestamp_ms(end_date),
             "count": collector_config.intel471_indicators_limit,
-            "v": self.API_VERSION
+            "v": self.API_VERSION,
         }
 
         threats = []
@@ -756,7 +723,7 @@ class Intel471Collector(BaseCollector):
 
         return threats
 
-    def _parse_report(self, report: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_report(self, report: dict[str, Any]) -> dict[str, Any]:
         """
         Parse Intel471 report into standardized format.
 
@@ -786,21 +753,18 @@ class Intel471Collector(BaseCollector):
 
         # Map admiralty code to confidence level
         admiralty = report.get("admiraltyCode", "")
-        confidence = ADMIRALTY_CONFIDENCE_MAP.get(
-            admiralty[:1] if admiralty else "",
-            "Medium"
-        )
+        confidence = ADMIRALTY_CONFIDENCE_MAP.get(admiralty[:1] if admiralty else "", "Medium")
 
         # Extract report body text - Intel471 may have various field names
         # Common fields: rawText, executiveSummary, rawTextTranslated, researcherComments
         # These fields contain HTML that needs to be stripped
         report_body_html = (
-            report.get("executiveSummary") or  # Prefer executive summary (shorter, more relevant)
-            report.get("rawText") or 
-            report.get("rawTextTranslated") or 
-            ""
+            report.get("executiveSummary")  # Prefer executive summary (shorter, more relevant)
+            or report.get("rawText")
+            or report.get("rawTextTranslated")
+            or ""
         )
-        
+
         # Strip HTML tags and clean the text
         report_body_clean = self._strip_html(report_body_html) if report_body_html else ""
 
@@ -815,10 +779,10 @@ class Intel471Collector(BaseCollector):
             "tags": report.get("tags", []),
             "motivation": report.get("motivation", []),
             "portal_url": report.get("portalReportUrl", ""),
-            "uid": report.get("uid", "")
+            "uid": report.get("uid", ""),
         }
 
-    def _parse_indicator(self, indicator: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_indicator(self, indicator: dict[str, Any]) -> dict[str, Any]:
         """
         Parse Intel471 indicator into standardized format.
 
@@ -858,14 +822,10 @@ class Intel471Collector(BaseCollector):
             "summary": f"{indicator_type.upper()}: {value}",
             "date": last_updated_date,
             "mitre_tactics": indicator_data.get("mitre_tactics", ""),
-            "indicator_uid": indicator.get("uid", "")
+            "indicator_uid": indicator.get("uid", ""),
         }
 
-    def _extract_indicator_value(
-        self,
-        indicator_type: str,
-        indicator_values: Dict[str, Any]
-    ) -> str:
+    def _extract_indicator_value(self, indicator_type: str, indicator_values: dict[str, Any]) -> str:
         """
         Extract indicator value based on type.
 
@@ -876,12 +836,7 @@ class Intel471Collector(BaseCollector):
         Returns:
             Extracted indicator value
         """
-        type_to_field = {
-            "url": "url",
-            "file": ["md5", "sha256"],
-            "ipv4": "ipv4",
-            "domain": "domain"
-        }
+        type_to_field = {"url": "url", "file": ["md5", "sha256"], "ipv4": "ipv4", "domain": "domain"}
 
         field = type_to_field.get(indicator_type)
 
@@ -901,30 +856,30 @@ class Intel471Collector(BaseCollector):
         """
         Remove HTML tags from text.
         Intel471 returns HTML-formatted content that needs to be cleaned.
-        
+
         Args:
             text: HTML text
-            
+
         Returns:
             Plain text with HTML tags removed
         """
         if not text:
             return ""
-        
+
         # Remove HTML tags
-        text = re.sub(r'<[^>]+>', '', text)
-        
+        text = re.sub(r"<[^>]+>", "", text)
+
         # Decode common HTML entities
-        text = text.replace('&nbsp;', ' ')
-        text = text.replace('&amp;', '&')
-        text = text.replace('&lt;', '<')
-        text = text.replace('&gt;', '>')
-        text = text.replace('&quot;', '"')
-        text = text.replace('&#39;', "'")
-        text = text.replace('&mdash;', '—')
-        text = text.replace('&ndash;', '–')
-        
+        text = text.replace("&nbsp;", " ")
+        text = text.replace("&amp;", "&")
+        text = text.replace("&lt;", "<")
+        text = text.replace("&gt;", ">")
+        text = text.replace("&quot;", '"')
+        text = text.replace("&#39;", "'")
+        text = text.replace("&mdash;", "—")
+        text = text.replace("&ndash;", "–")
+
         # Remove excessive whitespace
-        text = re.sub(r'\s+', ' ', text)
-        
+        text = re.sub(r"\s+", " ", text)
+
         return text.strip()

@@ -14,6 +14,7 @@ Use the spec to:
   Vulnerability Exposure table, Sector Threat Activity, Exploitation Indicators, Recommended Actions, footer.
 - Match table styling: header row shading, cell shading_hex, and run-level formatting in cells.
 """
+
 from __future__ import annotations
 
 import json
@@ -178,17 +179,11 @@ def extract_template_spec(docx_path: Path) -> dict:
         tag = element.tag
         if qn("w:p") in tag or tag.endswith("}p"):
             if para_idx < len(doc.paragraphs):
-                body_ordered.append({
-                    "type": "paragraph",
-                    "content": _serialize_paragraph(doc.paragraphs[para_idx])
-                })
+                body_ordered.append({"type": "paragraph", "content": _serialize_paragraph(doc.paragraphs[para_idx])})
                 para_idx += 1
         elif qn("w:tbl") in tag or tag.endswith("}tbl"):
             if tbl_idx < len(doc.tables):
-                body_ordered.append({
-                    "type": "table",
-                    "content": _serialize_table(doc.tables[tbl_idx])
-                })
+                body_ordered.append({"type": "table", "content": _serialize_table(doc.tables[tbl_idx])})
                 tbl_idx += 1
 
     # Prefer body_ordered; if it undercounts, fall back to body

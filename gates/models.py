@@ -5,6 +5,7 @@ how Tier 1 and Tier 2 data stay in separate lanes through Gates 2 and 3, and
 how the OSINT corroboration vs Open Signals split is enforced structurally
 rather than by convention.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

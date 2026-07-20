@@ -3,8 +3,9 @@ Rapid7 collector.
 
 Fetches vulnerability data from Rapid7 InsightVM Cloud API V4.
 """
+
 import logging
-from typing import List, Dict, Any
+from typing import Any
 
 from src.collectors.base import BaseCollector
 from src.collectors.http_utils import HTTPClient, NonRetryableHTTPError
@@ -33,7 +34,7 @@ class Rapid7Collector(BaseCollector):
         "HIGH": "Severe",
         "MODERATE": "Moderate",
         "MEDIUM": "Moderate",
-        "LOW": "Low"
+        "LOW": "Low",
     }
 
     @property
@@ -56,12 +57,7 @@ class Rapid7Collector(BaseCollector):
 
         if not api_key:
             logger.warning("Rapid7 API key not provided, skipping")
-            return CollectorResult(
-                source=self.source_name,
-                success=True,
-                data=[],
-                record_count=0
-            )
+            return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
 
         logger.info(f"Fetching data from Rapid7 InsightVM Cloud API (region: {region})")
 
@@ -69,11 +65,7 @@ class Rapid7Collector(BaseCollector):
             # Build base URL for the specified region
             base_url = f"https://{region}.api.insight.rapid7.com"
 
-            headers = {
-                "X-Api-Key": api_key,
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            }
+            headers = {"X-Api-Key": api_key, "Content-Type": "application/json", "Accept": "application/json"}
 
             async with HTTPClient() as client:
                 summary = await self._fetch_vulnerabilities(client, base_url, headers)
@@ -83,48 +75,30 @@ class Rapid7Collector(BaseCollector):
                     source=self.source_name,
                     success=True,
                     data=[summary],
-                    record_count=summary.get("critical_severe_count", 0)
+                    record_count=summary.get("critical_severe_count", 0),
                 )
             else:
-                return CollectorResult(
-                    source=self.source_name,
-                    success=True,
-                    data=[],
-                    record_count=0
-                )
+                return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
 
         except NonRetryableHTTPError as e:
             logger.error(f"Rapid7 API error: {e}")
-            return CollectorResult(
-                source=self.source_name,
-                success=False,
-                error=str(e),
-                record_count=0
-            )
+            return CollectorResult(source=self.source_name, success=False, error=str(e), record_count=0)
         except Exception as e:
             logger.error(f"Error fetching Rapid7 data: {e}", exc_info=True)
-            return CollectorResult(
-                source=self.source_name,
-                success=False,
-                error=str(e),
-                record_count=0
-            )
+            return CollectorResult(source=self.source_name, success=False, error=str(e), record_count=0)
 
     async def _fetch_vulnerabilities(
-        self,
-        client: HTTPClient,
-        base_url: str,
-        headers: Dict[str, str]
-    ) -> Dict[str, Any]:
+        self, client: HTTPClient, base_url: str, headers: dict[str, str]
+    ) -> dict[str, Any]:
         """
         Fetch vulnerabilities from Rapid7.
-        
+
         NOTE: The Integration API v4 (/vm/v4/integration/vulnerabilities) returns
         vulnerability DEFINITIONS from Rapid7's database, but does NOT include
         asset counts from YOUR environment. To get actual exposure data (how many
         servers/endpoints are affected), you need to use the Rapid7 API v3
         (Security Console API) endpoints for vulnerability findings or scan data.
-        
+
         See: https://help.rapid7.com/insightvm/en-us/api/index.html
 
         Args:
@@ -142,26 +116,16 @@ class Rapid7Collector(BaseCollector):
         thirty_days_ago = start_date.strftime("%Y-%m-%dT00:00:00Z")
 
         # Request body with search criteria
-        request_body = {
-            "vulnerability": f"modified > {thirty_days_ago}"
-        }
+        request_body = {"vulnerability": f"modified > {thirty_days_ago}"}
 
         # Query parameters for pagination
-        params = {
-            "size": collector_config.rapid7_max_results,
-            "sort": "severity,DESC"
-        }
+        params = {"size": collector_config.rapid7_max_results, "sort": "severity,DESC"}
 
         logger.info(f"Fetching vulnerabilities from: {vuln_url}")
         logger.info(f"Request body: {request_body}")
 
         try:
-            response = await client.post_raw_response(
-                vuln_url,
-                headers=headers,
-                json_data=request_body,
-                params=params
-            )
+            response = await client.post_raw_response(vuln_url, headers=headers, json_data=request_body, params=params)
 
             if response.status == 200:
                 data = await response.json()
@@ -191,7 +155,7 @@ class Rapid7Collector(BaseCollector):
 
         return {}
 
-    def _process_vulnerabilities(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _process_vulnerabilities(self, data: dict[str, Any]) -> dict[str, Any]:
         """
         Process Rapid7 vulnerability data into summary format.
 
@@ -241,43 +205,44 @@ class Rapid7Collector(BaseCollector):
 
             # Affected asset count (servers/endpoints) for Exposure column in reports
             _raw = vuln.get("affectedAssetCount") or vuln.get("assetCount") or vuln.get("affected_assets")
-            
+
             # Debug: log all possible asset count fields
             if not _raw:
-                logger.debug(f"Asset count fields for {vuln.get('id')}: "
-                           f"affectedAssetCount={vuln.get('affectedAssetCount')}, "
-                           f"assetCount={vuln.get('assetCount')}, "
-                           f"affected_assets={vuln.get('affected_assets')}, "
-                           f"all keys: {list(vuln.keys())}")
-            
+                logger.debug(
+                    f"Asset count fields for {vuln.get('id')}: "
+                    f"affectedAssetCount={vuln.get('affectedAssetCount')}, "
+                    f"assetCount={vuln.get('assetCount')}, "
+                    f"affected_assets={vuln.get('affected_assets')}, "
+                    f"all keys: {list(vuln.keys())}"
+                )
+
             try:
                 asset_count = int(_raw) if _raw is not None else None
             except (TypeError, ValueError):
                 asset_count = None
 
-            vulnerabilities.append({
-                "source": self.source_name,
-                "vulnerability_id": vuln.get("id", ""),
-                "title": vuln.get("title", ""),
-                "description": description_text,
-                "severity": normalized_severity,
-                "cvss_score": cvss_score,
-                "cve_ids": cve_ids,
-                "exploitable": exploits_count > 0 or malware_kits_count > 0,
-                "exploits_count": exploits_count,
-                "malware_kits_count": malware_kits_count,
-                "published": vuln.get("published", ""),
-                "modified": vuln.get("modified", ""),
-                "risk_score": vuln.get("riskScore", 0),
-                "categories": vuln.get("categories", []),
-                "asset_count": asset_count,
-            })
+            vulnerabilities.append(
+                {
+                    "source": self.source_name,
+                    "vulnerability_id": vuln.get("id", ""),
+                    "title": vuln.get("title", ""),
+                    "description": description_text,
+                    "severity": normalized_severity,
+                    "cvss_score": cvss_score,
+                    "cve_ids": cve_ids,
+                    "exploitable": exploits_count > 0 or malware_kits_count > 0,
+                    "exploits_count": exploits_count,
+                    "malware_kits_count": malware_kits_count,
+                    "published": vuln.get("published", ""),
+                    "modified": vuln.get("modified", ""),
+                    "risk_score": vuln.get("riskScore", 0),
+                    "categories": vuln.get("categories", []),
+                    "asset_count": asset_count,
+                }
+            )
 
         # Sort by CVSS score descending
-        vulnerabilities.sort(
-            key=lambda x: (x.get("cvss_score", 0), x.get("exploitable", False)),
-            reverse=True
-        )
+        vulnerabilities.sort(key=lambda x: (x.get("cvss_score", 0), x.get("exploitable", False)), reverse=True)
 
         # Build summary
         summary = {
@@ -289,7 +254,7 @@ class Rapid7Collector(BaseCollector):
             "critical_count": sum(1 for v in vulnerabilities if v["severity"] == "Critical"),
             "severe_count": sum(1 for v in vulnerabilities if v["severity"] == "Severe"),
             "exploitable_count": sum(1 for v in vulnerabilities if v.get("exploitable", False)),
-            "top_vulnerabilities": vulnerabilities[:25]
+            "top_vulnerabilities": vulnerabilities[:25],
         }
 
         logger.info(f"Processed {len(vulnerabilities)} Critical/Severe vulnerabilities")

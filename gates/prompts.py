@@ -4,6 +4,7 @@ All prompt strings live here. No gate module defines a prompt inline. The
 gate prompt templates use Python str.format() placeholders ({field_name})
 and the structure mirrors the language in CURSOR_CTI_REPORTING.md exactly.
 """
+
 from __future__ import annotations
 
 # --- Base system prompt (temperature controls, applied to every gate) ---

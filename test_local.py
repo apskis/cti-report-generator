@@ -24,65 +24,60 @@ Usage:
     # Specify output directory for local generation
     python test_local.py weekly --local --mock --output ./reports
 """
+
 import argparse
 import asyncio
 import json
 import logging
-import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 # Add colorama for colored console output
 try:
-    from colorama import init, Fore, Style
+    from colorama import Fore, Style, init
+
     init(autoreset=True)
     COLORS_ENABLED = True
 except ImportError:
     # Fallback if colorama not installed
     class Fore:
         GREEN = CYAN = YELLOW = RED = MAGENTA = BLUE = WHITE = ""
+
     class Style:
         BRIGHT = RESET_ALL = ""
+
     COLORS_ENABLED = False
 
 # Configure logging - will be set based on --debug flag
 logger = logging.getLogger(__name__)
 
+
 def configure_logging(debug_mode: bool = False):
     """Configure logging based on debug mode."""
     if debug_mode:
         # Debug mode: show detailed logs
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(levelname)s - %(name)s - %(message)s',
-            force=True
-        )
-        logging.getLogger('src.collectors').setLevel(logging.DEBUG)
-        logging.getLogger('src.enrichment').setLevel(logging.DEBUG)
-        logging.getLogger('src.agents').setLevel(logging.DEBUG)
-        logging.getLogger('src.reports').setLevel(logging.DEBUG)
-        logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(logging.WARNING)
-        logging.getLogger('azure.identity').setLevel(logging.WARNING)
-        logging.getLogger('httpx').setLevel(logging.WARNING)
-        logging.getLogger('semantic_kernel').setLevel(logging.INFO)
-        logging.getLogger('azure').setLevel(logging.WARNING)
+        logging.basicConfig(level=logging.DEBUG, format="%(levelname)s - %(name)s - %(message)s", force=True)
+        logging.getLogger("src.collectors").setLevel(logging.DEBUG)
+        logging.getLogger("src.enrichment").setLevel(logging.DEBUG)
+        logging.getLogger("src.agents").setLevel(logging.DEBUG)
+        logging.getLogger("src.reports").setLevel(logging.DEBUG)
+        logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
+        logging.getLogger("azure.identity").setLevel(logging.WARNING)
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("semantic_kernel").setLevel(logging.INFO)
+        logging.getLogger("azure").setLevel(logging.WARNING)
     else:
         # Clean mode: only show clean status messages and errors
-        logging.basicConfig(
-            level=logging.ERROR,
-            format='%(message)s',
-            force=True
-        )
-        logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(logging.ERROR)
-        logging.getLogger('azure.identity').setLevel(logging.ERROR)
-        logging.getLogger('httpx').setLevel(logging.ERROR)
-        logging.getLogger('semantic_kernel').setLevel(logging.ERROR)
-        logging.getLogger('azure').setLevel(logging.ERROR)
-        logging.getLogger('src.collectors').setLevel(logging.ERROR)
-        logging.getLogger('src.enrichment').setLevel(logging.ERROR)
-        logging.getLogger('src.agents').setLevel(logging.ERROR)
-        logging.getLogger('src.reports').setLevel(logging.ERROR)
+        logging.basicConfig(level=logging.ERROR, format="%(message)s", force=True)
+        logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.ERROR)
+        logging.getLogger("azure.identity").setLevel(logging.ERROR)
+        logging.getLogger("httpx").setLevel(logging.ERROR)
+        logging.getLogger("semantic_kernel").setLevel(logging.ERROR)
+        logging.getLogger("azure").setLevel(logging.ERROR)
+        logging.getLogger("src.collectors").setLevel(logging.ERROR)
+        logging.getLogger("src.enrichment").setLevel(logging.ERROR)
+        logging.getLogger("src.agents").setLevel(logging.ERROR)
+        logging.getLogger("src.reports").setLevel(logging.ERROR)
 
 
 def print_status(message: str, status: str = "info"):
@@ -109,7 +104,7 @@ def print_status(message: str, status: str = "info"):
         # Fallback for terminals that don't support Unicode
         fallback_icons = {"info": "[i]", "success": "[✓]", "error": "[x]", "warning": "[!]", "progress": "[>]"}
         icon_fallback = fallback_icons.get(status, "[*]")
-        print(f"{color}{icon_fallback} {message}{Style.RESET_ALL}".encode('ascii', 'ignore').decode('ascii'))
+        print(f"{color}{icon_fallback} {message}{Style.RESET_ALL}".encode("ascii", "ignore").decode("ascii"))
 
 
 def print_header(title: str):
@@ -120,7 +115,7 @@ def print_header(title: str):
         print(f"{'=' * 60}{Style.RESET_ALL}")
     except UnicodeEncodeError:
         # Fallback for terminals that don't support Unicode
-        safe_title = title.encode('ascii', 'ignore').decode('ascii')
+        safe_title = title.encode("ascii", "ignore").decode("ascii")
         print(f"\n{Fore.MAGENTA}{Style.BRIGHT}{'=' * 60}")
         print(f"{safe_title}")
         print(f"{'=' * 60}{Style.RESET_ALL}")
@@ -132,19 +127,20 @@ def print_section(title: str):
         print(f"\n{Fore.CYAN}{Style.BRIGHT}{title}{Style.RESET_ALL}")
     except UnicodeEncodeError:
         # Fallback for terminals that don't support Unicode
-        safe_title = title.encode('ascii', 'ignore').decode('ascii')
+        safe_title = title.encode("ascii", "ignore").decode("ascii")
         print(f"\n{Fore.CYAN}{Style.BRIGHT}{safe_title}{Style.RESET_ALL}")
 
 
 def _gate_framework_enabled() -> bool:
     """Check if the gate framework feature flag is enabled."""
     from src.core.config import get_feature_config
+
     return get_feature_config().gate_framework_enabled
 
 
 def _print_gate_summary(session: dict, gate_info: dict, report_type: str) -> None:
     """Print a summary of gate framework execution.
-    
+
     Args:
         session: Orchestrator session dict mapping gate_id -> GateResult
         gate_info: Info dict returned by run_gate_framework_over_collected_data
@@ -155,7 +151,7 @@ def _print_gate_summary(session: dict, gate_info: dict, report_type: str) -> Non
         print(f"{Fore.CYAN}{Style.BRIGHT}── Gate Framework Summary {'─' * 30}{Style.RESET_ALL}")
     except UnicodeEncodeError:
         print(f"{Fore.CYAN}{Style.BRIGHT}-- Gate Framework Summary {'-' * 30}{Style.RESET_ALL}")
-    
+
     # Gate names for display
     gate_names = {
         "1": "Tier 1 Source Inventory",
@@ -171,19 +167,19 @@ def _print_gate_summary(session: dict, gate_info: dict, report_type: str) -> Non
         "1D": "Source Attribution",
         "6": "Adversarial Review",
     }
-    
+
     # Gate sequences per report type
     gate_sequences = {
         "weekly": ["1", "1A", "1B", "2", "3", "4", "5", "6"],
         "quarterly": ["1", "1A", "1B", "2", "3", "4", "5", "1F", "1E", "1C", "1D", "6"],
     }
     sequence = gate_sequences.get(report_type.lower(), gate_sequences["weekly"])
-    
+
     for gate_id in sequence:
         if gate_id in session:
             result = session[gate_id]
             status_display = result.status
-            
+
             # Color-code the status
             if status_display in {"COMPLETE", "PASS"}:
                 color = Fore.GREEN
@@ -193,13 +189,13 @@ def _print_gate_summary(session: dict, gate_info: dict, report_type: str) -> Non
                 color = Fore.YELLOW
             else:
                 color = Fore.WHITE
-            
+
             gate_name = gate_names.get(gate_id, f"Gate {gate_id}")
             print(f"Gate {gate_id:<3} ({gate_name:<30}): {color}{status_display}{Style.RESET_ALL}")
         else:
             gate_name = gate_names.get(gate_id, f"Gate {gate_id}")
             print(f"Gate {gate_id:<3} ({gate_name:<30}): {Fore.WHITE}NOT RUN{Style.RESET_ALL}")
-    
+
     # Print Track A/B findings if Gate 6 ran
     if "6" in session:
         track_a = gate_info.get("track_a", [])
@@ -208,14 +204,13 @@ def _print_gate_summary(session: dict, gate_info: dict, report_type: str) -> Non
         if track_a:
             for i, finding in enumerate(track_a, 1):
                 print(f"  {Fore.RED}[A{i}]{Style.RESET_ALL} {finding}")
-        
+
         print(f"Track B findings: {len(track_b)}")
         if track_b:
             for i, finding in enumerate(track_b, 1):
                 print(f"  {Fore.YELLOW}[B{i}]{Style.RESET_ALL} {finding}")
-    
-    print()
 
+    print()
 
 
 def get_mock_weekly_analysis() -> dict:
@@ -243,7 +238,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "in_cisa_kev": True,
                 "targeted_by_actors": "APT41",
                 "exploited_by": "CISA KEV; Underground forums (Intel471)",
-                "source_citations": ["NVD", "CISA KEV", "Intel471"]
+                "source_citations": ["NVD", "CISA KEV", "Intel471"],
             },
             {
                 "cve_id": "CVE-2026-0713",
@@ -253,7 +248,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "actively_exploited": True,
                 "in_cisa_kev": True,
                 "targeted_by_actors": "Ransomware groups",
-                "exploited_by": "CISA KEV; Ransomware campaigns"
+                "exploited_by": "CISA KEV; Ransomware campaigns",
             },
             {
                 "cve_id": "CVE-2025-98213",
@@ -264,7 +259,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "in_cisa_kev": False,
                 "targeted_by_actors": "APT29",
                 "exploited_by": "APT29 (CrowdStrike)",
-                "source_citations": ["NVD", "CrowdStrike"]
+                "source_citations": ["NVD", "CrowdStrike"],
             },
             {
                 "cve_id": "CVE-2025-12345",
@@ -274,7 +269,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "actively_exploited": True,
                 "in_cisa_kev": True,
                 "targeted_by_actors": "",
-                "exploited_by": "CISA KEV"
+                "exploited_by": "CISA KEV",
             },
             {
                 "cve_id": "CVE-2026-22908",
@@ -284,7 +279,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "actively_exploited": True,
                 "in_cisa_kev": False,
                 "targeted_by_actors": "",
-                "exploited_by": "Active exploitation (OSINT)"
+                "exploited_by": "Active exploitation (OSINT)",
             },
             {
                 "cve_id": "CVE-2024-5678",
@@ -294,7 +289,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "actively_exploited": True,
                 "in_cisa_kev": True,
                 "targeted_by_actors": "Multiple APT groups",
-                "exploited_by": "CISA KEV; Ransomware groups"
+                "exploited_by": "CISA KEV; Ransomware groups",
             },
             {
                 "cve_id": "CVE-2024-9999",
@@ -304,7 +299,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "actively_exploited": True,
                 "in_cisa_kev": False,
                 "targeted_by_actors": "",
-                "exploited_by": "Underground exploit sales (Intel471)"
+                "exploited_by": "Underground exploit sales (Intel471)",
             },
             {
                 "cve_id": "CVE-2025-11111",
@@ -314,7 +309,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "actively_exploited": True,
                 "in_cisa_kev": True,
                 "targeted_by_actors": "APT41",
-                "exploited_by": "CISA KEV"
+                "exploited_by": "CISA KEV",
             },
         ],
         "apt_activity": [
@@ -323,24 +318,32 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "country": "China",
                 "motivation": "Espionage / Financial",
                 "activity": "Targeting pharmaceutical supply chains via compromised software updates",
-                "ttps": ["Initial Access: Software Supply Chain", "Execution: PowerShell", "Persistence: Registry Modification"],
+                "ttps": [
+                    "Initial Access: Software Supply Chain",
+                    "Execution: PowerShell",
+                    "Persistence: Registry Modification",
+                ],
                 "what_to_monitor": "Software update anomalies; unexpected binary modifications; connections to Asia-Pacific IPs",
                 "intel471_activity": "Intel471 Report 4a5b6c7d: APT41 selling access to pharmaceutical networks on underground forum",
                 "intel471_report_uid": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
                 "crowdstrike_activity": "CrowdStrike detected APT41 targeting FortiOS and Grafana vulnerabilities",
-                "source_citations": ["Intel471", "CrowdStrike"]
+                "source_citations": ["Intel471", "CrowdStrike"],
             },
             {
                 "actor": "Lazarus Group",
                 "country": "North Korea",
                 "motivation": "Financial / Espionage",
                 "activity": "LinkedIn-based social engineering targeting biotech researchers",
-                "ttps": ["Initial Access: Spearphishing", "Execution: User Execution", "Persistence: Boot/Logon Autostart"],
+                "ttps": [
+                    "Initial Access: Spearphishing",
+                    "Execution: User Execution",
+                    "Persistence: Boot/Logon Autostart",
+                ],
                 "what_to_monitor": "Suspicious LinkedIn outreach to research staff; unusual file downloads from cloud storage",
                 "intel471_activity": "",
                 "intel471_report_uid": "",
                 "crowdstrike_activity": "CrowdStrike observed Lazarus Group phishing campaigns targeting life sciences sector",
-                "source_citations": ["CrowdStrike"]
+                "source_citations": ["CrowdStrike"],
             },
             {
                 "actor": "LockBit Affiliates",
@@ -352,7 +355,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "intel471_activity": "Intel471 Report 9z8y7x6w: LockBit affiliates advertising access to biotech companies",
                 "intel471_report_uid": "9z8y7x6w-5v4u-3t2s-1r0q-ponmlkjihgfe",
                 "crowdstrike_activity": "",
-                "source_citations": ["Intel471"]
+                "source_citations": ["Intel471"],
             },
         ],
         "active_campaigns": [
@@ -363,7 +366,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "targets": "Pharmaceutical manufacturers and biotech research firms",
                 "ttps": ["Software Supply Chain", "Credential Access", "Data Exfiltration"],
                 "timeline": "May 2026 - Present",
-                "sources": ["Intel471", "CrowdStrike"]
+                "sources": ["Intel471", "CrowdStrike"],
             },
             {
                 "campaign_name": "BioSpear Campaign",
@@ -372,7 +375,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "targets": "Life sciences researchers and executives",
                 "ttps": ["Spearphishing", "LinkedIn Social Engineering", "Malware Delivery"],
                 "timeline": "April - May 2026",
-                "sources": ["CrowdStrike"]
+                "sources": ["CrowdStrike"],
             },
         ],
         "recommendations": [
@@ -388,35 +391,35 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "incident_type": "Ransomware",
                 "date": "2026-05-25",
                 "source": "BleepingComputer",
-                "osint_citation_number": 1
+                "osint_citation_number": 1,
             },
             {
                 "organization": "McKesson Corporation",
                 "incident_type": "Data Exfiltration",
                 "date": "2026-05-23",
                 "source": "SecurityWeek",
-                "osint_citation_number": 2
+                "osint_citation_number": 2,
             },
             {
                 "organization": "Kaiser Permanente",
                 "incident_type": "Ransomware",
                 "date": "2026-05-22",
                 "source": "Healthcare IT News",
-                "osint_citation_number": 5
+                "osint_citation_number": 5,
             },
             {
                 "organization": "IQVIA Inc.",
                 "incident_type": "Credential Harvesting",
                 "date": "2026-05-20",
                 "source": "Dark Reading",
-                "osint_citation_number": 4
+                "osint_citation_number": 4,
             },
             {
                 "organization": "Medtronic plc",
                 "incident_type": "Remote Code Execution",
                 "date": "2026-05-19",
                 "source": "SecurityWeek",
-                "osint_citation_number": 2
+                "osint_citation_number": 2,
             },
         ],
         "osint_sources_used": [
@@ -426,7 +429,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "source": "BleepingComputer",
                 "relevance": "Peer incident showing ransomware targeting of biotech sector",
                 "date": "2026-05-25",
-                "citation_number": 1
+                "citation_number": 1,
             },
             {
                 "title": "Supply Chain Vendor Data Breach Affects Healthcare",
@@ -434,7 +437,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "source": "SecurityWeek",
                 "relevance": "Third-party breach affecting pharmaceutical supply chain",
                 "date": "2026-05-23",
-                "citation_number": 2
+                "citation_number": 2,
             },
             {
                 "title": "Grafana Authentication Bypass Exploited in Wild",
@@ -442,7 +445,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "source": "The Hacker News",
                 "relevance": "Confirms active exploitation of CVE-2026-22907",
                 "date": "2026-05-24",
-                "citation_number": 3
+                "citation_number": 3,
             },
             {
                 "title": "APT41 Targets Pharmaceutical Companies",
@@ -450,7 +453,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "source": "Dark Reading",
                 "relevance": "Intelligence on APT41 campaigns against pharmaceutical sector",
                 "date": "2026-05-26",
-                "citation_number": 4
+                "citation_number": 4,
             },
             {
                 "title": "Healthcare Company Hit by LockBit Ransomware",
@@ -458,7 +461,7 @@ Industry peer incidents this week include ransomware attacks against BioNTech [1
                 "source": "Healthcare IT News",
                 "relevance": "Peer incident showing LockBit targeting of healthcare sector",
                 "date": "2026-05-22",
-                "citation_number": 5
+                "citation_number": 5,
             },
         ],
     }
@@ -482,7 +485,7 @@ No direct threats to the organization were identified this quarter; however, the
             "supply_chain": "MEDIUM",
             "supply_chain_trend": "Unchanged",
             "insider": "LOW",
-            "insider_trend": "Unchanged"
+            "insider_trend": "Unchanged",
         },
         "breach_landscape": {
             "scope_note": "Analysis based on publicly disclosed incidents affecting life sciences, pharmaceutical, and precision manufacturing organizations during Q1 2026.",
@@ -494,39 +497,69 @@ No direct threats to the organization were identified this quarter; however, the
                     "label": "Total Incidents",
                     "prior_label": "Prior Quarter",
                     "prior_value": "36",
-                    "change_pct": "+30%"
+                    "change_pct": "+30%",
                 },
                 {
                     "value": "$127M",
                     "label": "Est. Impact",
                     "prior_label": "Prior Quarter",
                     "prior_value": "$89M",
-                    "change_pct": "+43%"
+                    "change_pct": "+43%",
                 },
                 {
                     "value": "18",
                     "label": "Ransomware",
                     "prior_label": "Prior Quarter",
                     "prior_value": "12",
-                    "change_pct": "+50%"
+                    "change_pct": "+50%",
                 },
                 {
                     "value": "4.2M",
                     "label": "Records Exposed",
                     "prior_label": "Prior Quarter",
                     "prior_value": "2.8M",
-                    "change_pct": "+50%"
-                }
+                    "change_pct": "+50%",
+                },
             ],
             "incidents_by_type": [
-                {"type": "Ransomware", "current_count": "18", "prior_count": "12", "notable_example": "Covenant Health: 12-day production halt, FDA notification for 480K patient records"},
-                {"type": "Data Theft / Exfiltration", "current_count": "11", "prior_count": "9", "notable_example": "Memorial Sloan Kettering: 2.3M patient samples accessed via vendor breach"},
-                {"type": "Manufacturing / OT Disruption", "current_count": "5", "prior_count": "3", "notable_example": "Medtronic supplier: assembly line shutdown, 8-day recovery period"},
-                {"type": "Business Email Compromise", "current_count": "6", "prior_count": "5", "notable_example": "Pharmaceutical CRO: $3.8M fraudulent wire transfers over 3-week period"},
-                {"type": "Third-Party / Vendor", "current_count": "4", "prior_count": "4", "notable_example": "LabCorp vendor: credentials exposed for 200+ clinical laboratory customers"},
-                {"type": "Unauthorized Access", "current_count": "3", "prior_count": "3", "notable_example": "Regeneron: former employee accessed IP repository post-termination"},
+                {
+                    "type": "Ransomware",
+                    "current_count": "18",
+                    "prior_count": "12",
+                    "notable_example": "Covenant Health: 12-day production halt, FDA notification for 480K patient records",
+                },
+                {
+                    "type": "Data Theft / Exfiltration",
+                    "current_count": "11",
+                    "prior_count": "9",
+                    "notable_example": "Memorial Sloan Kettering: 2.3M patient samples accessed via vendor breach",
+                },
+                {
+                    "type": "Manufacturing / OT Disruption",
+                    "current_count": "5",
+                    "prior_count": "3",
+                    "notable_example": "Medtronic supplier: assembly line shutdown, 8-day recovery period",
+                },
+                {
+                    "type": "Business Email Compromise",
+                    "current_count": "6",
+                    "prior_count": "5",
+                    "notable_example": "Pharmaceutical CRO: $3.8M fraudulent wire transfers over 3-week period",
+                },
+                {
+                    "type": "Third-Party / Vendor",
+                    "current_count": "4",
+                    "prior_count": "4",
+                    "notable_example": "LabCorp vendor: credentials exposed for 200+ clinical laboratory customers",
+                },
+                {
+                    "type": "Unauthorized Access",
+                    "current_count": "3",
+                    "prior_count": "3",
+                    "notable_example": "Regeneron: former employee accessed IP repository post-termination",
+                },
             ],
-            "common_factors": "Exploitation of unpatched internet-facing systems accounted for 34% of incidents, followed by compromised credentials without MFA (28%). Third-party vendor compromise represented 19% of cases, with social engineering accounting for the remaining 19%. Manufacturing environments faced extended recovery timelines averaging 23 days due to OT system complexity."
+            "common_factors": "Exploitation of unpatched internet-facing systems accounted for 34% of incidents, followed by compromised credentials without MFA (28%). Third-party vendor compromise represented 19% of cases, with social engineering accounting for the remaining 19%. Manufacturing environments faced extended recovery timelines averaging 23 days due to OT system complexity.",
         },
         "geopolitical_threats": [
             {
@@ -536,16 +569,16 @@ No direct threats to the organization were identified this quarter; however, the
                 "activity_level": "HIGH",
                 "relevance": [
                     "China's 14th Five-Year Plan designates biotechnology as strategic priority with genomics emphasis.",
-                    "MSS-affiliated actors conduct systematic collection against Western life sciences organizations."
+                    "MSS-affiliated actors conduct systematic collection against Western life sciences organizations.",
                 ],
                 "activity": [
                     "APT41 conducted intrusions via compromised software update mechanisms targeting pharma and genomics.",
-                    "GENESIS PANDA spearphished clinical research coordinators at 6 biotech firms this quarter."
+                    "GENESIS PANDA spearphished clinical research coordinators at 6 biotech firms this quarter.",
                 ],
                 "risk": [
                     "Theft of sequencing technology designs could erode competitive advantage and R&D investment.",
-                    "Compromised clinical trial data raises regulatory and patient safety concerns for ongoing studies."
-                ]
+                    "Compromised clinical trial data raises regulatory and patient safety concerns for ongoing studies.",
+                ],
             },
             {
                 "country": "russia",
@@ -554,16 +587,16 @@ No direct threats to the organization were identified this quarter; however, the
                 "activity_level": "MEDIUM",
                 "relevance": [
                     "Russian-speaking criminal groups operating with tacit state approval pose ransomware threat.",
-                    "State cyber interests in life sciences remain opportunistic, focusing on healthcare disruption."
+                    "State cyber interests in life sciences remain opportunistic, focusing on healthcare disruption.",
                 ],
                 "activity": [
                     "Ransomware incidents affecting healthcare and pharma increased 31% quarter-over-quarter.",
-                    "LockBit, ALPHV/BlackCat, and Cl0p affiliates accounted for majority of industry incidents."
+                    "LockBit, ALPHV/BlackCat, and Cl0p affiliates accounted for majority of industry incidents.",
                 ],
                 "risk": [
                     "Ransomware incidents average $4.2M recovery costs and 23 days operational disruption.",
-                    "Manufacturing environments face extended recovery due to OT system complexity and validation."
-                ]
+                    "Manufacturing environments face extended recovery due to OT system complexity and validation.",
+                ],
             },
             {
                 "country": "north_korea",
@@ -572,17 +605,17 @@ No direct threats to the organization were identified this quarter; however, the
                 "activity_level": "MEDIUM",
                 "relevance": [
                     "DPRK cyber operations serve revenue generation and medical research acquisition purposes.",
-                    "Sustained interest in vaccine research and oncology treatments for domestic programs."
+                    "Sustained interest in vaccine research and oncology treatments for domestic programs.",
                 ],
                 "activity": [
                     "Lazarus Group and Kimsuky conducted LinkedIn social engineering throughout the quarter.",
-                    "Campaigns used fake recruiter personas targeting research scientists and engineers."
+                    "Campaigns used fake recruiter personas targeting research scientists and engineers.",
                 ],
                 "risk": [
                     "Credential compromise provides access to sensitive environments and IP repositories.",
-                    "Executive targeting enables BEC fraud attempts and supply chain infiltration vectors."
-                ]
-            }
+                    "Executive targeting enables BEC fraud attempts and supply chain infiltration vectors.",
+                ],
+            },
         ],
         "looking_ahead": {
             "next_quarter_label": "Q2 2026",
@@ -591,64 +624,60 @@ No direct threats to the organization were identified this quarter; however, the
             "watch_items": [
                 {
                     "subject": "Major genomics conferences and product launches —",
-                    "detail": "Potential escalation in state-sponsored espionage activity targeting intellectual property and partnership announcements during high-profile industry events."
+                    "detail": "Potential escalation in state-sponsored espionage activity targeting intellectual property and partnership announcements during high-profile industry events.",
                 },
                 {
                     "subject": "Ransomware evolution targeting OT environments —",
-                    "detail": "Continued sophistication in double extortion tactics with increased focus on manufacturing and operational technology systems."
+                    "detail": "Continued sophistication in double extortion tactics with increased focus on manufacturing and operational technology systems.",
                 },
                 {
                     "subject": "Supply chain vendor compromises —",
-                    "detail": "Ongoing third-party security incidents affecting laboratory equipment vendors and biomanufacturing software providers."
-                }
-            ]
+                    "detail": "Ongoing third-party security incidents affecting laboratory equipment vendors and biomanufacturing software providers.",
+                },
+            ],
         },
         "recommendations": {
             "intro_note": "Based on Q1 threat activity and industry incidents, these actions will strengthen security posture:",
             "items": [
                 {
                     "title": "Executive Awareness Briefings",
-                    "body": "Consider targeted security awareness for executives and key research personnel given sustained social engineering campaigns via professional networks. CTI team can provide customized briefings on current threat actor tactics."
+                    "body": "Consider targeted security awareness for executives and key research personnel given sustained social engineering campaigns via professional networks. CTI team can provide customized briefings on current threat actor tactics.",
                 },
                 {
                     "title": "Vendor Risk Assessment Review",
-                    "body": "Evaluate security posture of critical software and laboratory equipment vendors given Q1 supply chain compromise activity. Prioritize vendors with privileged access to research and manufacturing systems."
+                    "body": "Evaluate security posture of critical software and laboratory equipment vendors given Q1 supply chain compromise activity. Prioritize vendors with privileged access to research and manufacturing systems.",
                 },
                 {
                     "title": "Manufacturing Environment Security",
-                    "body": "Review network segmentation between IT and OT/manufacturing systems. Ensure incident response plans address manufacturing disruption scenarios and production recovery timelines."
-                }
-            ]
+                    "body": "Review network segmentation between IT and OT/manufacturing systems. Ensure incident response plans address manufacturing disruption scenarios and production recovery timelines.",
+                },
+            ],
         },
         "osint_sources_used": [
             {
                 "title": "FortiClient EMS Flaw",
                 "url": "https://example.com/forticlient-vulnerability",
                 "description": "Confirmed active exploitation of FortiClient EMS vulnerability impacting device security.",
-                "citation_number": 5
+                "citation_number": 5,
             },
             {
                 "title": "GreyVibe AI Attacks",
                 "url": "https://example.com/greyvibe-ai-phishing",
                 "description": "Highlights emerging use of AI-powered phishing and malware delivery by Russian-linked threat clusters.",
-                "citation_number": 6
+                "citation_number": 6,
             },
             {
                 "title": "BTMOB Android Malware",
                 "url": "https://example.com/btmob-android-threat",
                 "description": "Identifies new Android malware service generating custom phishing payloads, increasing risk to healthcare systems.",
-                "citation_number": 7
-            }
-        ]
+                "citation_number": 7,
+            },
+        ],
     }
 
 
 async def generate_report_local(
-    report_type: str,
-    use_mock: bool = False,
-    use_real: bool = False,
-    output_dir: str = ".",
-    use_azure: bool = False
+    report_type: str, use_mock: bool = False, use_real: bool = False, output_dir: str = ".", use_azure: bool = False
 ) -> str:
     """
     Generate a report locally.
@@ -673,7 +702,7 @@ async def generate_report_local(
     # Determine data source
     data_by_source = None  # Will hold raw collected data for gate framework
     credentials = None  # Will hold Azure credentials for gate framework
-    
+
     if use_mock:
         try:
             print_section("📋 Using Mock Data")
@@ -687,10 +716,11 @@ async def generate_report_local(
         data_by_source = {}
     elif use_real or use_azure:
         analysis, data_by_source = await collect_and_analyze(report_type)
-        
+
         # Get credentials for gate framework (Gate 5 needs Azure OpenAI)
-        from src.core.keyvault import get_all_api_keys
         from src.core.config import azure_config
+        from src.core.keyvault import get_all_api_keys
+
         vault_url = azure_config.get_key_vault_url()
         credentials = get_all_api_keys(vault_url)
     else:
@@ -713,22 +743,22 @@ async def generate_report_local(
             print_section("Gate Framework Validation")
         from gates.pipeline_hook import run_gate_framework_over_collected_data
         from src.core.config import get_feature_config
-        
+
         feature_config = get_feature_config()
         interactive_mode = feature_config.gate_framework_interactive
-        
+
         if interactive_mode:
             print_status("Interactive mode enabled - you will be prompted after each gate", "info")
             print()
-        
+
         period_days = 7 if report_type == "weekly" else 90
-        
+
         # Define interactive callback for prompting user
         def interactive_callback(gate_id, result, session):
             """Called after each gate in interactive mode."""
             # Print gate result
             _print_gate_summary(session, {}, report_type)
-            
+
             # Prompt user
             print()
             gate_names = {
@@ -744,9 +774,11 @@ async def generate_report_local(
                 "6": "Adversarial Review",
             }
             gate_name = gate_names.get(gate_id, f"Gate {gate_id}")
-            print(f"{Fore.CYAN}Gate {gate_id} ({gate_name}) completed with status: {Fore.GREEN}{result.status}{Style.RESET_ALL}")
+            print(
+                f"{Fore.CYAN}Gate {gate_id} ({gate_name}) completed with status: {Fore.GREEN}{result.status}{Style.RESET_ALL}"
+            )
             print()
-            
+
             while True:
                 choice = input(f"{Fore.CYAN}Continue to next gate? [Y/n]: {Style.RESET_ALL}").strip().lower()
                 if choice in {"", "y", "yes"}:
@@ -757,7 +789,7 @@ async def generate_report_local(
                     return False
                 else:
                     print_status("Please enter 'y' or 'n'", "warning")
-        
+
         publish_ok, gate_info, session = run_gate_framework_over_collected_data(
             report_type=report_type,
             data_by_source=data_by_source or {},
@@ -766,15 +798,17 @@ async def generate_report_local(
             interactive_mode=interactive_mode,
             interactive_callback=interactive_callback if interactive_mode else None,
             credentials={
-                'openai_endpoint': credentials['openai_endpoint'],
-                'openai_key': credentials['openai_key'],
-            } if credentials else None,
+                "openai_endpoint": credentials["openai_endpoint"],
+                "openai_key": credentials["openai_key"],
+            }
+            if credentials
+            else None,
         )
-        
+
         # Print final gate summary (only in non-interactive or after completion)
         if not interactive_mode or publish_ok or not gate_info.get("user_abort"):
             _print_gate_summary(session, gate_info, report_type)
-        
+
         # Handle blocking conditions
         if not publish_ok:
             # Check for user abort
@@ -782,32 +816,23 @@ async def generate_report_local(
                 print_status(f"Aborted at Gate {gate_info.get('aborted_at_gate')}", "warning")
                 print()
                 sys.exit(0)
-            
+
             # For mock data, treat HALT as warning rather than hard block
             if use_mock and "halt_gate" in gate_info:
                 print_status(
                     f"Mock data triggered Gate {gate_info['halt_gate']} HALT (treating as warning in mock mode)",
-                    "warning"
+                    "warning",
                 )
                 print_status("Continuing with report generation...", "info")
             else:
                 # Real data or ESCAPE/BLOCK: stop here
                 if "halt_gate" in gate_info:
-                    print_status(
-                        f"Gate {gate_info['halt_gate']} HALT: {gate_info['halt_reason']}",
-                        "error"
-                    )
+                    print_status(f"Gate {gate_info['halt_gate']} HALT: {gate_info['halt_reason']}", "error")
                 elif "escape_gate" in gate_info:
-                    print_status(
-                        f"Gate {gate_info['escape_gate']} ESCAPE ({gate_info['escape_type']})",
-                        "error"
-                    )
+                    print_status(f"Gate {gate_info['escape_gate']} ESCAPE ({gate_info['escape_type']})", "error")
                 elif gate_info.get("gate6_status") == "BLOCK":
                     track_a_count = len(gate_info.get("track_a", []))
-                    print_status(
-                        f"Gate 6 BLOCK: {track_a_count} Track A findings prevent publication",
-                        "error"
-                    )
+                    print_status(f"Gate 6 BLOCK: {track_a_count} Track A findings prevent publication", "error")
                 print()
                 sys.exit(1)
 
@@ -823,13 +848,13 @@ async def generate_report_local(
     # Always save a local copy
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    
+
     # Get filename with report week start if available
-    if hasattr(generator, '_report_week_start'):
+    if hasattr(generator, "_report_week_start"):
         filename = generator.get_filename(report_week_start=generator._report_week_start)
     else:
         filename = generator.get_filename()
-    
+
     filepath = output_path / filename
     doc.save(str(filepath))
     print_status(f"Saved locally: {filepath}", "success")
@@ -840,16 +865,12 @@ async def generate_report_local(
             print_section("☁️  Uploading to Azure")
         except UnicodeEncodeError:
             print_section("Uploading to Azure")
+        from src.core.config import azure_config
         from src.core.keyvault import get_all_api_keys
         from src.reports.blob_storage import upload_to_blob
-        from src.core.config import azure_config
 
         credentials = get_all_api_keys(azure_config.get_key_vault_url())
-        url = upload_to_blob(
-            generator,
-            credentials['storage_account_name'],
-            credentials['storage_account_key']
-        )
+        url = upload_to_blob(generator, credentials["storage_account_name"], credentials["storage_account_key"])
         print_status(f"Uploaded: {url}", "success")
         return url
 
@@ -857,39 +878,31 @@ async def generate_report_local(
 
 
 async def check_openai_connectivity(
-    endpoint: str,
-    api_key: str = "",
-    deployment: str = "",
-    timeout: float = 8.0
+    endpoint: str, api_key: str = "", deployment: str = "", timeout: float = 8.0
 ) -> bool:
     """
     Quick connectivity check to Azure OpenAI completions endpoint.
     Sends a minimal authenticated request to detect VNet restrictions.
     Returns True if reachable, False if behind VPN / unreachable.
     """
-    import urllib.request
     import urllib.error
-    
+    import urllib.request
+
     if not api_key:
         return True
-    
+
     from src.core.config import analysis_config
+
     deploy = deployment or analysis_config.deployment_name
-    
-    url = (
-        endpoint.rstrip("/")
-        + f"/openai/deployments/{deploy}/chat/completions?api-version=2024-02-01"
-    )
-    body = json.dumps({
-        "messages": [{"role": "user", "content": "ping"}],
-        "max_tokens": 1
-    }).encode("utf-8")
-    
+
+    url = endpoint.rstrip("/") + f"/openai/deployments/{deploy}/chat/completions?api-version=2024-02-01"
+    body = json.dumps({"messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}).encode("utf-8")
+
     try:
         req = urllib.request.Request(url, data=body, method="POST")
         req.add_header("Content-Type", "application/json")
         req.add_header("api-key", api_key)
-        resp = urllib.request.urlopen(req, timeout=timeout)
+        urllib.request.urlopen(req, timeout=timeout)
         return True
     except urllib.error.HTTPError as e:
         resp_body = ""
@@ -912,52 +925,51 @@ async def check_openai_connectivity(
 
 async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
     """Collect data and run analysis (requires Azure credentials).
-    
+
     Returns:
         (analysis, data_by_source) tuple where analysis is the AI analysis result
         and data_by_source is the raw collected data dict
     """
-    from src.core.keyvault import get_all_api_keys
-    from src.collectors import collect_all, get_data_by_source
     from src.agents.threat_analyst import ThreatAnalystAgent
-    from src.core.config import azure_config, analysis_config
+    from src.collectors import collect_all, get_data_by_source
+    from src.core.config import analysis_config, azure_config
+    from src.core.keyvault import get_all_api_keys
 
     # Get credentials
     vault_url = azure_config.get_key_vault_url()
-    print_status(f"Connecting to Azure Key Vault...", "progress")
+    print_status("Connecting to Azure Key Vault...", "progress")
     credentials = get_all_api_keys(vault_url)
     print_status("Credentials retrieved", "success")
 
     # Check Azure OpenAI connectivity before spending time on data collection
     ai_available = await check_openai_connectivity(
-        credentials['openai_endpoint'],
-        api_key=credentials.get('openai_key', '')
+        credentials["openai_endpoint"], api_key=credentials.get("openai_key", "")
     )
 
     if not ai_available:
         print()
         try:
             print(f"{Fore.YELLOW}{Style.BRIGHT}{'=' * 60}")
-            print(f"  ⚠  Azure OpenAI is NOT reachable")
-            print(f"  Are you connected to the VPN?")
+            print("  ⚠  Azure OpenAI is NOT reachable")
+            print("  Are you connected to the VPN?")
             print(f"{'=' * 60}{Style.RESET_ALL}")
         except UnicodeEncodeError:
             print(f"{Fore.YELLOW}{Style.BRIGHT}{'=' * 60}")
-            print(f"  WARNING: Azure OpenAI is NOT reachable")
-            print(f"  Are you connected to the VPN?")
+            print("  WARNING: Azure OpenAI is NOT reachable")
+            print("  Are you connected to the VPN?")
             print(f"{'=' * 60}{Style.RESET_ALL}")
         print()
         print(f"  {Fore.WHITE}[1] Stop - I'll connect to VPN first")
         print(f"  [2] Continue without AI (use Rapid7/NVD data directly){Style.RESET_ALL}")
         print()
-        
+
         choice = input(f"  {Fore.CYAN}Enter choice (1 or 2): {Style.RESET_ALL}").strip()
-        
+
         if choice != "2":
             print()
             print_status("Stopped. Connect to VPN and run again.", "warning")
             sys.exit(0)
-        
+
         print()
         print_status("Continuing without AI analysis (Rapid7/NVD backup mode)...", "warning")
     else:
@@ -988,17 +1000,17 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
                     print_status(f"{source}: No data", "warning")
         else:
             print_status(f"{source}: Failed - {result.error[:50]}", "error")
-    
+
     # Enrich data
     try:
         print_section("🔍 Enriching CVE Data")
     except UnicodeEncodeError:
         print_section("Enriching CVE Data")
     from src.enrichment import CVEEnricher, ThreatActorMonitoringEnricher
-    
+
     cve_enricher = CVEEnricher()
-    actor_enricher = ThreatActorMonitoringEnricher()
-    
+    ThreatActorMonitoringEnricher()
+
     if "NVD" in data_by_source:
         print_status("Checking CISA KEV catalog...", "progress")
         data_by_source["NVD"] = await cve_enricher.enrich_cves(data_by_source["NVD"])
@@ -1009,13 +1021,11 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
         print_section("🤖 AI-Powered Analysis")
     except UnicodeEncodeError:
         print_section("AI-Powered Analysis")
-    
+
     if not ai_available:
         print_status("Skipping AI (not reachable) - using backup data", "warning")
         agent = ThreatAnalystAgent(
-            credentials['openai_endpoint'],
-            credentials['openai_key'],
-            deployment_name=analysis_config.deployment_name
+            credentials["openai_endpoint"], credentials["openai_key"], deployment_name=analysis_config.deployment_name
         )
         if report_type == "weekly":
             result = agent._get_default_analysis(
@@ -1024,31 +1034,21 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
                 data_by_source.get("CrowdStrike", []),
                 data_by_source.get("ThreatQ", []),
                 data_by_source.get("Rapid7", []),
-                data_by_source.get("Rapid7-Scans", [])
+                data_by_source.get("Rapid7-Scans", []),
             )
         else:
             intel471_all = data_by_source.get("Intel471", [])
-            breach_data = [
-                item for item in intel471_all
-                if item.get("threat_type", "").upper() == "BREACH ALERT"
-            ]
-            intel471_filtered = [
-                item for item in intel471_all
-                if item.get("threat_type", "").upper() != "BREACH ALERT"
-            ]
+            breach_data = [item for item in intel471_all if item.get("threat_type", "").upper() == "BREACH ALERT"]
+            intel471_filtered = [item for item in intel471_all if item.get("threat_type", "").upper() != "BREACH ALERT"]
             result = agent._get_default_strategic_analysis(
-                intel471_filtered,
-                data_by_source.get("CrowdStrike", []),
-                breach_data if breach_data else None
+                intel471_filtered, data_by_source.get("CrowdStrike", []), breach_data if breach_data else None
             )
         print_status("Backup analysis complete", "success")
         return result, data_by_source
 
     print_status("Initializing threat analyst agent...", "progress")
     agent = ThreatAnalystAgent(
-        credentials['openai_endpoint'],
-        credentials['openai_key'],
-        deployment_name=analysis_config.deployment_name
+        credentials["openai_endpoint"], credentials["openai_key"], deployment_name=analysis_config.deployment_name
     )
 
     if report_type == "weekly":
@@ -1060,24 +1060,18 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
             data_by_source.get("ThreatQ", []),
             data_by_source.get("Rapid7", []),
             data_by_source.get("Rapid7-Scans", []),
-            data_by_source.get("OSINT", [])
+            data_by_source.get("OSINT", []),
         )
         print_status("Analysis complete", "success")
         return result, data_by_source
     else:
         print_status("Running strategic analysis...", "progress")
-        
+
         intel471_data = data_by_source.get("Intel471", [])
-        breach_data = [
-            item for item in intel471_data 
-            if item.get("threat_type", "").upper() == "BREACH ALERT"
-        ]
-        
-        intel471_data = [
-            item for item in intel471_data 
-            if item.get("threat_type", "").upper() != "BREACH ALERT"
-        ]
-        
+        breach_data = [item for item in intel471_data if item.get("threat_type", "").upper() == "BREACH ALERT"]
+
+        intel471_data = [item for item in intel471_data if item.get("threat_type", "").upper() != "BREACH ALERT"]
+
         # Get Illumina OSINT context for quarterly reports
         illumina_osint = data_by_source.get("Illumina-OSINT", [])
         illumina_context = ""
@@ -1088,12 +1082,12 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
                 logger.info(f"Using Illumina OSINT context ({len(illumina_context)} chars)")
             else:
                 logger.warning("Illumina-OSINT data found but no illumina_context field present")
-        
+
         result = await agent.analyze_strategic(
             intel471_data=intel471_data,
             crowdstrike_data=data_by_source.get("CrowdStrike", []),
             breach_data=breach_data if breach_data else None,
-            illumina_context=illumina_context
+            illumina_context=illumina_context,
         )
         print_status("Analysis complete", "success")
         return result, data_by_source
@@ -1127,50 +1121,24 @@ Examples:
 
   # Enable debug mode to see detailed logs
   python test_local.py weekly --local --real --debug
-        """
+        """,
     )
 
-    parser.add_argument(
-        "report_type",
-        choices=["weekly", "quarterly"],
-        help="Type of report to generate"
-    )
+    parser.add_argument("report_type", choices=["weekly", "quarterly"], help="Type of report to generate")
+
+    parser.add_argument("--local", action="store_true", help="Save report locally (to disk)")
+
+    parser.add_argument("--azure", action="store_true", help="Upload report to Azure Blob Storage (uses real data)")
+
+    parser.add_argument("--mock", action="store_true", help="Use MOCK/example data (no API calls, for UI testing)")
+
+    parser.add_argument("--real", action="store_true", help="Use REAL data from APIs (requires Key Vault access)")
 
     parser.add_argument(
-        "--local",
-        action="store_true",
-        help="Save report locally (to disk)"
+        "--output", "-o", default=".", help="Output directory for local generation (default: current directory)"
     )
 
-    parser.add_argument(
-        "--azure",
-        action="store_true",
-        help="Upload report to Azure Blob Storage (uses real data)"
-    )
-
-    parser.add_argument(
-        "--mock",
-        action="store_true",
-        help="Use MOCK/example data (no API calls, for UI testing)"
-    )
-
-    parser.add_argument(
-        "--real",
-        action="store_true",
-        help="Use REAL data from APIs (requires Key Vault access)"
-    )
-
-    parser.add_argument(
-        "--output", "-o",
-        default=".",
-        help="Output directory for local generation (default: current directory)"
-    )
-
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug mode with verbose logging output"
-    )
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode with verbose logging output")
 
     args = parser.parse_args()
 
@@ -1203,13 +1171,15 @@ Examples:
             print(f"Debug Mode: {Fore.YELLOW}ENABLED (verbose logging){Style.RESET_ALL}")
         print(f"{Style.RESET_ALL}\n")
 
-        result = asyncio.run(generate_report_local(
-            report_type=args.report_type,
-            use_mock=use_mock,
-            use_real=use_real,
-            output_dir=args.output,
-            use_azure=args.azure
-        ))
+        result = asyncio.run(
+            generate_report_local(
+                report_type=args.report_type,
+                use_mock=use_mock,
+                use_real=use_real,
+                output_dir=args.output,
+                use_azure=args.azure,
+            )
+        )
 
         try:
             print_header("✓ SUCCESS")

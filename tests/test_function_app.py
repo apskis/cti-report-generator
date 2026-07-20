@@ -1,17 +1,17 @@
 """
 Unit tests for function_app.py — exposure merging and orchestration helpers.
 """
-import pytest
+
 from function_app import (
-    _extract_rapid7_cve_counts,
     _extract_crowdstrike_cve_counts,
+    _extract_rapid7_cve_counts,
     _merge_exposure_into_analysis,
 )
-
 
 # =============================================================================
 # _extract_rapid7_cve_counts
 # =============================================================================
+
 
 class TestExtractRapid7CveCounts:
     def test_basic_extraction(self):
@@ -49,6 +49,7 @@ class TestExtractRapid7CveCounts:
 # _extract_crowdstrike_cve_counts
 # =============================================================================
 
+
 class TestExtractCrowdstrikeCveCounts:
     def test_basic_extraction(self):
         data = [
@@ -82,11 +83,10 @@ class TestExtractCrowdstrikeCveCounts:
 # _merge_exposure_into_analysis
 # =============================================================================
 
+
 class TestMergeExposureIntoAnalysis:
     def test_rapid7_takes_precedence(self):
-        analysis = {
-            "cve_analysis": [{"cve_id": "CVE-2024-001"}]
-        }
+        analysis = {"cve_analysis": [{"cve_id": "CVE-2024-001"}]}
         rapid7 = [{"top_vulnerabilities": [{"cve_ids": ["CVE-2024-001"], "asset_count": 10}]}]
         cs = [{"type": "vulnerability", "cve_ids": ["CVE-2024-001"], "device_count": 99}]
 
@@ -94,9 +94,7 @@ class TestMergeExposureIntoAnalysis:
         assert analysis["cve_analysis"][0]["server_count"] == 10
 
     def test_crowdstrike_fallback(self):
-        analysis = {
-            "cve_analysis": [{"cve_id": "CVE-2024-002"}]
-        }
+        analysis = {"cve_analysis": [{"cve_id": "CVE-2024-002"}]}
         cs = [{"type": "vulnerability", "cve_ids": ["CVE-2024-002"], "device_count": 5}]
 
         _merge_exposure_into_analysis(analysis, [], cs)

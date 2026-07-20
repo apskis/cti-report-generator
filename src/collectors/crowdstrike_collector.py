@@ -4,13 +4,14 @@ CrowdStrike collector.
 Fetches APT intelligence from CrowdStrike Falcon Intelligence API.
 Optionally fetches Falcon Spotlight vulnerabilities for Exposure (affected device) counts.
 """
+
 import logging
 from collections import defaultdict
-from typing import List, Dict, Any
+from typing import Any
 
 from src.collectors.base import BaseCollector
 from src.collectors.http_utils import HTTPClient, NonRetryableHTTPError, validate_url
-from src.core.config import collector_config, industry_filter_config
+from src.core.config import collector_config
 from src.core.models import CollectorResult
 
 logger = logging.getLogger(__name__)
@@ -54,12 +55,7 @@ class CrowdStrikeCollector(BaseCollector):
 
             if not client_id or not client_secret:
                 logger.warning("CrowdStrike credentials not provided, skipping")
-                return CollectorResult(
-                    source=self.source_name,
-                    success=True,
-                    data=[],
-                    record_count=0
-                )
+                return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
 
             # Validate and sanitize base URL
             base_url = validate_url(base_url)
@@ -70,13 +66,10 @@ class CrowdStrikeCollector(BaseCollector):
 
                 if not access_token:
                     return CollectorResult(
-                        source=self.source_name,
-                        success=False,
-                        error="Failed to obtain OAuth token",
-                        record_count=0
+                        source=self.source_name, success=False, error="Failed to obtain OAuth token", record_count=0
                     )
 
-                apt_data: List[Dict[str, Any]] = []
+                apt_data: list[dict[str, Any]] = []
 
                 # Step 2: Fetch actors
                 actors = await self._fetch_actors(client, base_url, access_token)
@@ -92,42 +85,21 @@ class CrowdStrikeCollector(BaseCollector):
 
                 # Step 5: Optionally fetch Spotlight vulnerabilities for Exposure column (CVE -> device count)
                 # Note: Requires Spotlight license - will gracefully skip if not available
-                spotlight_vulns = await self._fetch_spotlight_vulnerabilities(
-                    client, base_url, access_token
-                )
+                spotlight_vulns = await self._fetch_spotlight_vulnerabilities(client, base_url, access_token)
                 apt_data.extend(spotlight_vulns)
 
             logger.info(f"Retrieved {len(apt_data)} total items from CrowdStrike")
-            return CollectorResult(
-                source=self.source_name,
-                success=True,
-                data=apt_data,
-                record_count=len(apt_data)
-            )
+            return CollectorResult(source=self.source_name, success=True, data=apt_data, record_count=len(apt_data))
 
         except NonRetryableHTTPError as e:
             logger.error(f"CrowdStrike API error: {e}")
-            return CollectorResult(
-                source=self.source_name,
-                success=False,
-                error=str(e),
-                record_count=0
-            )
+            return CollectorResult(source=self.source_name, success=False, error=str(e), record_count=0)
         except Exception as e:
             logger.error(f"Error fetching CrowdStrike data: {e}", exc_info=True)
-            return CollectorResult(
-                source=self.source_name,
-                success=False,
-                error=str(e),
-                record_count=0
-            )
+            return CollectorResult(source=self.source_name, success=False, error=str(e), record_count=0)
 
     async def _get_oauth_token(
-        self,
-        client: HTTPClient,
-        base_url: str,
-        client_id: str,
-        client_secret: str
+        self, client: HTTPClient, base_url: str, client_id: str, client_secret: str
     ) -> str | None:
         """
         Obtain OAuth2 access token from CrowdStrike.
@@ -144,10 +116,7 @@ class CrowdStrikeCollector(BaseCollector):
             Access token string or None on failure
         """
         token_url = f"{base_url}/oauth2/token"
-        token_data = {
-            "client_id": client_id,
-            "client_secret": client_secret
-        }
+        token_data = {"client_id": client_id, "client_secret": client_secret}
 
         logger.info(f"Requesting OAuth token from: {token_url}")
 
@@ -173,12 +142,7 @@ class CrowdStrikeCollector(BaseCollector):
 
         return None
 
-    async def _fetch_actors(
-        self,
-        client: HTTPClient,
-        base_url: str,
-        access_token: str
-    ) -> List[Dict[str, Any]]:
+    async def _fetch_actors(self, client: HTTPClient, base_url: str, access_token: str) -> list[dict[str, Any]]:
         """
         Fetch threat actors from CrowdStrike.
 
@@ -191,14 +155,8 @@ class CrowdStrikeCollector(BaseCollector):
             List of actor dictionaries
         """
         actors_url = f"{base_url}/intel/combined/actors/v1"
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
-        params = {
-            "limit": collector_config.crowdstrike_actors_limit,
-            "sort": "last_modified_date.desc"
-        }
+        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+        params = {"limit": collector_config.crowdstrike_actors_limit, "sort": "last_modified_date.desc"}
 
         apt_data = []
 
@@ -232,12 +190,7 @@ class CrowdStrikeCollector(BaseCollector):
 
         return apt_data
 
-    async def _fetch_indicators(
-        self,
-        client: HTTPClient,
-        base_url: str,
-        access_token: str
-    ) -> List[Dict[str, Any]]:
+    async def _fetch_indicators(self, client: HTTPClient, base_url: str, access_token: str) -> list[dict[str, Any]]:
         """
         Fetch threat indicators from CrowdStrike.
 
@@ -250,14 +203,8 @@ class CrowdStrikeCollector(BaseCollector):
             List of indicator dictionaries
         """
         indicators_url = f"{base_url}/intel/combined/indicators/v1"
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
-        params = {
-            "limit": collector_config.crowdstrike_indicators_limit,
-            "sort": "_marker.desc"
-        }
+        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+        params = {"limit": collector_config.crowdstrike_indicators_limit, "sort": "_marker.desc"}
 
         indicators_data = []
 
@@ -284,79 +231,69 @@ class CrowdStrikeCollector(BaseCollector):
 
         return indicators_data
 
-    async def _fetch_detections(
-        self,
-        client: HTTPClient,
-        base_url: str,
-        access_token: str
-    ) -> List[Dict[str, Any]]:
+    async def _fetch_detections(self, client: HTTPClient, base_url: str, access_token: str) -> list[dict[str, Any]]:
         """
         Fetch recent detections from CrowdStrike (requires Detections: Read permission).
-        
+
         This provides information about threats detected in YOUR environment,
         which is valuable for understanding what threats are actively targeting you.
-        
+
         Args:
             client: HTTP client
             base_url: CrowdStrike API base URL
             access_token: OAuth access token
-            
+
         Returns:
             List of detection dictionaries
         """
         detections_url = f"{base_url}/detects/queries/detects/v1"
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
-        
+        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+
         # Get detections from the last N days
         start_date, _ = self.get_date_range()
         filter_date = start_date.strftime("%Y-%m-%dT00:00:00Z")
-        
+
         # FQL filter: get recent detections, exclude false positives
         fql_filter = f"created_timestamp:>='{filter_date}'+status:!'false_positive'"
-        
-        params = {
-            "filter": fql_filter,
-            "limit": 100,
-            "sort": "created_timestamp.desc"
-        }
-        
+
+        params = {"filter": fql_filter, "limit": 100, "sort": "created_timestamp.desc"}
+
         detections_data = []
-        
+
         try:
             logger.info(f"Fetching detections from: {detections_url}")
-            
+
             # First, get detection IDs
             response = await client.get_raw_response(detections_url, headers=headers, params=params)
-            
+
             if response.status == 200:
                 data = await response.json()
                 detection_ids = data.get("resources", [])
-                
+
                 if detection_ids:
                     # Fetch detailed detection info
                     details_url = f"{base_url}/detects/entities/summaries/GET/v1"
                     details_response = await client.post_raw_response(
                         details_url,
                         headers=headers,
-                        json_data={"ids": detection_ids[:50]}  # Limit to 50 most recent
+                        json_data={"ids": detection_ids[:50]},  # Limit to 50 most recent
                     )
-                    
+
                     if details_response.status == 200:
                         details_data = await details_response.json()
-                        
+
                         for detection in details_data.get("resources", []):
                             # Only include medium severity or higher
                             severity = detection.get("max_severity", 0)
                             if severity >= 50:  # Medium = 50, High = 70, Critical = 90
                                 detections_data.append(self._parse_detection(detection))
-                        
+
                         logger.info(f"Retrieved {len(detections_data)} detections from CrowdStrike")
                     else:
                         details_text = await details_response.text()
-                        logger.warning(f"Detections details API returned {details_response.status}: {details_text[:200]}")
+                        logger.warning(
+                            f"Detections details API returned {details_response.status}: {details_text[:200]}"
+                        )
                 else:
                     logger.info("No recent detections found in CrowdStrike")
             elif response.status == 403:
@@ -364,18 +301,15 @@ class CrowdStrikeCollector(BaseCollector):
             else:
                 response_text = await response.text()
                 logger.error(f"CrowdStrike detections API returned status {response.status}: {response_text[:500]}")
-                
+
         except Exception as e:
             logger.warning(f"Error fetching CrowdStrike detections (non-critical): {e}")
-        
+
         return detections_data
 
     async def _fetch_spotlight_vulnerabilities(
-        self,
-        client: HTTPClient,
-        base_url: str,
-        access_token: str
-    ) -> List[Dict[str, Any]]:
+        self, client: HTTPClient, base_url: str, access_token: str
+    ) -> list[dict[str, Any]]:
         """
         Fetch Falcon Spotlight vulnerabilities for Exposure column (CVE -> affected device count).
 
@@ -386,10 +320,7 @@ class CrowdStrikeCollector(BaseCollector):
         from datetime import timedelta
 
         spotlight_url = f"{base_url}/spotlight/combined/vulnerabilities/v1"
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
         start_date, _ = self.get_date_range()
         filter_date = (start_date - timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z")
         # FQL: filter required (updated_timestamp)
@@ -399,13 +330,11 @@ class CrowdStrikeCollector(BaseCollector):
             "limit": collector_config.crowdstrike_spotlight_limit,
             "facet": "cve_details",
         }
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
 
         try:
             logger.info("Fetching CrowdStrike Spotlight vulnerabilities for exposure counts")
-            response = await client.get_raw_response(
-                spotlight_url, headers=headers, params=params
-            )
+            response = await client.get_raw_response(spotlight_url, headers=headers, params=params)
             if response.status != 200:
                 # Spotlight requires a separate license - gracefully skip if not available
                 if response.status == 403:
@@ -414,14 +343,12 @@ class CrowdStrikeCollector(BaseCollector):
                         "Using Rapid7 for vulnerability exposure data."
                     )
                 else:
-                    logger.warning(
-                        f"Spotlight API returned {response.status}, skipping exposure merge"
-                    )
+                    logger.warning(f"Spotlight API returned {response.status}, skipping exposure merge")
                 return out
             data = await response.json()
             resources = data.get("resources") or []
             # Group by CVE: each resource is one CVE instance (often one per host)
-            cve_to_count: Dict[str, int] = defaultdict(int)
+            cve_to_count: dict[str, int] = defaultdict(int)
             for res in resources:
                 cve_obj = res.get("cve")
                 if isinstance(cve_obj, dict):
@@ -432,12 +359,14 @@ class CrowdStrikeCollector(BaseCollector):
                     continue
                 cve_to_count[str(cve_id)] += 1
             for cve_id, count in cve_to_count.items():
-                out.append({
-                    "source": self.source_name,
-                    "type": "vulnerability",
-                    "cve_ids": [cve_id],
-                    "device_count": count,
-                })
+                out.append(
+                    {
+                        "source": self.source_name,
+                        "type": "vulnerability",
+                        "cve_ids": [cve_id],
+                        "device_count": count,
+                    }
+                )
             if out:
                 logger.info(f"Spotlight: {len(out)} CVEs with affected device counts")
         except Exception as e:
@@ -445,7 +374,7 @@ class CrowdStrikeCollector(BaseCollector):
 
         return out
 
-    def _extract_industry_names(self, industries_raw: List[Any]) -> List[str]:
+    def _extract_industry_names(self, industries_raw: list[Any]) -> list[str]:
         """
         Extract industry names from CrowdStrike's industry format.
 
@@ -460,7 +389,7 @@ class CrowdStrikeCollector(BaseCollector):
         """
         if not industries_raw:
             return []
-        
+
         names = []
         for item in industries_raw:
             if isinstance(item, dict):
@@ -472,7 +401,7 @@ class CrowdStrikeCollector(BaseCollector):
                 names.append(item)
         return names
 
-    def _parse_actor(self, actor: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_actor(self, actor: dict[str, Any]) -> dict[str, Any]:
         """
         Parse CrowdStrike actor into standardized format.
 
@@ -511,10 +440,10 @@ class CrowdStrikeCollector(BaseCollector):
             "ttps": ttps,
             "target_industries": target_industries,
             "last_activity": actor.get("last_modified_date", ""),
-            "source": self.source_name
+            "source": self.source_name,
         }
 
-    def _parse_indicator(self, indicator: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_indicator(self, indicator: dict[str, Any]) -> dict[str, Any]:
         """
         Parse CrowdStrike indicator into standardized format.
 
@@ -535,33 +464,28 @@ class CrowdStrikeCollector(BaseCollector):
             "target_industries": [],
             "indicator": indicator.get("indicator", ""),
             "last_activity": indicator.get("last_updated", ""),
-            "source": self.source_name
+            "source": self.source_name,
         }
 
-    def _parse_detection(self, detection: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_detection(self, detection: dict[str, Any]) -> dict[str, Any]:
         """
         Parse CrowdStrike detection into standardized format.
-        
+
         Args:
             detection: Raw detection from API
-            
+
         Returns:
             Standardized detection dictionary
         """
         # Map severity numbers to labels
-        severity_map = {
-            90: "Critical",
-            70: "High", 
-            50: "Medium",
-            30: "Low"
-        }
+        severity_map = {90: "Critical", 70: "High", 50: "Medium", 30: "Low"}
         max_severity = detection.get("max_severity", 0)
         severity_label = "Unknown"
         for threshold, label in sorted(severity_map.items(), reverse=True):
             if max_severity >= threshold:
                 severity_label = label
                 break
-        
+
         # Get behavior descriptions
         behaviors = detection.get("behaviors", [])
         tactics = []
@@ -571,7 +495,7 @@ class CrowdStrikeCollector(BaseCollector):
                 tactics.append(behavior["tactic"])
             if behavior.get("technique"):
                 techniques.append(behavior["technique"])
-        
+
         return {
             "type": "detection",
             "source": self.source_name,
@@ -586,5 +510,7 @@ class CrowdStrikeCollector(BaseCollector):
             "created_timestamp": detection.get("created_timestamp", ""),
             "hostname": detection.get("device", {}).get("hostname", "Unknown"),
             "device_id": detection.get("device", {}).get("device_id", ""),
-            "description": detection.get("behaviors_processed", [{}])[0].get("description", "")[:300] if detection.get("behaviors_processed") else ""
+            "description": detection.get("behaviors_processed", [{}])[0].get("description", "")[:300]
+            if detection.get("behaviors_processed")
+            else "",
         }

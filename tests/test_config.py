@@ -1,9 +1,11 @@
 """
 Unit tests for src/core/config.py.
 """
+
 import os
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from src.core.config import AzureConfig, get_enabled_collectors
 

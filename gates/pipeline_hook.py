@@ -6,6 +6,7 @@ so the caller can print summaries and decide whether to write the .docx.
 
 Supports both automated and interactive modes for gate execution.
 """
+
 from __future__ import annotations
 
 import logging
@@ -62,7 +63,7 @@ def run_gate_framework_over_collected_data(
         llm_client=StructuralLLMClient(),
         report_type=report_type.upper(),
     )
-    
+
     # Store credentials directly in session (not as GateResult, just raw dict)
     # Gate 5 will access via input.prior_results.get("credentials")
     if credentials:
@@ -71,7 +72,7 @@ def run_gate_framework_over_collected_data(
     if interactive_mode:
         # Interactive mode: run gates one by one with manual clearance
         gate_sequence = ["1", "1A", "1B", "2", "3", "4", "5", "1C", "6"]
-        
+
         for gate_id in gate_sequence:
             try:
                 result = orchestrator.run_gate(
@@ -81,7 +82,7 @@ def run_gate_framework_over_collected_data(
                     period_start=period_start.isoformat(),
                     period_end=period_end.isoformat(),
                 )
-                
+
                 # Call interactive callback for user approval
                 if interactive_callback:
                     should_continue = interactive_callback(gate_id, result, orchestrator.session)
@@ -91,14 +92,14 @@ def run_gate_framework_over_collected_data(
                             {"user_abort": True, "aborted_at_gate": gate_id},
                             orchestrator.session,
                         )
-                
+
                 # Clear the gate to proceed to next
                 orchestrator.clear(gate_id)
-                
-            except (GateHaltError, EscapeDetectedError) as e:
+
+            except (GateHaltError, EscapeDetectedError):
                 # Exception handling same as automated mode
                 break
-        
+
         # After all gates, check Gate 6 result
         if "6" not in orchestrator.session:
             return (
@@ -106,7 +107,7 @@ def run_gate_framework_over_collected_data(
                 {"incomplete": True, "message": "Gate sequence did not complete"},
                 orchestrator.session,
             )
-        
+
         gate6 = orchestrator.session["6"]
     else:
         # Automated mode: run full sequence
