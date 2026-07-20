@@ -32,6 +32,9 @@ import logging
 import sys
 from pathlib import Path
 
+# Allow running this script directly (adds the repo root to sys.path for src/gates imports)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 # Add colorama for colored console output
 try:
     from colorama import Fore, Style, init

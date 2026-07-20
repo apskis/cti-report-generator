@@ -21,7 +21,7 @@ async def test_report_quality():
     print("=" * 60 + "\n")
 
     # Import here to avoid early initialization
-    from test_local import get_mock_quarterly_analysis
+    from run_local import get_mock_quarterly_analysis
 
     print("→ Generating report with mock data...")
     analysis = get_mock_quarterly_analysis()

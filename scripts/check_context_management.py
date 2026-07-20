@@ -6,8 +6,13 @@ This script tests the new AgentContextManager and trend analysis features.
 
 import asyncio
 import logging
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
+
+# Allow running this script directly (adds the repo root to sys.path for src imports)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
