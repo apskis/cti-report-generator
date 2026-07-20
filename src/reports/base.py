@@ -18,6 +18,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
+from src.core.config import customer_profile
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,7 +28,9 @@ class BrandColors:
 
     ORANGE_PRIMARY = RGBColor(0xE6, 0x51, 0x00)  # #E65100 - Main title
     ORANGE_DESIGN = RGBColor(0xFF, 0x5C, 0x41)  # #ff5c41 - Header orange
-    ILLUMINA_BLUE = RGBColor(0x00, 0x5D, 0xAA)  # #005DAA - Illumina Blue
+    # Brand accent sourced from the customer profile (defaults to Illumina blue #005DAA).
+    BRAND_ACCENT = RGBColor.from_string(customer_profile.brand_color_hex)
+    ILLUMINA_BLUE = BRAND_ACCENT  # backwards-compatible alias
     WHITE = RGBColor(0xFF, 0xFF, 0xFF)  # White text on dark background
     GRAY_DARK = RGBColor(0x55, 0x55, 0x55)  # #555555 - Body text emphasis
     GRAY_MEDIUM = RGBColor(0x66, 0x66, 0x66)  # #666666 - Subtitles, notes

@@ -181,6 +181,21 @@ class AzureConfig:
         return url
 
 
+@dataclass(frozen=True)
+class CustomerProfile:
+    """Organization-specific identity used across reports and analysis.
+
+    Loaded from config/customer_profile.yaml (or the path in CUSTOMER_PROFILE_PATH).
+    The defaults below preserve the original single-tenant behavior when no
+    profile file is present, so nothing changes for existing deployments.
+    """
+
+    name: str = "Illumina"
+    brand_color_hex: str = "005DAA"  # hex without leading '#'
+    security_contact: str = "secops@illumina.com"
+    osint_source_name: str = "Illumina-OSINT"
+
+
 # Global configuration instances
 collector_config = CollectorConfig()
 industry_filter_config = IndustryFilterConfig()
@@ -265,3 +280,31 @@ def get_feature_config() -> FeatureConfig:
 
 # Lazy-loaded feature config (call get_feature_config() to get current state)
 feature_config = get_feature_config()
+
+
+_CUSTOMER_PROFILE_YAML = Path(__file__).resolve().parent.parent.parent / "config" / "customer_profile.yaml"
+
+
+def _load_customer_profile() -> CustomerProfile:
+    """Load the customer profile from YAML, falling back to defaults if absent."""
+    path = Path(os.environ.get("CUSTOMER_PROFILE_PATH", _CUSTOMER_PROFILE_YAML))
+    defaults = CustomerProfile()
+    if not path.exists():
+        return defaults
+    with open(path, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+    return CustomerProfile(
+        name=cfg.get("name", defaults.name),
+        brand_color_hex=str(cfg.get("brand_color_hex", defaults.brand_color_hex)),
+        security_contact=cfg.get("security_contact", defaults.security_contact),
+        osint_source_name=cfg.get("osint_source_name", defaults.osint_source_name),
+    )
+
+
+def get_customer_profile() -> CustomerProfile:
+    """Return the active customer profile (config/customer_profile.yaml or defaults)."""
+    return _load_customer_profile()
+
+
+# Eagerly-loaded customer profile singleton.
+customer_profile = _load_customer_profile()

@@ -1,0 +1,21 @@
+# Customer profile: the single source of truth for organization-specific
+# identity used across report generation and analysis.
+#
+# This file lets the (otherwise generic) CTI Report Generator be pointed at a
+# different organization without code changes. Override the path with the
+# CUSTOMER_PROFILE_PATH environment variable. If this file is absent, the
+# defaults baked into src/core/config.py (the original Illumina values) apply,
+# so existing behavior is preserved.
+
+# Organization display name, used in report prose and headings.
+name: Illumina
+
+# Brand accent color (hex, no leading '#') used for report styling.
+brand_color_hex: "005DAA"
+
+# Security contact shown in report footers.
+security_contact: "secops@illumina.com"
+
+# The source key that the company-context OSINT collector emits and that gates
+# and reports read from data_by_source.
+osint_source_name: "Illumina-OSINT"

@@ -13,6 +13,7 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt, RGBColor
 
+from src.core.config import customer_profile
 from src.reports.base import BaseReportGenerator, BrandColors, FontSizes
 from src.reports.registry import register_report_generator
 
@@ -1681,8 +1682,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
         contact = self.doc.add_paragraph()
         contact.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        # Add text: "Questions or suspicious activity: secops@illumina.com | "
-        contact_run = contact.add_run("Questions or suspicious activity: secops@illumina.com | ")
+        # Add text: "Questions or suspicious activity: <security_contact> | "
+        contact_run = contact.add_run(f"Questions or suspicious activity: {customer_profile.security_contact} | ")
         contact_run.font.size = FontSizes.BODY_SMALL
         contact_run.font.bold = True
         contact_run.font.color.rgb = BrandColors.TEXT_DARK

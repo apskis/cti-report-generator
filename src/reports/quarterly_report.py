@@ -18,6 +18,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
+from src.core.config import customer_profile
 from src.reports.base import BaseReportGenerator, BrandColors, FontSizes
 from src.reports.registry import register_report_generator
 
@@ -1096,7 +1097,7 @@ and vulnerabilities observed are consistent with those historically used against
         # Subtitle
         subtitle = self.doc.add_paragraph()
         sub_run = subtitle.add_run(
-            f"Nation-state activity assessed for direct relevance to Illumina's assets, operations, and competitive position — Q{self.quarter} {self._get_year()}."
+            f"Nation-state activity assessed for direct relevance to {customer_profile.name}'s assets, operations, and competitive position — Q{self.quarter} {self._get_year()}."
         )
         sub_run.font.name = "Arial"
         sub_run.font.size = FontSizes.SUBTITLE
@@ -1434,10 +1435,10 @@ and vulnerabilities observed are consistent with those historically used against
             vector_value_run.font.bold = False
             vector_value_run.font.color.rgb = RGBColor(0x1A, 0x20, 0x2C)
 
-            # Line 2 — Illumina exposure
+            # Line 2 — organization exposure
             exposure_para = metrics_cell.add_paragraph()
             exposure_para.paragraph_format.space_after = Pt(0)
-            exposure_label_run = exposure_para.add_run("Illumina exposure  ")
+            exposure_label_run = exposure_para.add_run(f"{customer_profile.name} exposure  ")
             exposure_label_run.font.name = "Arial"
             exposure_label_run.font.size = Pt(7.5)
             exposure_label_run.font.bold = True
@@ -2106,7 +2107,9 @@ and vulnerabilities observed are consistent with those historically used against
 
         # Contact info
         contact = self.doc.add_paragraph()
-        contact_run = contact.add_run("Questions or suspicious activity: secops@illumina.com | ServiceNow")
+        contact_run = contact.add_run(
+            f"Questions or suspicious activity: {customer_profile.security_contact} | ServiceNow"
+        )
         contact_run.font.name = "Arial"
         contact_run.font.size = FontSizes.BODY_SMALL
         contact_run.font.bold = True
