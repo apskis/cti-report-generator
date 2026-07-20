@@ -19,7 +19,7 @@ The validation system automatically checks:
 Validation runs automatically every time you generate a quarterly report:
 
 ```bash
-python test_local.py quarterly --local --real --output test_output
+python scripts/run_local.py quarterly --local --real --output test_output
 ```
 
 The validation results appear in the log output after "AI-Powered Analysis".
@@ -29,7 +29,7 @@ The validation results appear in the log output after "AI-Powered Analysis".
 Run quality checks on mock data without generating a full report:
 
 ```bash
-python test_report_quality.py
+python scripts/smoke_report_quality.py
 ```
 
 This quickly validates report structure without calling APIs or generating the Word document.
@@ -98,17 +98,17 @@ def _check_new_requirement(self, analysis_result: Dict[str, Any]) -> None:
 
 ```bash
 # Quick quality check
-python test_report_quality.py
+python scripts/smoke_report_quality.py
 
 # Full generation test
-python test_local.py quarterly --local --mock --output test_output
+python scripts/run_local.py quarterly --local --mock --output test_output
 ```
 
 ### Integration Points
 
 1. **`src/agents/threat_analyst.py`** - Validation runs after AI parsing
 2. **`src/validation/quarterly_validation.py`** - Validation logic
-3. **`test_report_quality.py`** - Standalone testing script
+3. **`scripts/smoke_report_quality.py`** - Standalone testing script
 
 ## Benefits
 

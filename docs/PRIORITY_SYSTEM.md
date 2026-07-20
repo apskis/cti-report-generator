@@ -10,7 +10,7 @@ The CTI report uses a three-tier priority system (P1/P2/P3) to help security tea
 
 ### **P1 (Critical/Immediate Action Required)**
 **Criteria:** Critical vulnerabilities that meet BOTH conditions:
-- **In YOUR environment** (detected by Rapid7 or CrowdStrike Spotlight)
+- **In YOUR environment** (detected by CrowdStrike Spotlight)
 - **AND** actively being exploited (confirmed by Intel471 breach reports, CISA KEV, or CrowdStrike intelligence)
 
 **Why P1?**
@@ -22,7 +22,7 @@ The CTI report uses a three-tier priority system (P1/P2/P3) to help security tea
 **Example:**
 ```
 CVE-2026-1555 (WordPress vulnerability)
-- Rapid7: Found on 3 production servers ✓
+- CrowdStrike Spotlight: Found on 3 production servers ✓
 - Intel471: Used in breach of similar organization ✓
 → P1: Patch immediately
 ```
@@ -46,7 +46,7 @@ CVE-2026-1555 (WordPress vulnerability)
 **Scenario A: Detected but not exploited**
 ```
 CVE-2026-3461 (WordPress plugin)
-- Rapid7: Found on 12 servers ✓
+- CrowdStrike Spotlight: Found on 12 servers ✓
 - Exploitation: None known ✗
 → P2: You're exposed, patch soon
 ```
@@ -54,7 +54,7 @@ CVE-2026-3461 (WordPress plugin)
 **Scenario B: Exploited but not detected in your environment**
 ```
 CVE-2026-39842 (OpenRemote)
-- Rapid7: Not detected ✗
+- CrowdStrike Spotlight: Not detected ✗
 - CrowdStrike: APT groups exploiting it ✓
 → P2: Monitor and verify you're not affected
 ```
@@ -79,7 +79,7 @@ CVE-2026-39842 (OpenRemote)
 **Example:**
 ```
 CVE-2026-5387 (UPS management software)
-- Rapid7: Not detected ✗
+- CrowdStrike Spotlight: Not detected ✗
 - Exploitation: None known ✗
 - Severity: High
 → P3: Schedule remediation within 30 days
@@ -94,7 +94,7 @@ CVE-2026-5387 (UPS management software)
 ```
 ┌─────────────────────────────────────────────────┐
 │  Is the CVE detected in your environment?       │
-│  (Rapid7 or CrowdStrike Spotlight)             │
+│  (CrowdStrike Spotlight)                        │
 └─────────────────┬───────────────────────────────┘
                   │
         ┌─────────┴─────────┐
@@ -120,7 +120,7 @@ CVE-2026-5387 (UPS management software)
 ### P1 Scenario (Worst Case)
 **CVE-2026-1555: WordPress WebStack theme RCE**
 - **Severity:** CVSS 9.8 (Critical)
-- **Your Environment:** 3 web servers (Rapid7)
+- **Your Environment:** 3 web servers (CrowdStrike Spotlight)
 - **Exploitation:** Ransomware groups (Intel471 breach report)
 - **Priority:** P1 - IMMEDIATE ACTION
 - **Action:** Patch 3 servers today, isolate if patch unavailable
@@ -130,7 +130,7 @@ CVE-2026-5387 (UPS management software)
 ### P2 Scenario A (You're Exposed)
 **CVE-2026-3461: WordPress Visa plugin SQL injection**
 - **Severity:** CVSS 9.8 (Critical)
-- **Your Environment:** 12 servers (Rapid7)
+- **Your Environment:** 12 servers (CrowdStrike Spotlight)
 - **Exploitation:** None known
 - **Priority:** P2 - PATCH THIS WEEK
 - **Action:** Schedule patches within 7 days
@@ -176,7 +176,7 @@ The priority is calculated by **fusing multiple sources**:
 ```
 Priority Calculation:
 ├─ NVD: Provides severity (CVSS score)
-├─ Rapid7 InsightVM: Confirms "Is it in our environment?"
+├─ CrowdStrike Spotlight: Confirms "Is it in our environment?"
 ├─ CrowdStrike Falcon: Detects "Are we seeing exploitation attempts?"
 ├─ Intel471 Titan: Confirms "Is it used in real breaches?"
 └─ CISA KEV: Government confirmation of active exploitation
@@ -186,7 +186,7 @@ Priority Calculation:
 
 | Source | What it tells us | Impact on Priority |
 |--------|------------------|-------------------|
-| **Rapid7** | Asset exposure | If present → minimum P2 |
+| **CrowdStrike Spotlight** | Asset exposure | If present → minimum P2 |
 | **Intel471** | Breach intelligence | If exploited in breaches → +1 priority level |
 | **CrowdStrike** | APT/threat actor activity | If targeting sector → +1 priority level |
 | **CISA KEV** | Government-confirmed exploitation | If listed → minimum P2 |
@@ -209,12 +209,12 @@ Priority Calculation:
 The AI threat analyst agent receives:
 
 1. **CVE list from NVD** (all published vulnerabilities)
-2. **Rapid7 exposure map** (CVE ID → asset counts in your environment)
+2. **CrowdStrike Spotlight exposure map** (CVE ID → asset counts in your environment)
 3. **CrowdStrike intelligence** (exploitation activity, threat actors)
 4. **Intel471 breach reports** (CVEs used in actual breaches)
 
 The AI then:
-1. Checks if CVE is in Rapid7 exposure map
+1. Checks if CVE is in CrowdStrike Spotlight exposure map
 2. Checks if CVE is mentioned in Intel471 breaches or CISA KEV
 3. Applies decision tree to assign P1/P2/P3
 4. Generates "exploited_by" and "exposure" fields for report

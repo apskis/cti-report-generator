@@ -44,7 +44,7 @@ Gate 6  → Adversarial Review (filler phrases, citations, accuracy)
 
 **Strengths:**
 - Strong halt logic prevents reports without sufficient data
-- Properly handles disabled sources (ThreatQ)
+- Properly handles disabled/unavailable sources
 
 **Recommendations:**
 ✨ **No changes needed** - This gate is functioning well
@@ -388,7 +388,7 @@ This gate catches AI quality issues that the adversarial review doesn't address:
 - Trend indicators not aligned with statistics
 """
 from typing import Any, List
-from gates.models import GateInput, GateResult
+from src.gates.models import GateInput, GateResult
 
 def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
     """Execute Gate 1E - AI Output Quality Validation."""
@@ -486,7 +486,7 @@ _GATE_SEQUENCES = {
 ## Implementation Priority
 
 **Phase 1 (Immediate - Critical for Accuracy):**
-- Create `gates/gate1e_ai_quality.py`
+- Create `src/gates/gate1e_ai_quality.py`
 - Add to orchestrator sequence
 - Implement company name validation
 - Implement OSINT citation validation

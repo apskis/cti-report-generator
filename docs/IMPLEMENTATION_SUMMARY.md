@@ -19,7 +19,7 @@ Implemented comprehensive historical tracking and trend analysis capabilities fo
 - `get_historical_statistics()` - Time-series metrics
 - `list_available_contexts()` - Browse stored contexts
 
-### 2. `test_context_management.py` (NEW)
+### 2. `scripts/check_context_management.py` (NEW)
 **Purpose**: Test suite for new features
 **Coverage**:
 - Context saving and retrieval
@@ -239,7 +239,7 @@ Container: cache
 
 ### Unit Tests
 ```bash
-python test_context_management.py
+python scripts/check_context_management.py
 ```
 Tests:
 - Context saving/retrieval
@@ -250,10 +250,10 @@ Tests:
 ### Integration Tests
 ```bash
 # Week 1: Generate baseline
-python test_local.py weekly --local --real
+python scripts/run_local.py weekly --local --real
 
 # Week 2: Generate with trends
-python test_local.py weekly --local --real
+python scripts/run_local.py weekly --local --real
 ```
 
 Expected:
@@ -409,7 +409,7 @@ System will continue working with standard (non-context-aware) analysis.
 
 ### Lines of Code Added
 - `context_manager.py`: ~500 lines
-- `test_context_management.py`: ~250 lines
+- `scripts/check_context_management.py`: ~250 lines
 - `CONTEXT_MANAGEMENT.md`: ~800 lines
 - Enhancements to existing files: ~200 lines
 - **Total**: ~1,750 lines

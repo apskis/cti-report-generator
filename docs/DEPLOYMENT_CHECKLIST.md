@@ -20,7 +20,7 @@
   - get_historical_statistics()
 
 ### Tests
-- [x] `test_context_management.py` - Comprehensive test suite (250 lines)
+- [x] `scripts/check_context_management.py` - Comprehensive test suite (250 lines)
   - Context save/retrieve tests
   - Trend calculation tests
   - Cache manager tests
@@ -145,7 +145,7 @@ curl -X POST https://your-function-app.azurewebsites.net/api/GenerateWeeklyRepor
 ### Unit Tests
 ```bash
 # Test context management
-python test_context_management.py
+python scripts/check_context_management.py
 
 # Expected: All tests pass
 ```
@@ -153,10 +153,10 @@ python test_context_management.py
 ### Integration Tests
 ```bash
 # Week 1: Generate baseline report
-python test_local.py weekly --local --real
+python scripts/run_local.py weekly --local --real
 
 # Week 2: Generate report with trends
-python test_local.py weekly --local --real
+python scripts/run_local.py weekly --local --real
 
 # Check: Week 2 should show trends in executive summary
 ```
@@ -335,7 +335,7 @@ else:
 - **Cache Manager**: `src/utils/cache_manager.py`
 - **AI Analysis**: `src/agents/threat_analyst.py`
 - **Functions**: `function_app.py`
-- **Tests**: `test_context_management.py`
+- **Tests**: `scripts/check_context_management.py`
 
 ### Common Issues & Solutions
 See `CONTEXT_MANAGEMENT.md` → Troubleshooting section

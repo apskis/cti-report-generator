@@ -31,7 +31,7 @@ This project uses two tiers of sources. They have fundamentally different author
 These sources produce structured, scored, machine-readable threat data. IOC attribution, actor naming, severity scoring, and geopolitical claims must come from Tier 1 only. These are the primary evidence base.
 
 **Tier 2 — OSINT RSS Feeds (contextual and corroborating)**
-These sources produce narrative articles from public sources. They may reference IOCs, name actors, and describe campaigns. They are NOT primary attribution sources. A Tier 2 article that names a threat actor does NOT constitute attribution. An IOC mentioned in a blog post is NOT the same as an IOC returned by ThreatQ or CrowdStrike. Tier 2 is used to: corroborate Tier 1 findings with industry coverage, provide context sentences in the report body, and populate the Resources section.
+These sources produce narrative articles from public sources. They may reference IOCs, name actors, and describe campaigns. They are NOT primary attribution sources. A Tier 2 article that names a threat actor does NOT constitute attribution. An IOC mentioned in a blog post is NOT the same as an IOC returned by CrowdStrike or Intel471. Tier 2 is used to: corroborate Tier 1 findings with industry coverage, provide context sentences in the report body, and populate the Resources section.
 
 **The fence:** If a finding exists ONLY in a Tier 2 article with no Tier 1 backing, it is flagged as `[OSINT ONLY: NOT VERIFIED BY TIER 1]` in the Gate 4 assembly. It does NOT appear in the Threat Findings section of the report. It goes to a separate "Open Signals" appendix for analyst review only.
 
@@ -40,10 +40,8 @@ These sources produce narrative articles from public sources. They may reference
 ### Tier 1 Data Sources (inbound to Azure Function timer trigger)
 | Source | Type | Gate Used |
 |---|---|---|
-| ThreatQ REST API | Threat Intel Platform | Gates 1, 2 |
 | NVD CVE API | Vulnerability Database | Gates 1, 2 |
 | Intel471 REST API | Actor and Underground Intel | Gates 1, 2 |
-| Rapid7 REST API | Vulnerability and Exposure | Gates 1, 2 |
 | CrowdStrike Falcon API | EDR Telemetry + Threat Intel | Gates 1, 2 |
 
 ### Tier 2 OSINT Sources (RSS collector, separate pipeline)
@@ -62,7 +60,6 @@ Lookback: 7 days (weekly) | Max articles per source: 5 | Max total: 30
 | Mandiant Blog | Vendor Research | Enabled |
 | Recorded Future Blog | Vendor Research | Disabled |
 | HHS Cybersecurity | Healthcare | Disabled |
-| Rapid7 Blog | Vulnerability Research | Enabled |
 | Qualys Threat Research | Vulnerability Research | Disabled |
 
 Disabled sources are noted as `[DISABLED IN CONFIG]` in Gate 1B. They do not produce a gap flag. They are not collected.
@@ -131,10 +128,8 @@ End with: GATE 1 COMPLETE. AWAITING CLEARANCE.
 
 | Source | Records | Window | Status |
 |---|---|---|---|
-| ThreatQ | [N] | [start] to [end] | OK / GAP: [describe] |
 | NVD CVE | [N] | [start] to [end] | OK / GAP: [describe] |
 | Intel471 | [N] | [start] to [end] | OK / GAP: [describe] |
-| Rapid7 | [N] | [start] to [end] | OK / GAP: [describe] |
 | CrowdStrike Falcon | [N] | [start] to [end] | OK / GAP: [describe] |
 
 **Halt condition:** If two or more Tier 1 sources return zero results or error, STOP at Gate 1 and report. Do NOT proceed without analyst decision.
@@ -195,7 +190,7 @@ Article inventory table followed by signals extraction table:
 
 **Rules:**
 - Extract IOCs exactly as they appear in source data. Do NOT enrich with training knowledge.
-- Score each IOC using ONLY the scoring fields present in the source data (e.g. ThreatQ confidence, CrowdStrike severity).
+- Score each IOC using ONLY the scoring fields present in the source data (e.g. CrowdStrike severity, Intel471 confidence).
 - If a source provides no severity data, mark the field as `[NO SCORE IN SOURCE]`. Do NOT assign a score yourself.
 - Weekly: flag any IOC that appeared in more than one source (cross-source hit).
 - Quarterly: flag IOCs that appeared across multiple months and note recurrence count.
@@ -229,7 +224,7 @@ End with: GATE 2 COMPLETE. AWAITING CLEARANCE.
 
 **Rules:**
 - You may ONLY attribute an IOC to a threat actor if the source data explicitly names the actor.
-- If Intel471 names an actor and ThreatQ does not, the attribution is qualified: `[Intel471 only]`.
+- If Intel471 names an actor and CrowdStrike does not, the attribution is qualified: `[Intel471 only]`.
 - You do NOT use names like APT29, Lazarus, or Sandworm unless those exact names appear in the source data for this period.
 - For quarterly reports: group actors by region of origin IF the source data provides region. Do NOT infer region from actor name.
 - Output is a structured linkage table. No narrative. No conclusions.
@@ -290,7 +285,7 @@ WEEKLY:
 - Executive Signal: [1 to 2 sentences maximum, no conclusions, highest severity Tier 1 finding only]
 - Top IOCs: [top 10 by Tier 1 severity score, structured list]
 - Actor Summary: [from Gate 3 Tier 1 attribution only]
-- Vulnerability Highlights: [NVD + Rapid7 data only, CVSS scores if present in source]
+- Vulnerability Highlights: [NVD data only, CVSS scores if present in source]
 - OSINT Corroboration: [for each Tier 1 finding that was also mentioned in a Gate 1B article, list: Finding | Corroborating Article ID | Source | Publication Date]
 - Open Signals: [all Gate 1B signals with no Tier 1 match, labeled [OSINT ONLY: NOT VERIFIED BY TIER 1]]
 - Coverage Gaps: [all [NOT IN PROVIDED SOURCES] and [NO IOCs IN SOURCE] flags from Gates 1 to 3]
@@ -329,7 +324,7 @@ End with: GATE 4 COMPLETE. AWAITING CLEARANCE.
   2. Executive Summary (what you need to know / what you need to do)
   3. Key Risks (Cybersecurity Threats | Financial and Legal | Brand and Reputational)
   4. Threat Findings (IOCs, actors, campaigns from Gate 4 Tier 1 data only)
-  5. Vulnerability Summary (NVD + Rapid7 highlights)
+  5. Vulnerability Summary (NVD highlights)
   6. Recommended Actions (segmented by audience: all staff / technical teams)
   7. Coverage Gaps and Data Limitations
   8. Resources (cited sources only; OSINT article URLs are permitted here if they appeared in Gate 1B and corroborate a Tier 1 finding)

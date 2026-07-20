@@ -115,7 +115,7 @@ Warnings (NON-BLOCKING): 1
 ## Solutions Implemented
 
 ### 1. Gate 1F: Source Audit
-- **Location**: `gates/gate1f_source_audit.py`
+- **Location**: `src/gates/gate1f_source_audit.py`
 - **Runs**: After Gate 5 (Report Draft), before Gate 1E (AI Quality)
 - **Purpose**: Shows complete source transparency - "show your work"
 - **Blocks**: Generic company names, missing URLs, hallucinated links
@@ -137,7 +137,7 @@ Warnings (NON-BLOCKING): 1
 
 ## Current Behavior
 
-**When you run**: `python test_local.py quarterly --local --real`
+**When you run**: `python scripts/run_local.py quarterly --local --real`
 
 **Gate Sequence**:
 1. Gate 1: Tier 1 Source Inventory ✓
@@ -219,7 +219,7 @@ To see the full source audit in action:
 
 ```bash
 # Generate report - will be blocked by Gate 1F
-python test_local.py quarterly --local --real
+python scripts/run_local.py quarterly --local --real
 
 # Check logs for detailed audit output
 # Look for "SOURCE AUDIT" section
@@ -227,9 +227,9 @@ python test_local.py quarterly --local --real
 
 ## Files Changed
 
-1. `gates/gate1f_source_audit.py` - NEW: Comprehensive source audit gate
-2. `gates/orchestrator.py` - Updated sequence: 1F before 1E
-3. `test_local.py` - Updated display to show Gate 1F and 1E
+1. `src/gates/gate1f_source_audit.py` - NEW: Comprehensive source audit gate
+2. `src/gates/orchestrator.py` - Updated sequence: 1F before 1E
+3. `scripts/run_local.py` - Updated display to show Gate 1F and 1E
 
 ## Summary
 

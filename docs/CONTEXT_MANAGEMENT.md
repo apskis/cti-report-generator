@@ -200,16 +200,14 @@ The `ThreatAnalystAgent` now has two analysis modes:
 **Standard Mode** (no context):
 ```python
 analysis = await agent.analyze_threats(
-    cve_data, intel471_data, crowdstrike_data,
-    threatq_data, rapid7_data, rapid7_scans_data, osint_data
+    cve_data, intel471_data, crowdstrike_data, osint_data
 )
 ```
 
 **Context-Aware Mode** (with trends):
 ```python
 analysis = await agent.analyze_threats_with_context(
-    cve_data, intel471_data, crowdstrike_data,
-    threatq_data, rapid7_data, rapid7_scans_data, osint_data,
+    cve_data, intel471_data, crowdstrike_data, osint_data,
     previous_contexts=previous_contexts,
     cve_trends=cve_trends,
     actor_trends=actor_trends
@@ -367,7 +365,7 @@ export STORAGE_ACCOUNT_NAME="your-storage-account"
 export STORAGE_ACCOUNT_KEY="your-storage-key"
 
 # Run tests
-python test_context_management.py
+python scripts/check_context_management.py
 ```
 
 ### Expected output:
@@ -402,10 +400,10 @@ Test 3: Calculating CVE trends
 
 ```bash
 # Week 1: Generate first report (no context)
-python test_local.py weekly --local --real
+python scripts/run_local.py weekly --local --real
 
 # Week 2: Generate second report (with trends!)
-python test_local.py weekly --local --real
+python scripts/run_local.py weekly --local --real
 ```
 
 Check the executive summary in Week 2's report for trend analysis.
@@ -514,5 +512,5 @@ Planned improvements:
 For issues or questions:
 1. Check logs: `function_app` logs include context manager operations
 2. Review Azure Blob Storage: Ensure contexts are being saved
-3. Run test suite: `python test_context_management.py`
+3. Run test suite: `python scripts/check_context_management.py`
 4. Check this documentation for troubleshooting guidance

@@ -2,10 +2,35 @@
 
 _Audit date: 2026-07-20 · Base commit: `4b0fdf5` (main)_
 
-This is a review-only report: **no source code was changed.** It covers correctness,
-security, architecture, testing, and repository hygiene, with concrete `file:line`
-references and an actionable fix for each item. Findings were verified against the
-running code (tests executed, `ruff` run, claims traced to source), not inferred.
+This is a review-only report: it covers correctness, security, architecture, testing,
+and repository hygiene, with concrete `file:line` references and an actionable fix for
+each item. Findings were verified against the running code (tests executed, `ruff` run,
+claims traced to source), not inferred.
+
+> **Note:** `file:line` references below reflect the original layout at the audit's base
+> commit. Since then the repo was restructured (`gates/` → `src/gates/`, root scripts →
+> `scripts/`, docs → `docs/`, assets → `assets/`) and Rapid7/ThreatQ were removed, so
+> paths/line numbers have shifted.
+
+## Status (updated on branch `claude/repo-audit-suggestions-c8q7o7`)
+
+**Done:** P0 #1–#6 (broken tests, CI, injection sanitizer, deps, bare-excepts, junk
+purge); P1 #7 (async I/O), #8 (lockfiles), #9 (customer-profile config + report/OSINT/
+gate/validation/**prompt** de-hardcoding — only a few product-name examples remain in
+fallback text), #10 (core-module tests + 4 latent bugs fixed), #11 (error-response
+leakage), #12 (opt-in user-delegation SAS); P2 #14 (ruff), #15 (gitignore), #16 (root
+scripts moved), #17 (LICENSE + CONTRIBUTING + doc index), #18 (config fragility); plus a
+full structural reorg and complete Rapid7/ThreatQ removal. #5 (gate stub LLM) is
+addressed via an opt-in real `AzureOpenAILLMClient` (default stays the deterministic
+stub, which is documented as the real validator).
+
+**Remaining (follow-ups):** the two heaviest **#13** dedup refactors — splitting the
+`src/agents/threat_analyst.py` god-object, and de-duplicating the ~90% copy-paste
+`function_app.py` weekly/quarterly handlers. Both are large refactors of code that can't
+be exercised without a live `semantic_kernel`/Azure environment, and the report tests
+assert content, not styling — so they should be done with live verification, not blind.
+The dead metric-card base helper was already removed. The experimental gate
+`AzureOpenAILLMClient` also needs live prompt-tuning before it can be relied on.
 
 ## How to read this
 

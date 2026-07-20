@@ -6,25 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Removed
+- **Removed two third-party threat-intelligence integrations entirely** — a
+  vulnerability/exposure collector and an IOC-management collector — along with
+  their caching layers and the associated background sync timer function.
+  Remaining data sources are NVD, Intel471, CrowdStrike, and OSINT (plus a
+  company-specific Illumina-OSINT collector used for quarterly reports).
+
+### Changed
+- **Repository restructure**: Moved the gate framework package to `src/gates/`
+  (imports are now `from src.gates...`); moved topical docs into `docs/` and
+  audit outputs into `docs/audits/`; moved assets into `assets/`.
+- **Dev scripts** now live under `scripts/`: `scripts/run_local.py`,
+  `scripts/check_context_management.py`, and `scripts/smoke_report_quality.py`
+  (previously top-level test scripts).
+- **Installable package**: `pyproject.toml` now declares `[project]` and
+  `[build-system]`.
+- **Dependency management via pip-tools**: `requirements.in` / `requirements-dev.in`
+  are human-edited; `requirements.txt` / `requirements-dev.txt` are generated,
+  hash-pinned lock files.
+
 ### Added
-- **Rapid7 Bulk Export API Collector**: Comprehensive vulnerability data via GraphQL
-  - Uses Rapid7 Bulk Export API to retrieve ALL vulnerabilities (not limited like Integration API v4)
-  - GraphQL-based export system with Parquet file downloads
-  - Provides complete CVE-to-asset exposure mapping from your environment
-  - Automatic local file caching for instant testing (no manual cache management)
-  - Falls back to live API if cache unavailable (always works)
-  - 20-minute timeout for large environments
-- **Local File Cache System**: Automatic caching for rapid testing/development
-  - First run fetches from API and caches automatically (~20 min)
-  - Subsequent runs use cache instantly (~2 min)
-  - 24-hour cache TTL with automatic expiration
-  - Zero manual cache management - fully automatic
-  - Located in `.cache/rapid7_local_cache.json` (git-ignored)
-- **Azure Timer Function**: Background sync for instant production reports (optional)
-  - Timer trigger runs every 6 hours automatically
-  - Fetches Rapid7 data in background and caches to Blob Storage
-  - Makes weekly reports instant (no 20-min wait)
-  - Optional optimization - reports work without it via API fallback
 - **Gate Framework Integration**: Multi-stage validation pipeline
   - Gate 1: Tier 1 Source Inventory validation
   - Gate 1A: Statistics validation (weekly/quarterly specific)
@@ -48,40 +50,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `targeted_by_actors` field for specific actor attribution
   - Links CVEs to APT groups when Intel471/CrowdStrike data available
 - **Technology Coherence Gate**: Validates executive summary accuracy
-  - Dynamically learns technologies from Rapid7 CVE data
+  - Dynamically learns technologies from collected CVE data
   - Validates technology mentions in executive summary match detected products
   - No hardcoded technology lists - adapts to your environment
 
 ### Changed
-- **Collector Configuration**: Disabled ThreatQ by default (missing credentials)
-- **Rapid7 Collectors**: Disabled limited rapid7 and rapid7-scans collectors
-  - Enabled rapid7-bulk-export as recommended comprehensive source
-- **Function Timeout**: Increased to 30 minutes for large Rapid7 exports
 - **Gate Framework**: Can be enabled/disabled via config (enabled by default for testing)
-- **Rapid7 Collector Priority**: Local cache → Azure Blob cache → Live API
-  - Checks local cache first (instant testing)
-  - Falls back to Azure Blob cache from timer function
-  - Always falls back to live API if caches unavailable
 
 ### Fixed
 - Gate 1C positioning: Now runs after Gate 5 (report draft) to access report data
 - Gate framework status codes: Uses COMPLETE instead of PASS/WARN
-- Rapid7 region endpoint: Corrected to use Bulk Export API path
-- Key Vault credentials: Added rapid7-bulk-export and rapid7-scans to collector_secrets mapping
 
 ### Documentation
-- Created `docs/RAPID7_BACKGROUND_SYNC.md` - Complete timer function architecture
-- Created `docs/RAPID7_DEPLOYMENT_CHECKLIST.md` - Step-by-step deployment guide
-- Created `docs/RAPID7_FALLBACK_BEHAVIOR.md` - Fallback scenarios and decision guide
-- Created `docs/LOCAL_CACHE_TESTING.md` - Local cache usage guide
 - Created `docs/GATE_FRAMEWORK_TROUBLESHOOTING.md` - Gate integration guide
-- Updated README.md with timer function deployment instructions
-
-### Technical Notes
-- Rapid7 Bulk Export uses organization API key (not on-prem Console API)
-- Parquet parsing requires pyarrow and pandas dependencies
-- Local cache stored in `.cache/` (git-ignored)
-- Timer function optional - reports always work via API fallback
 
 ### Added
 - **Collectors YAML Configuration**: New `config/collectors.yaml` for managing enabled collectors
@@ -103,10 +84,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Interactive prompt: stop to connect VPN, or continue with backup analysis
   - Prevents wasted time collecting data when AI is unreachable
 - **AI Gap-Filling**: Automatic patching of incomplete AI analysis
-  - Fills missing exposure counts from Rapid7 scan data
   - Fills missing product names from NVD enrichment data
   - Fills missing exploitation attribution from CISA KEV
-  - Filters AI output to only include CVEs detected in Rapid7 scans
   - Strategic reports: fills breach counts, risk assessments, geopolitical data from backup
 - **Sources Section**: New report section listing all public intelligence sources
   - Added to both weekly and quarterly reports
@@ -125,18 +104,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Quarterly: "90-Day Lookback | January 25 to April 25, 2026" (not "Q2 April to June")
   - Dates pulled from collector config, always reflect actual data window
   - Run reports any day without seeing future dates
-- **CVE Filtering**: Reports now only include CVEs detected in Rapid7 scans
-  - Removed N/A exposure entries; every CVE in report has a system count
-  - AI instructed to ignore CVEs not found in environment
-  - Default/fallback analysis also filters to Rapid7-detected CVEs only
 - **Exposure Column**: Fixed recognition of "system/systems" asset type
   - Weekly report formatter now accepts system, workstation, cloud server, cloud instance
 - **Default Analysis (AI fallback)**: Complete rewrite for when AI is unavailable
-  - Cross-references Rapid7 scan data with NVD for product names and severity
+  - Cross-references NVD data for product names and severity
   - Sorts CVEs by priority then exposure count
   - Includes proper executive summary explaining data source
-  - Passes Rapid7 scan data to fallback in both weekly and quarterly paths
-- **Production Azure Function**: Now passes Rapid7 scan data and OSINT data to analysis
+- **Production Azure Function**: Now passes OSINT data to analysis
 
 ### Fixed
 - Quarterly report footer crash from orphaned `sources` variable reference
@@ -146,7 +120,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 - **Multi-source intelligence fusion**: AI now automatically correlates data across all threat intelligence sources
-  - CVE exposure correlation: Matches CVEs from NVD with asset counts from Rapid7 InsightVM
   - Exploitation intelligence: Correlates Intel471 breach reports with CVE exploitation status
   - Threat actor fusion: Combines CrowdStrike actor profiles with Intel471 underground activity
   - Detection correlation: Links CrowdStrike detections with CVE exploitation patterns
@@ -189,13 +162,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Better fallback handling when exposure not provided
 - **CrowdStrike Falcon Spotlight**: Changed 403 error from WARNING to INFO with helpful message
   - Explains Spotlight requires separate license
-  - Notes Rapid7 provides vulnerability exposure as alternative
-- **ThreatQ collector**: Added debug logging to troubleshoot OAuth credential issues
-  - Logs whether URL, client_id, and client_secret are present (without exposing values)
-  - Improved error messages for missing credentials
 - **AI analysis prompt**: Significantly enhanced with correlation context
-  - Rapid7 CVE exposure map provided to AI with asset counts
-  - CrowdStrike Spotlight CVE map (when available) merged with Rapid7
+  - CrowdStrike Spotlight CVE map (when available)
   - Intel471 CVE mentions, breach summaries, and actor activity extracted
   - Priority guidelines updated to consider environmental exposure
   - Exposure field added to CVE analysis JSON schema
@@ -212,9 +180,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Strips control characters (0x00-0x1F, 0x7F) before parsing
   - Retries parsing after cleaning if initial parse fails
   - Prevents report generation failures due to AI formatting issues
-- **ThreatQ OAuth authentication**: Enhanced debugging to identify credential format issues
-  - Logs OAuth request body structure for troubleshooting
-  - Credentials confirmed present but not accepted by ThreatQ API (needs investigation)
 - **CrowdStrike Detections 403**: Changed from WARNING to INFO with helpful permission hint
   - Notes which permission is needed: "Detections - Read"
 
@@ -224,7 +189,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `INTEL471_FUSION.md` - Intel471 integration and correlation examples
   - `INTELLIGENCE_FUSION.md` - Complete fusion architecture and data flow
   - `FUSION_SUMMARY.md` - Quick reference for all source correlation
-  - `THREATQ_STATUS.md` - ThreatQ status and configuration guide
 
 ## [1.2.0] - 2026-01-27
 
@@ -256,8 +220,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `collectors/nvd_collector.py` - NVD CVE collector
   - `collectors/intel471_collector.py` - Intel471 threat reports and indicators
   - `collectors/crowdstrike_collector.py` - CrowdStrike APT intelligence
-  - `collectors/threatq_collector.py` - ThreatQ indicators
-  - `collectors/rapid7_collector.py` - Rapid7 vulnerability data
 - `collectors/base.py` - Abstract base class for all collectors
 - `collectors/registry.py` - Collector registry for dynamic loading
 - `collectors/http_utils.py` - HTTP client with exponential backoff retry logic
@@ -291,7 +253,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - Initial release
 - Azure Functions HTTP trigger for report generation
-- Integration with NVD, Intel471, CrowdStrike, ThreatQ, and Rapid7 APIs
+- Integration with NVD, Intel471, and CrowdStrike APIs
 - AI-powered threat analysis using Azure OpenAI and Semantic Kernel
 - Word document report generation with python-docx
 - Azure Blob Storage upload with SAS URL generation

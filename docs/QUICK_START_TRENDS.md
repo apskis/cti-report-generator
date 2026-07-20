@@ -109,7 +109,7 @@ No changes needed. The system automatically:
 curl -X POST https://your-function-app.azurewebsites.net/api/GenerateWeeklyReport
 
 # Local testing
-python test_local.py weekly --local --real
+python scripts/run_local.py weekly --local --real
 ```
 
 ### Option 2: Test the Features
@@ -121,7 +121,7 @@ export STORAGE_ACCOUNT_NAME="your-storage-account"
 export STORAGE_ACCOUNT_KEY="your-storage-key"
 
 # Run tests
-python test_context_management.py
+python scripts/check_context_management.py
 ```
 
 Expected output:
@@ -194,7 +194,7 @@ func azure functionapp logstream your-function-app
 **Fix:**
 ```bash
 # List saved contexts
-python test_context_management.py
+python scripts/check_context_management.py
 ```
 
 ### "Context save failed" in logs

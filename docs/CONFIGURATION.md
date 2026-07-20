@@ -91,8 +91,8 @@ class CollectorConfig:
 File: `config/collectors.yaml`
 
 ```yaml
-  - name: threatq
-    description: "ThreatQ - IOC management"
+  - name: intel471
+    description: "Intel471 Titan - underground threat intelligence"
     enabled: false    # disabled
 ```
 
@@ -100,7 +100,7 @@ File: `config/collectors.yaml`
 
 ```powershell
 # PowerShell
-$env:ENABLED_COLLECTORS = "nvd,intel471,crowdstrike"  # Excludes rapid7 and threatq
+$env:ENABLED_COLLECTORS = "nvd,intel471,crowdstrike"  # Excludes osint
 
 # Bash
 export ENABLED_COLLECTORS="nvd,intel471,crowdstrike"
@@ -111,7 +111,7 @@ export ENABLED_COLLECTORS="nvd,intel471,crowdstrike"
 1. **Edit** `src/core/config.py` with your changes
 2. **Save** the file
 3. **Restart** the application:
-   - Local testing: Re-run `python test_local.py`
+   - Local testing: Re-run `python scripts/run_local.py`
    - Azure Function: Redeploy or restart the function app
 
 ## Validation
