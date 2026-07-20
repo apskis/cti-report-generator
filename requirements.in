@@ -1,0 +1,39 @@
+# Runtime dependencies (human-edited source).
+# After editing, regenerate the locked requirements.txt with:
+#   pip-compile --generate-hashes requirements.in
+#
+# Azure Functions runtime
+azure-functions>=1.17.0,<2.0.0
+
+# Azure services
+azure-identity>=1.15.0,<2.0.0
+azure-keyvault-secrets>=4.7.0,<5.0.0
+azure-storage-blob>=12.19.0,<13.0.0
+azure-core>=1.29.0,<2.0.0
+
+# AI/ML
+semantic-kernel>=1.0.0,<2.0.0
+
+# Document generation
+python-docx>=1.1.0,<2.0.0
+
+# HTTP client
+# >=3.9.4 avoids CVE-2024-23334 (path traversal) and CVE-2024-30251 (DoS)
+aiohttp>=3.9.4,<4.0.0
+
+# Console output formatting
+colorama>=0.4.6,<1.0.0
+
+# OSINT collector
+feedparser>=6.0.0,<7.0.0
+beautifulsoup4>=4.12.0,<5.0.0
+pyyaml>=6.0,<7.0
+
+# Rapid7 Bulk Export - Parquet file parsing
+# >=14.0.1 avoids CVE-2023-47248 (deserialization RCE)
+pyarrow>=14.0.1,<15.0.0
+pandas>=2.0.0,<3.0.0
+
+# Uncomment to enable Azure Monitor OpenTelemetry
+# Ref: aka.ms/functions-azure-monitor-python
+# azure-monitor-opentelemetry>=1.2.0

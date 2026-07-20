@@ -1,0 +1,16 @@
+# Development dependencies.
+# This is the human-edited source. After editing, regenerate the locked
+# requirements-dev.txt with:
+#   pip-compile --generate-hashes -c requirements.txt requirements-dev.in
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+
+# Linting / formatting (configured in pyproject.toml)
+ruff>=0.6.0
+
+# Dependency vulnerability scanning (run in CI)
+pip-audit>=2.7.0
+
+# Lockfile generation (pip-compile)
+pip-tools>=7.0.0
