@@ -187,6 +187,11 @@ class CustomerProfile:
     osint_source_name: str = "Illumina-OSINT"
     # Short industry/sector descriptor used to ground strategic analysis prompts.
     industry: str = "genomics, life sciences, and precision manufacturing"
+    # Short phrase naming the org's key products/platforms, used in strategic
+    # prompt examples and fallback analysis (e.g. "ICA and BaseSpace").
+    products: str = "ICA and BaseSpace"
+    # A single flagship product example used in prompt guidance.
+    flagship_product: str = "NovaSeq X"
     # Lowercase keywords (company name + product/platform names) used to detect
     # company-specific grounding in geopolitical relevance bullets.
     product_keywords: tuple[str, ...] = (
@@ -306,6 +311,8 @@ def _load_customer_profile() -> CustomerProfile:
         security_contact=cfg.get("security_contact", defaults.security_contact),
         osint_source_name=cfg.get("osint_source_name", defaults.osint_source_name),
         industry=cfg.get("industry", defaults.industry),
+        products=cfg.get("products", defaults.products),
+        flagship_product=cfg.get("flagship_product", defaults.flagship_product),
         product_keywords=tuple(k.lower() for k in keywords) if keywords else defaults.product_keywords,
     )
 

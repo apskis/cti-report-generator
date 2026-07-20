@@ -2281,7 +2281,7 @@ If multiple actor groups are active, dedicate separate activity bullets to each 
       }},
       {{
         "subject": "Pending genomics data security legislation",
-        "detail": "in the United States and European Union — including provisions restricting foreign access to human genomic datasets — is expected to advance in Q3. Monitor for provisions relevant to ICA and BaseSpace customer data and {customer_profile.name}'s ongoing China market activity."
+        "detail": "in the United States and European Union — including provisions restricting foreign access to human genomic datasets — is expected to advance in Q3. Monitor for provisions relevant to {customer_profile.products} customer data and {customer_profile.name}'s ongoing China market activity."
       }}
     ]
   }},
@@ -2290,15 +2290,15 @@ If multiple actor groups are active, dedicate separate activity bullets to each 
     "items": [
       {{
         "title": "Verify MFA Coverage Across Research and Manufacturing Environments",
-        "body": "Twelve percent of sector breaches this quarter involved absent MFA on critical systems. An MFA coverage audit across {customer_profile.name}'s sequencing systems, manufacturing network, and ICA/BaseSpace administrative interfaces should be completed before Q3 close, with any gaps remediated on an accelerated timeline."
+        "body": "Twelve percent of sector breaches this quarter involved absent MFA on critical systems. An MFA coverage audit across {customer_profile.name}'s sequencing systems, manufacturing network, and {customer_profile.products} administrative interfaces should be completed before Q3 close, with any gaps remediated on an accelerated timeline."
       }},
       {{
-        "title": "Conduct ICA and BaseSpace Threat Model Review",
-        "body": "Nation-state targeting of cloud-hosted genomic data is the intelligence trend with the highest potential business impact for {customer_profile.name} identified this quarter. A threat model review scoped to ICA and BaseSpace — covering data access controls, customer data segregation, and detection capabilities for unauthorized access scenarios — should be initiated this quarter and completed before the Q3 board cycle."
+        "title": f"Conduct {customer_profile.products} Threat Model Review",
+        "body": "Nation-state targeting of cloud-hosted genomic data is the intelligence trend with the highest potential business impact for {customer_profile.name} identified this quarter. A threat model review scoped to {customer_profile.products} — covering data access controls, customer data segregation, and detection capabilities for unauthorized access scenarios — should be initiated this quarter and completed before the Q3 board cycle."
       }},
       {{
         "title": "Prioritize Security Attestation for Critical Vendor Tier",
-        "body": "Eighteen percent of sector breaches originated from third-party and vendor compromise. {customer_profile.name} should accelerate contractual security requirements and attestation reviews for vendors with access to instrument firmware, ICA infrastructure, or clinical data systems."
+        "body": "Eighteen percent of sector breaches originated from third-party and vendor compromise. {customer_profile.name} should accelerate contractual security requirements and attestation reviews for vendors with access to instrument firmware, {customer_profile.products} infrastructure, or clinical data systems."
       }}
     ]
   }},
@@ -2401,7 +2401,7 @@ CRITICAL - geopolitical_threats Instructions:
    - Primarily focused on other sectors with occasional healthcare targeting
 
 5. **For relevance bullets specifically**: Draw on the {customer_profile.name} context provided above. Reference specific {customer_profile.name} products
-   (e.g., NovaSeq X, sequencing platforms), market positions (e.g., "~80% global sequencing market share"), regulatory
+   (e.g., {customer_profile.flagship_product}, sequencing platforms), market positions (e.g., "~80% global sequencing market share"), regulatory
    situations (e.g., recent SEC filings, FDA approvals), or partnerships mentioned in the context. If the context is empty
    or unparseable, fall back to general life sciences sector exposure and note the limitation in your analysis.
    
@@ -2525,7 +2525,7 @@ CRITICAL - recommendations Instructions:
 1. **intro_note**: Write one sentence describing the recommendations. Examples: "Three prioritized actions informed by Q2 intelligence findings.", "Four strategic initiatives to address identified risks."
 
 2. **items**: Return a list of 2-4 recommendations. Each must have:
-   - **title**: Full recommendation title. The first word will be underlined if it's purely alphabetic. Examples: "Verify MFA Coverage Across Research and Manufacturing Environments", "Conduct ICA and BaseSpace Threat Model Review"
+   - **title**: Full recommendation title. The first word will be underlined if it's purely alphabetic. Examples: "Verify MFA Coverage Across Research and Manufacturing Environments", "Conduct {customer_profile.products} Threat Model Review"
    - **body**: 2-4 sentences explaining the justification (what intelligence finding drove this) and the specific action to take
 
 3. **Quality standards for recommendations**:
