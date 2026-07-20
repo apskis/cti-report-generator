@@ -74,16 +74,20 @@ def _validate_weekly_statistics(gate_input: GateInput) -> GateResult:
     gate1_result = gate_input.prior_results.get("1")
     if not gate1_result:
         raise GateHaltError(
-            gate_id="1A", reason="Gate 1 has not been run - cannot validate statistics without source inventory"
+            gate_id="1A",
+            reason="Gate 1 has not been run - cannot validate statistics without source inventory",
+            payload={},
         )
 
     tier1_sources = gate1_result.payload.get("tier1_sources", [])
 
     # NEW Validation: Check 7-day lookback window
-    from datetime import datetime
+    from datetime import UTC, datetime
 
-    period_start = datetime.fromisoformat(gate_input.period_start)
-    period_end = datetime.fromisoformat(gate_input.period_end)
+    # Parse the reporting window as tz-aware UTC so it can be compared against the
+    # tz-aware data timestamps below (naive vs aware comparison raises TypeError).
+    period_start = datetime.fromisoformat(gate_input.period_start).replace(tzinfo=UTC)
+    period_end = datetime.fromisoformat(gate_input.period_end).replace(tzinfo=UTC)
     expected_days = (period_end - period_start).days
 
     if expected_days != 7:
@@ -130,6 +134,8 @@ def _validate_weekly_statistics(gate_input: GateInput) -> GateResult:
                             report_date = datetime.fromisoformat(report_date_str.replace("Z", "+00:00"))
                         else:
                             report_date = datetime.fromisoformat(report_date_str)
+                        if report_date.tzinfo is None:
+                            report_date = report_date.replace(tzinfo=UTC)
 
                         if report_date < period_start or report_date > period_end:
                             data_timestamp_issues.append(
@@ -147,7 +153,7 @@ def _validate_weekly_statistics(gate_input: GateInput) -> GateResult:
                     # CrowdStrike uses Unix timestamp
                     activity_timestamp = actor["last_activity"]
                     if isinstance(activity_timestamp, (int, float)):
-                        activity_date = datetime.fromtimestamp(activity_timestamp)
+                        activity_date = datetime.fromtimestamp(activity_timestamp, tz=UTC)
 
                         if activity_date < period_start or activity_date > period_end:
                             data_timestamp_issues.append(
