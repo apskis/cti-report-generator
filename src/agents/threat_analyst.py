@@ -6,7 +6,6 @@ Analyzes threat intelligence data and generates actionable reports.
 
 import json
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +16,19 @@ from semantic_kernel.connectors.ai.open_ai import (
 )
 from semantic_kernel.contents import ChatHistory  # type: ignore
 
+from src.agents._cve_scoring import (
+    build_apt_cve_map,
+    collect_all_cve_ids,
+    compute_priority,
+    extract_count,
+    extract_product_from_description,
+)
+from src.agents._geo import (
+    is_china_related,
+    is_nk_related,
+    is_russia_related,
+)
+from src.agents._json_utils import parse_response
 from src.agents.exploit_enrichment import (
     build_affected_product_from_kev,
     build_exploited_by,
@@ -179,7 +191,7 @@ class ThreatAnalystAgent:
                 logger.info(f"Using {len(previous_contexts)} previous contexts for trend analysis")
 
             # Fetch public exploit intelligence (CISA KEV + EPSS)
-            all_cve_ids = self._collect_all_cve_ids(cve_data)
+            all_cve_ids = collect_all_cve_ids(cve_data)
             kev_lookup = await fetch_kev_cves()
             epss_lookup = await fetch_epss_scores(list(all_cve_ids))
 
@@ -283,7 +295,7 @@ class ThreatAnalystAgent:
             )
 
             # Fetch public exploit intelligence (CISA KEV + EPSS)
-            all_cve_ids = self._collect_all_cve_ids(cve_data)
+            all_cve_ids = collect_all_cve_ids(cve_data)
             kev_lookup = await fetch_kev_cves()
             epss_lookup = await fetch_epss_scores(list(all_cve_ids))
 
@@ -349,16 +361,6 @@ class ThreatAnalystAgent:
                 intel471_data,
                 crowdstrike_data,
             )
-
-    @staticmethod
-    def _collect_all_cve_ids(cve_data: list[dict]) -> set:
-        """Gather all unique CVE IDs across data sources for enrichment lookups."""
-        ids = set()
-        for cve in cve_data:
-            cve_id = cve.get("cve_id", "")
-            if cve_id:
-                ids.add(cve_id)
-        return ids
 
     def _prepare_data_for_analysis(
         self,
@@ -974,166 +976,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
         characters, truncated JSON, missing delimiters, and other common
         issues from large language model output.
         """
-        response_text = response_text.strip()
-        if response_text.startswith("```json"):
-            response_text = response_text[7:]
-        if response_text.startswith("```"):
-            response_text = response_text[3:]
-        if response_text.endswith("```"):
-            response_text = response_text[:-3]
-        response_text = response_text.strip()
-
-        # Attempt 1: direct parse
-        try:
-            return json.loads(response_text)
-        except json.JSONDecodeError:
-            pass
-
-        # Attempt 2: strip control characters (except newline/tab used in formatting)
-        cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", " ", response_text)
-        try:
-            return json.loads(cleaned)
-        except json.JSONDecodeError:
-            pass
-
-        # Attempt 3: fix unescaped newlines/tabs inside JSON string values
-        # Replace literal newlines inside strings with \\n
-        fixed = self._escape_strings_in_json(cleaned)
-        try:
-            return json.loads(fixed)
-        except json.JSONDecodeError:
-            pass
-
-        # Attempt 4: fix missing commas between } and { or } and "
-        fixed2 = re.sub(r"\}\s*\{", "},{", fixed)
-        fixed2 = re.sub(r'\}\s*"', '},"', fixed2)
-        fixed2 = re.sub(r'"\s*\{', '",{', fixed2)
-        # Missing comma between "value" and "key"
-        fixed2 = re.sub(r'"\s*\n\s*"', '","', fixed2)
-        try:
-            return json.loads(fixed2)
-        except json.JSONDecodeError:
-            pass
-
-        # Attempt 5: truncated JSON -- try to close open structures
-        repaired = self._repair_truncated_json(fixed2)
-        if repaired:
-            try:
-                return json.loads(repaired)
-            except json.JSONDecodeError:
-                pass
-
-        # Attempt 6: extract the largest parseable JSON object from the text
-        result = self._extract_json_object(cleaned)
-        if result is not None:
-            return result
-
-        logger.error("All JSON parse attempts failed")
-        logger.error(f"Response text (first 500 chars): {response_text[:500]}")
-        return None
-
-    @staticmethod
-    def _escape_strings_in_json(text: str) -> str:
-        """Escape literal newlines and tabs that appear inside JSON string values."""
-        result = []
-        in_string = False
-        escape_next = False
-        for ch in text:
-            if escape_next:
-                result.append(ch)
-                escape_next = False
-                continue
-            if ch == "\\" and in_string:
-                result.append(ch)
-                escape_next = True
-                continue
-            if ch == '"':
-                in_string = not in_string
-                result.append(ch)
-                continue
-            if in_string:
-                if ch == "\n":
-                    result.append("\\n")
-                    continue
-                if ch == "\r":
-                    result.append("\\r")
-                    continue
-                if ch == "\t":
-                    result.append("\\t")
-                    continue
-            result.append(ch)
-        return "".join(result)
-
-    @staticmethod
-    def _repair_truncated_json(text: str) -> str | None:
-        """
-        If the AI output was cut off mid-JSON, close any open braces/brackets
-        and truncate the last incomplete value.
-        """
-        if not text or text[-1] in ("}", "]"):
-            return None
-
-        # Strip trailing partial value (after last complete comma-separated item)
-        truncated = text
-        for end_marker in ["},", '"],', '",', "null,", "true,", "false,"]:
-            idx = truncated.rfind(end_marker)
-            if idx != -1:
-                candidate = truncated[: idx + len(end_marker) - 1]  # drop trailing comma
-                # Count open/close braces and brackets
-                open_braces = candidate.count("{") - candidate.count("}")
-                open_brackets = candidate.count("[") - candidate.count("]")
-                if open_braces >= 0 and open_brackets >= 0:
-                    candidate += "]" * open_brackets + "}" * open_braces
-                    return candidate
-
-        return None
-
-    @staticmethod
-    def _extract_json_object(text: str) -> dict | None:
-        """
-        Find the first top-level { and attempt to parse progressively
-        larger substrings until we get the largest valid JSON object.
-        """
-        start = text.find("{")
-        if start == -1:
-            return None
-
-        best = None
-        depth = 0
-        in_string = False
-        escape_next = False
-
-        for i in range(start, len(text)):
-            ch = text[i]
-            if escape_next:
-                escape_next = False
-                continue
-            if ch == "\\" and in_string:
-                escape_next = True
-                continue
-            if ch == '"':
-                in_string = not in_string
-                continue
-            if in_string:
-                continue
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    candidate = text[start : i + 1]
-                    try:
-                        parsed = json.loads(candidate)
-                        if isinstance(parsed, dict):
-                            best = parsed
-                    except json.JSONDecodeError:
-                        pass
-                    # Keep going in case there's a larger enclosing object
-                    # but typically the first complete match is it
-                    if best is not None:
-                        return best
-
-        return best
+        return parse_response(response_text)
 
     def _fill_gaps_from_backup(
         self,
@@ -1184,7 +1027,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                 backup_product = (
                     build_affected_product_from_kev(cve_id, kev_lookup)
                     or nvd.get("affected_product")
-                    or self._extract_product_from_description(nvd.get("description", ""))
+                    or extract_product_from_description(nvd.get("description", ""))
                 )
                 if backup_product and backup_product not in ("N/A", ""):
                     cve_entry["affected_product"] = backup_product
@@ -1224,12 +1067,12 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                     cve_entry["in_cisa_kev"] = True
 
         # Recompute priority using weighted scoring
-        apt_cve_map = self._build_apt_cve_map(
+        apt_cve_map = build_apt_cve_map(
             intel471_data or [],
             crowdstrike_data or [],
         )
         for cve_entry in cve_analysis:
-            label, num_score, justification = self.compute_priority(
+            label, num_score, justification = compute_priority(
                 cve_entry,
                 kev_lookup or {},
                 epss_lookup or {},
@@ -1244,7 +1087,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
             key=lambda x: (
                 priority_order.get(x.get("priority", "P3"), 3),
                 -x.get("priority_score", 0),
-                -self._extract_count(x.get("exposure", "0")),
+                -extract_count(x.get("exposure", "0")),
             )
         )
 
@@ -1293,7 +1136,7 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                 build_affected_product_from_kev(cve_id, kev_lookup)
                 or nvd_info.get("affected_product")
                 or nvd_info.get("product")
-                or self._extract_product_from_description(nvd_info.get("description", ""))
+                or extract_product_from_description(nvd_info.get("description", ""))
                 or "Unknown"
             )
             if affected_product == "N/A":
@@ -1332,9 +1175,9 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
 
         if cve_analysis:
             # Weighted priority scoring
-            apt_cve_map = self._build_apt_cve_map(intel471_data, crowdstrike_data)
+            apt_cve_map = build_apt_cve_map(intel471_data, crowdstrike_data)
             for cve_entry in cve_analysis:
-                label, num_score, justification = self.compute_priority(
+                label, num_score, justification = compute_priority(
                     cve_entry,
                     kev_lookup,
                     epss_lookup,
@@ -1415,182 +1258,6 @@ NVD records cross-referenced with CISA KEV and EPSS exploitation data."""
                 "p3_count": p3_count,
             },
         }
-
-    @staticmethod
-    def _extract_count(exposure_str: str) -> int:
-        """Extract numeric count from exposure string like '7 systems'."""
-        try:
-            return int(exposure_str.split()[0])
-        except (ValueError, IndexError):
-            return 0
-
-    @staticmethod
-    def compute_priority(
-        cve_entry: dict[str, Any],
-        kev_lookup: dict[str, dict],
-        epss_lookup: dict[str, dict],
-        apt_cve_map: dict[str, str],
-    ) -> tuple:
-        """
-        Deterministic weighted priority scoring (0-100 scale).
-
-        Weights:
-            CVSS severity   0-30
-            EPSS score       0-30
-            CISA KEV         0-20
-            Threat actor     0-15
-            Exposure         0-5
-
-        Returns (priority_label, numeric_score, justification_string).
-        """
-        cve_id = cve_entry.get("cve_id", "")
-        score = 0
-        factors = []
-
-        # --- CVSS severity (0-30) ---
-        severity = (cve_entry.get("severity") or "").upper()
-        cvss_raw = cve_entry.get("cvss_score")
-        try:
-            cvss = float(cvss_raw) if cvss_raw is not None else None
-        except (TypeError, ValueError):
-            cvss = None
-
-        if cvss is not None:
-            if cvss >= 9.0:
-                score += 30
-                factors.append(f"CVSS {cvss}")
-            elif cvss >= 7.0:
-                score += 20
-                factors.append(f"CVSS {cvss}")
-            elif cvss >= 4.0:
-                score += 10
-                factors.append(f"CVSS {cvss}")
-            else:
-                score += 5
-                factors.append(f"CVSS {cvss}")
-        else:
-            if severity in ("CRITICAL",):
-                score += 30
-                factors.append("Critical severity")
-            elif severity in ("HIGH", "SEVERE"):
-                score += 20
-                factors.append("High severity")
-            elif severity in ("MEDIUM", "MODERATE"):
-                score += 10
-                factors.append("Medium severity")
-            else:
-                score += 5
-                factors.append(severity or "Unknown severity")
-
-        # --- EPSS (0-30) ---
-        epss_entry = epss_lookup.get(cve_id)
-        if epss_entry:
-            epss_score = epss_entry["epss"]
-            if epss_score >= 0.6:
-                score += 30
-                factors.append(f"EPSS {epss_score:.0%}")
-            elif epss_score >= 0.2:
-                score += 20
-                factors.append(f"EPSS {epss_score:.0%}")
-            elif epss_score >= 0.04:
-                score += 10
-                factors.append(f"EPSS {epss_score:.1%}")
-            else:
-                score += 3
-                factors.append(f"EPSS {epss_score:.2%}")
-
-        # --- CISA KEV (0-20) ---
-        kev = kev_lookup.get(cve_id)
-        if kev:
-            score += 20
-            factors.append("CISA KEV")
-
-        # --- Threat actor relevance (0-15) ---
-        actor_label = apt_cve_map.get(cve_id)
-        if actor_label:
-            if "crowdstrike" in actor_label.lower() or "apt" in actor_label.lower():
-                score += 15
-                factors.append(f"Actor: {actor_label}")
-            else:
-                score += 10
-                factors.append(f"Intel471: {actor_label}")
-
-        # --- Exposure (0-5) ---
-        exposure_str = cve_entry.get("exposure", "0")
-        try:
-            asset_count = int(str(exposure_str).split()[0])
-        except (ValueError, IndexError):
-            asset_count = 0
-        if asset_count >= 5:
-            score += 5
-            factors.append(f"{asset_count} assets")
-        elif asset_count >= 1:
-            score += 2
-            factors.append(f"{asset_count} asset{'s' if asset_count > 1 else ''}")
-
-        # --- Thresholds ---
-        if score >= 60:
-            label = "P1"
-        elif score >= 30:
-            label = "P2"
-        else:
-            label = "P3"
-
-        justification = "; ".join(factors) + f" [score {score}]"
-        return label, score, justification
-
-    @staticmethod
-    def _build_apt_cve_map(
-        intel471_data: list[dict],
-        crowdstrike_data: list[dict],
-    ) -> dict[str, str]:
-        """
-        Build CVE-ID -> actor-label mapping from Intel471 reports and
-        CrowdStrike actor data so the priority scorer can give credit for
-        threat-actor association.
-        """
-        apt_cve_map: dict[str, str] = {}
-        cve_pattern = re.compile(r"CVE-\d{4}-\d{4,7}")
-
-        for item in intel471_data or []:
-            actor = item.get("threat_actor", "")
-            if not actor or actor == "Unknown":
-                actor = item.get("threat_type", "Intel471 report")
-            text = item.get("summary", "") + " " + item.get("description", "")
-            for cve_id in cve_pattern.findall(text):
-                if cve_id not in apt_cve_map:
-                    apt_cve_map[cve_id] = actor
-
-        for actor in crowdstrike_data or []:
-            actor_name = actor.get("actor_name", actor.get("name", ""))
-            if not actor_name:
-                continue
-            for field in ("description", "summary", "rich_text_description"):
-                text = actor.get(field, "")
-                if isinstance(text, str):
-                    for cve_id in cve_pattern.findall(text):
-                        apt_cve_map[cve_id] = f"{actor_name} (CrowdStrike)"
-
-        return apt_cve_map
-
-    @staticmethod
-    def _extract_product_from_description(description: str) -> str:
-        """Try to extract product name from CVE description text."""
-        if not description:
-            return ""
-        import re
-
-        patterns = [
-            r"^([\w\s]+(?:Server|Client|Browser|Framework|Library|Engine|Platform))",
-            r"(?:in|affecting|vulnerability in)\s+([\w\s\.]+?)(?:\s+(?:before|prior|through|allows|via|could))",
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, description, re.IGNORECASE)
-            if match:
-                product = match.group(1).strip()
-                if len(product) > 3 and len(product) < 50:
-                    return product
-        return ""
 
     async def analyze_strategic(
         self,
@@ -2611,21 +2278,15 @@ If any item is unchecked, fix it before returning.
 
     def _is_china_related(self, actor: dict) -> bool:
         """Check if an actor is China-related."""
-        country = str(actor.get("country", "")).lower()
-        name = str(actor.get("actor_name", actor.get("name", ""))).lower()
-        return "china" in country or "panda" in name or "apt41" in name or "apt40" in name
+        return is_china_related(actor)
 
     def _is_russia_related(self, actor: dict) -> bool:
         """Check if an actor is Russia-related."""
-        country = str(actor.get("country", "")).lower()
-        name = str(actor.get("actor_name", actor.get("name", ""))).lower()
-        return "russia" in country or "bear" in name or "apt29" in name or "apt28" in name
+        return is_russia_related(actor)
 
     def _is_nk_related(self, actor: dict) -> bool:
         """Check if an actor is North Korea-related."""
-        country = str(actor.get("country", "")).lower()
-        name = str(actor.get("actor_name", actor.get("name", ""))).lower()
-        return "korea" in country or "lazarus" in name or "kimsuky" in name or "chollima" in name
+        return is_nk_related(actor)
 
     def _get_default_strategic_analysis(
         self, intel471_data: list[dict], crowdstrike_data: list[dict], breach_data: list[dict] | None
