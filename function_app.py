@@ -67,6 +67,105 @@ def _merge_exposure_into_analysis(analysis: dict, crowdstrike_data: list) -> Non
             cve["server_count"] = cs_counts[cve_id]
 
 
+async def _fetch_credentials_and_collect(report_type: str):
+    """Shared pipeline prefix: Key Vault credentials + parallel collection."""
+    vault_url = azure_config.get_key_vault_url()
+    logger.info(f"Retrieving credentials from Key Vault: {vault_url}")
+    credentials = await asyncio.to_thread(get_all_api_keys, vault_url)
+
+    logger.info(f"Collecting threat intelligence data for {report_type} report...")
+    collector_results = await collect_all(credentials, report_type=report_type)
+    data_by_source = get_data_by_source(collector_results)
+
+    for source, result in collector_results.items():
+        if not result.success:
+            logger.warning(f"Collection failed for {source}: {result.error}")
+
+    return credentials, collector_results, data_by_source
+
+
+async def _run_gate_pass(report_type, data_by_source, osint_articles, period_days, credentials, analysis):
+    """Run the (feature-flagged) gate framework. Returns (publish_ok, gate_info)."""
+    if not _gate_framework_enabled():
+        return True, None
+    logger.info(f"Running gate framework validation over collected data ({report_type})...")
+    publish_ok, gate_info, _session = await asyncio.to_thread(
+        run_gate_framework_over_collected_data,
+        report_type=report_type,
+        data_by_source=data_by_source,
+        osint_articles=osint_articles,
+        period_days=period_days,
+        credentials={"openai_endpoint": credentials["openai_endpoint"], "openai_key": credentials["openai_key"]},
+        analysis=analysis,
+    )
+    return publish_ok, gate_info
+
+
+async def _upload_report(report_type: str, analysis: dict, credentials: dict) -> dict:
+    """Render the .docx and upload it to blob storage; raise on failure."""
+    storage_account_name = credentials["storage_account_name"]
+    storage_account_key = credentials["storage_account_key"]
+    if not storage_account_name or not storage_account_key:
+        raise ValueError("Storage account credentials not found in Key Vault")
+
+    report_result = await asyncio.to_thread(
+        create_and_upload_report,
+        report_type=report_type,
+        analysis_result=analysis,
+        storage_account_name=storage_account_name,
+        storage_account_key=storage_account_key,
+    )
+    if not report_result.get("success", False):
+        raise RuntimeError(f"Report generation failed: {report_result.get('error', 'Unknown error')}")
+    return report_result
+
+
+def _json_response(body: dict, status_code: int) -> func.HttpResponse:
+    return func.HttpResponse(json.dumps(body, indent=2), mimetype="application/json", status_code=status_code)
+
+
+def _blocked_response(report_type: str, gate_info: dict) -> func.HttpResponse:
+    return _json_response(
+        {
+            "status": "blocked",
+            "report_type": report_type,
+            "message": "Gate framework blocked report publication",
+            "gate_info": gate_info,
+        },
+        409,
+    )
+
+
+def _success_response(report_type, message, report_result, collector_results, extra) -> func.HttpResponse:
+    body = {
+        "status": "success",
+        "report_type": report_type,
+        "message": message,
+        "report_url": report_result["url"],
+        "filename": report_result["filename"],
+        "collection_summary": {
+            source: {"success": r.success, "record_count": r.record_count, "error": r.error}
+            for source, r in collector_results.items()
+        },
+    }
+    body.update(extra)
+    return _json_response(body, 200)
+
+
+def _error_response(report_type: str, e: Exception) -> func.HttpResponse:
+    correlation_id = str(uuid.uuid4())
+    logger.error(f"Error generating {report_type} report [correlation_id={correlation_id}]: {str(e)}", exc_info=True)
+    return _json_response(
+        {
+            "status": "error",
+            "report_type": report_type,
+            "message": f"Failed to generate {report_type} report. Check server logs for details.",
+            "correlation_id": correlation_id,
+        },
+        500,
+    )
+
+
 app = func.FunctionApp()
 
 
@@ -90,63 +189,32 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
     logger.info("Weekly CTI Report Generation triggered")
 
     try:
-        # Step 1: Get API credentials from Key Vault
-        vault_url = azure_config.get_key_vault_url()
-        logger.info(f"Retrieving credentials from Key Vault: {vault_url}")
-        credentials = await asyncio.to_thread(get_all_api_keys, vault_url)
+        credentials, collector_results, data_by_source = await _fetch_credentials_and_collect("weekly")
 
-        # Step 2: Collect threat intelligence data from all sources in parallel
-        logger.info("Collecting threat intelligence data from enabled sources...")
-        collector_results = await collect_all(credentials, report_type="weekly")
-
-        # Extract data from results
-        data_by_source = get_data_by_source(collector_results)
-
-        # Get data for each source (with fallback to empty list)
         cve_data = data_by_source.get("NVD", [])
         intel471_data = data_by_source.get("Intel471", [])
         crowdstrike_data = data_by_source.get("CrowdStrike", [])
         osint_data = data_by_source.get("OSINT", [])
-
-        # Log collection statistics
         logger.info(
             f"Data collected - CVEs: {len(cve_data)}, Intel471: {len(intel471_data)}, "
             f"CrowdStrike: {len(crowdstrike_data)}, OSINT: {len(osint_data)}"
         )
 
-        # Log any collection failures
-        for source, result in collector_results.items():
-            if not result.success:
-                logger.warning(f"Collection failed for {source}: {result.error}")
-
-        # Step 3: Analyze threats with AI agent (tactical mode) + historical context
+        # Analyze threats (tactical mode) + historical context
         deployment_name = analysis_config.deployment_name
         logger.info(f"Analyzing threat data with {deployment_name} (tactical mode with context)...")
-
         agent = ThreatAnalystAgent(
             credentials["openai_endpoint"], credentials["openai_key"], deployment_name=deployment_name
         )
+        context_mgr = AgentContextManager(
+            CacheManager(credentials["storage_account_name"], credentials["storage_account_key"])
+        )
 
-        # Initialize context manager for historical tracking
-        storage_account_name = credentials["storage_account_name"]
-        storage_account_key = credentials["storage_account_key"]
-
-        cache_manager = CacheManager(storage_account_name, storage_account_key)
-        context_mgr = AgentContextManager(cache_manager)
-
-        # Get previous 4 weeks of context for trend analysis
         logger.info("Retrieving historical contexts for trend analysis...")
         previous_contexts = await asyncio.to_thread(context_mgr.get_previous_context, "weekly", lookback_weeks=4)
-
-        # Calculate CVE trends
         cve_trends = context_mgr.calculate_cve_trends(cve_data, previous_contexts)
         logger.info(f"CVE Trends: {cve_trends.get('trend_summary', 'N/A')}")
 
-        # Calculate threat actor trends
-        # Note: We'll extract actors from the analysis, so pass empty list for now
-        actor_trends = None  # Will be calculated after initial analysis
-
-        # Run context-aware analysis
         analysis = await agent.analyze_threats_with_context(
             cve_data,
             intel471_data,
@@ -154,108 +222,33 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
             osint_data,
             previous_contexts=previous_contexts,
             cve_trends=cve_trends,
-            actor_trends=actor_trends,
+            actor_trends=None,  # actors are extracted from the analysis afterward
         )
-
         # Merge CrowdStrike (Spotlight) device counts into CVE analysis for Exposure column
         _merge_exposure_into_analysis(analysis, crowdstrike_data)
 
-        # Save analysis context for next week's report
         logger.info("Saving analysis context for historical tracking...")
-        context_save_success = await asyncio.to_thread(
-            context_mgr.save_analysis_context, "weekly", date.today(), analysis
-        )
-        if context_save_success:
-            logger.info("Analysis context saved successfully")
-        else:
+        if not await asyncio.to_thread(context_mgr.save_analysis_context, "weekly", date.today(), analysis):
             logger.warning("Failed to save analysis context - future reports will lack trend data")
 
-        # Optional: gate framework validation pass (feature-flagged)
-        if _gate_framework_enabled():
-            logger.info("Running gate framework validation over collected data...")
-            publish_ok, gate_info, session = await asyncio.to_thread(
-                run_gate_framework_over_collected_data,
-                report_type="weekly",
-                data_by_source=data_by_source,
-                osint_articles=osint_data,
-                period_days=7,
-                credentials={
-                    "openai_endpoint": credentials["openai_endpoint"],
-                    "openai_key": credentials["openai_key"],
-                },
-            )
-            if not publish_ok:
-                return func.HttpResponse(
-                    json.dumps(
-                        {
-                            "status": "blocked",
-                            "report_type": "weekly",
-                            "message": "Gate framework blocked report publication",
-                            "gate_info": gate_info,
-                        },
-                        indent=2,
-                    ),
-                    mimetype="application/json",
-                    status_code=409,
-                )
+        publish_ok, gate_info = await _run_gate_pass("weekly", data_by_source, osint_data, 7, credentials, analysis)
+        if not publish_ok:
+            return _blocked_response("weekly", gate_info)
 
-        # Step 4: Generate Word document and upload to blob storage
         logger.info("Generating Weekly Word document and uploading to Azure Blob Storage...")
-        storage_account_name = credentials["storage_account_name"]
-        storage_account_key = credentials["storage_account_key"]
+        report_result = await _upload_report("weekly", analysis, credentials)
 
-        if not storage_account_name or not storage_account_key:
-            raise ValueError("Storage account credentials not found in Key Vault")
-
-        report_result = await asyncio.to_thread(
-            create_and_upload_report,
-            report_type="weekly",
-            analysis_result=analysis,
-            storage_account_name=storage_account_name,
-            storage_account_key=storage_account_key,
-        )
-
-        if not report_result.get("success", False):
-            raise Exception(f"Report generation failed: {report_result.get('error', 'Unknown error')}")
-
-        # Step 5: Return success response with download URL
         logger.info(f"Weekly report generated successfully: {report_result['filename']}")
-        return func.HttpResponse(
-            json.dumps(
-                {
-                    "status": "success",
-                    "report_type": "weekly",
-                    "message": "Weekly CTI report generated successfully",
-                    "report_url": report_result["url"],
-                    "filename": report_result["filename"],
-                    "statistics": analysis.get("statistics", {}),
-                    "collection_summary": {
-                        source: {"success": result.success, "record_count": result.record_count, "error": result.error}
-                        for source, result in collector_results.items()
-                    },
-                },
-                indent=2,
-            ),
-            mimetype="application/json",
-            status_code=200,
+        return _success_response(
+            "weekly",
+            "Weekly CTI report generated successfully",
+            report_result,
+            collector_results,
+            {"statistics": analysis.get("statistics", {})},
         )
 
     except Exception as e:
-        correlation_id = str(uuid.uuid4())
-        logger.error(f"Error generating weekly report [correlation_id={correlation_id}]: {str(e)}", exc_info=True)
-        return func.HttpResponse(
-            json.dumps(
-                {
-                    "status": "error",
-                    "report_type": "weekly",
-                    "message": "Failed to generate weekly report. Check server logs for details.",
-                    "correlation_id": correlation_id,
-                },
-                indent=2,
-            ),
-            mimetype="application/json",
-            status_code=500,
-        )
+        return _error_response("weekly", e)
 
 
 @app.function_name(name="GenerateQuarterlyReport")
@@ -278,71 +271,35 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
     logger.info("Quarterly Strategic CTI Report Generation triggered")
 
     try:
-        # Step 1: Get API credentials from Key Vault
-        vault_url = azure_config.get_key_vault_url()
-        logger.info(f"Retrieving credentials from Key Vault: {vault_url}")
-        credentials = await asyncio.to_thread(get_all_api_keys, vault_url)
+        credentials, collector_results, data_by_source = await _fetch_credentials_and_collect("quarterly")
 
-        # Step 2: Collect threat intelligence data
-        # For quarterly reports, we focus on Intel471 and CrowdStrike
-        logger.info("Collecting strategic threat intelligence data...")
-        collector_results = await collect_all(credentials, report_type="quarterly")
-
-        # Extract data from results
-        data_by_source = get_data_by_source(collector_results)
-
-        # Primary sources for strategic analysis
         intel471_data = data_by_source.get("Intel471", [])
         crowdstrike_data = data_by_source.get("CrowdStrike", [])
 
         # Extract company context from the company-OSINT collector
-        illumina_osint_data = data_by_source.get(customer_profile.osint_source_name, [])
-        illumina_context = ""
-        if illumina_osint_data and len(illumina_osint_data) > 0:
-            illumina_context = illumina_osint_data[0].get("illumina_context", "")
-
+        company_osint_data = data_by_source.get(customer_profile.osint_source_name, [])
+        illumina_context = company_osint_data[0].get("illumina_context", "") if company_osint_data else ""
         if not illumina_context:
-            logger.warning("Illumina OSINT context is empty - AI will use fallback context")
-
-        # Log collection statistics
+            logger.warning(f"{customer_profile.name} OSINT context is empty - AI will use fallback context")
         logger.info(
             f"Strategic data collected - Intel471: {len(intel471_data)}, "
-            f"CrowdStrike: {len(crowdstrike_data)}, "
-            f"Illumina OSINT: {len(illumina_context)} chars"
+            f"CrowdStrike: {len(crowdstrike_data)}, company OSINT: {len(illumina_context)} chars"
         )
 
-        # Log any collection failures
-        for source, result in collector_results.items():
-            if not result.success:
-                logger.warning(f"Collection failed for {source}: {result.error}")
-
-        # Step 3: Analyze threats with AI agent (strategic mode) + historical context
+        # Analyze threats (strategic mode) + historical context
         deployment_name = analysis_config.deployment_name
         logger.info(f"Analyzing threat data with {deployment_name} (strategic mode with context)...")
-
         agent = ThreatAnalystAgent(
             credentials["openai_endpoint"], credentials["openai_key"], deployment_name=deployment_name
         )
-
-        # Initialize context manager for historical tracking
-        storage_account_name = credentials["storage_account_name"]
-        storage_account_key = credentials["storage_account_key"]
-
-        cache_manager = CacheManager(storage_account_name, storage_account_key)
-        context_mgr = AgentContextManager(cache_manager)
-
-        # Get previous quarters for trend analysis (look back 1 year = 4 quarters)
+        context_mgr = AgentContextManager(
+            CacheManager(credentials["storage_account_name"], credentials["storage_account_key"])
+        )
         logger.info("Retrieving historical quarterly contexts for trend analysis...")
         await asyncio.to_thread(context_mgr.get_previous_context, "quarterly", lookback_weeks=52)  # ~1 year
 
-        # Note: Quarterly reports focus on strategic trends, not individual CVEs
-        # So CVE trends are less relevant, but we can still track high-level metrics
-
-        # Use strategic analysis for quarterly reports
-        # Extract breach reports from Intel471 data
+        # Split breach alerts out of the Intel471 stream
         breach_data = [item for item in intel471_data if item.get("threat_type", "").upper() == "BREACH ALERT"]
-
-        # Remove breach reports from intel471_data (they'll be in breach_data)
         intel471_data = [item for item in intel471_data if item.get("threat_type", "").upper() != "BREACH ALERT"]
 
         analysis = await agent.analyze_strategic(
@@ -352,102 +309,30 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
             illumina_context=illumina_context,
         )
 
-        # Save analysis context for next quarter's report
         logger.info("Saving quarterly analysis context for historical tracking...")
-        context_save_success = await asyncio.to_thread(
-            context_mgr.save_analysis_context, "quarterly", date.today(), analysis
-        )
-        if context_save_success:
-            logger.info("Quarterly analysis context saved successfully")
-        else:
+        if not await asyncio.to_thread(context_mgr.save_analysis_context, "quarterly", date.today(), analysis):
             logger.warning("Failed to save quarterly analysis context - future reports will lack trend data")
 
-        # Optional: gate framework validation pass (feature-flagged)
-        if _gate_framework_enabled():
-            logger.info("Running gate framework validation over collected data (quarterly)...")
-            publish_ok, gate_info, session = await asyncio.to_thread(
-                run_gate_framework_over_collected_data,
-                report_type="quarterly",
-                data_by_source=data_by_source,
-                osint_articles=data_by_source.get("OSINT", []),
-                period_days=90,
-                credentials={
-                    "openai_endpoint": credentials["openai_endpoint"],
-                    "openai_key": credentials["openai_key"],
-                },
-            )
-            if not publish_ok:
-                return func.HttpResponse(
-                    json.dumps(
-                        {
-                            "status": "blocked",
-                            "report_type": "quarterly",
-                            "message": "Gate framework blocked report publication",
-                            "gate_info": gate_info,
-                        },
-                        indent=2,
-                    ),
-                    mimetype="application/json",
-                    status_code=409,
-                )
-
-        # Step 4: Generate Word document and upload to blob storage
-        logger.info("Generating Quarterly Word document and uploading to Azure Blob Storage...")
-        storage_account_name = credentials["storage_account_name"]
-        storage_account_key = credentials["storage_account_key"]
-
-        if not storage_account_name or not storage_account_key:
-            raise ValueError("Storage account credentials not found in Key Vault")
-
-        report_result = await asyncio.to_thread(
-            create_and_upload_report,
-            report_type="quarterly",
-            analysis_result=analysis,
-            storage_account_name=storage_account_name,
-            storage_account_key=storage_account_key,
+        publish_ok, gate_info = await _run_gate_pass(
+            "quarterly", data_by_source, data_by_source.get("OSINT", []), 90, credentials, analysis
         )
+        if not publish_ok:
+            return _blocked_response("quarterly", gate_info)
 
-        if not report_result.get("success", False):
-            raise Exception(f"Report generation failed: {report_result.get('error', 'Unknown error')}")
+        logger.info("Generating Quarterly Word document and uploading to Azure Blob Storage...")
+        report_result = await _upload_report("quarterly", analysis, credentials)
 
-        # Step 5: Return success response with download URL
         logger.info(f"Quarterly report generated successfully: {report_result['filename']}")
-        return func.HttpResponse(
-            json.dumps(
-                {
-                    "status": "success",
-                    "report_type": "quarterly",
-                    "message": "Quarterly strategic CTI report generated successfully",
-                    "report_url": report_result["url"],
-                    "filename": report_result["filename"],
-                    "risk_assessment": analysis.get("risk_assessment", {}),
-                    "collection_summary": {
-                        source: {"success": result.success, "record_count": result.record_count, "error": result.error}
-                        for source, result in collector_results.items()
-                    },
-                },
-                indent=2,
-            ),
-            mimetype="application/json",
-            status_code=200,
+        return _success_response(
+            "quarterly",
+            "Quarterly strategic CTI report generated successfully",
+            report_result,
+            collector_results,
+            {"risk_assessment": analysis.get("risk_assessment", {})},
         )
 
     except Exception as e:
-        correlation_id = str(uuid.uuid4())
-        logger.error(f"Error generating quarterly report [correlation_id={correlation_id}]: {str(e)}", exc_info=True)
-        return func.HttpResponse(
-            json.dumps(
-                {
-                    "status": "error",
-                    "report_type": "quarterly",
-                    "message": "Failed to generate quarterly report. Check server logs for details.",
-                    "correlation_id": correlation_id,
-                },
-                indent=2,
-            ),
-            mimetype="application/json",
-            status_code=500,
-        )
+        return _error_response("quarterly", e)
 
 
 # Legacy endpoint - redirect to weekly for backwards compatibility

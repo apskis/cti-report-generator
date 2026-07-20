@@ -21,56 +21,9 @@ from .models import GateInput, GateResult
 logger = logging.getLogger(__name__)
 
 
-def run(input: GateInput, llm_client, report_type: str) -> GateResult:
-    """Execute Gate 5 - AI Threat Analysis.
-
-    This gate invokes ThreatAnalystAgent to analyze the collected data.
-    The AI agent produces the structured analysis (cve_analysis, apt_activity,
-    statistics, etc.) that Gate 6 will validate and the report generator will format.
-
-    Args:
-        input: GateInput with tier1_data, osint_articles, and prior gate results
-        llm_client: LLM client (not used - we instantiate ThreatAnalystAgent directly)
-        report_type: "WEEKLY" or "QUARTERLY"
-
-    Returns:
-        GateResult with the AI's analysis in payload["report"]
-    """
-    logger.info(f"Running Gate 5: AI Threat Analysis ({report_type})")
-
-    # Get prior gate results for context
-    g1 = input.prior_results.get("1")
-    g1b = input.prior_results.get("1B")
-    g2 = input.prior_results.get("2")
-    input.prior_results.get("4")
-
-    if not all((g1, g1b, g2)):
-        raise RuntimeError("Gate 5 requires Gates 1, 1B, 2 in input.prior_results")
-
-    # Extract data from prior gates
-    g1.payload.get("tier1_sources", [])
-    osint_articles = g1b.payload.get("osint_articles", [])
-
-    # Prepare data for AI analyst
-    cve_data = input.tier1_data.get("NVD", [])
-    intel471_data = input.tier1_data.get("Intel471", [])
-    crowdstrike_data = input.tier1_data.get("CrowdStrike", [])
-
-    # Convert OSINT articles to the format the AI expects
-    osint_data = [
-        {
-            "title": article.title,
-            "url": article.url,
-            "source": article.source_name,
-            "published_date": article.published_date,
-        }
-        for article in osint_articles
-    ]
-
-    logger.info(
-        f"AI analysis input: {len(cve_data)} CVEs, {len(intel471_data)} Intel471 records, "
-        f"{len(crowdstrike_data)} CrowdStrike records, {len(osint_data)} OSINT articles"
-    )
+def _compute_gate5_analysis(report_type, cve_data, intel471_data, crowdstrike_data, osint_data, prior_results):
+    """Run the AI analysis for Gate 5 (used only when the caller did not pre-compute it)."""
+    is_quarterly = report_type.upper() == "QUARTERLY"
 
     # Import ThreatAnalystAgent here to avoid circular dependencies
     try:
@@ -86,7 +39,7 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     openai_key = None
 
     # Try to get from prior_results (passed by pipeline_hook.py)
-    credentials = input.prior_results.get("credentials")
+    credentials = prior_results.get("credentials")
     if isinstance(credentials, dict):
         openai_endpoint = credentials.get("openai_endpoint")
         openai_key = credentials.get("openai_key")
@@ -107,9 +60,6 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     # Initialize AI agent
     deployment_name = analysis_config.deployment_name
     agent = ThreatAnalystAgent(openai_endpoint, openai_key, deployment_name=deployment_name)
-
-    # Run appropriate analysis based on report type
-    is_quarterly = report_type.upper() == "QUARTERLY"
 
     try:
         import asyncio
@@ -191,6 +141,71 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     except Exception as e:
         logger.error(f"AI analysis failed: {e}", exc_info=True)
         raise RuntimeError(f"Gate 5 AI analysis failed: {str(e)}") from e
+    return analysis_result
+
+
+def run(input: GateInput, llm_client, report_type: str) -> GateResult:
+    """Execute Gate 5 - AI Threat Analysis.
+
+    This gate invokes ThreatAnalystAgent to analyze the collected data.
+    The AI agent produces the structured analysis (cve_analysis, apt_activity,
+    statistics, etc.) that Gate 6 will validate and the report generator will format.
+
+    Args:
+        input: GateInput with tier1_data, osint_articles, and prior gate results
+        llm_client: LLM client (not used - we instantiate ThreatAnalystAgent directly)
+        report_type: "WEEKLY" or "QUARTERLY"
+
+    Returns:
+        GateResult with the AI's analysis in payload["report"]
+    """
+    logger.info(f"Running Gate 5: AI Threat Analysis ({report_type})")
+
+    # Get prior gate results for context
+    g1 = input.prior_results.get("1")
+    g1b = input.prior_results.get("1B")
+    g2 = input.prior_results.get("2")
+    input.prior_results.get("4")
+
+    if not all((g1, g1b, g2)):
+        raise RuntimeError("Gate 5 requires Gates 1, 1B, 2 in input.prior_results")
+
+    # Extract data from prior gates
+    g1.payload.get("tier1_sources", [])
+    osint_articles = g1b.payload.get("osint_articles", [])
+
+    # Prepare data for AI analyst
+    cve_data = input.tier1_data.get("NVD", [])
+    intel471_data = input.tier1_data.get("Intel471", [])
+    crowdstrike_data = input.tier1_data.get("CrowdStrike", [])
+
+    # Convert OSINT articles to the format the AI expects
+    osint_data = [
+        {
+            "title": article.title,
+            "url": article.url,
+            "source": article.source_name,
+            "published_date": article.published_date,
+        }
+        for article in osint_articles
+    ]
+
+    logger.info(
+        f"AI analysis input: {len(cve_data)} CVEs, {len(intel471_data)} Intel471 records, "
+        f"{len(crowdstrike_data)} CrowdStrike records, {len(osint_data)} OSINT articles"
+    )
+
+    is_quarterly = report_type.upper() == "QUARTERLY"
+
+    # Reuse the analysis the caller already computed (function_app passes it via the
+    # orchestrator session) instead of running a second, disconnected AI analysis.
+    analysis_result = input.prior_results.get("analysis")
+    if isinstance(analysis_result, dict) and analysis_result:
+        logger.info("Gate 5: reusing caller-provided analysis (skipping second AI run)")
+    else:
+        analysis_result = _compute_gate5_analysis(
+            report_type, cve_data, intel471_data, crowdstrike_data, osint_data, input.prior_results
+        )
 
     logger.info(
         f"AI analysis complete: {len(analysis_result.get('cve_analysis', []))} CVEs analyzed, "

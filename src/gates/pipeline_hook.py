@@ -28,7 +28,8 @@ def run_gate_framework_over_collected_data(
     period_days: int,
     interactive_mode: bool = False,
     interactive_callback=None,
-    credentials: dict = None,  # NEW: Pass credentials for Gate 5
+    credentials: dict = None,  # Pass credentials for Gate 5
+    analysis: dict = None,  # Pre-computed analysis to reuse in Gate 5 (avoids a 2nd AI run)
 ) -> tuple[bool, dict, dict[str, GateResult]]:
     """Run the gate framework over collected data.
 
@@ -66,6 +67,11 @@ def run_gate_framework_over_collected_data(
     # Gate 5 will access via input.prior_results.get("credentials")
     if credentials:
         orchestrator.session["credentials"] = credentials
+
+    # Reuse the analysis the caller already computed so Gate 5 validates the
+    # actual published report instead of running a second, disconnected analysis.
+    if analysis:
+        orchestrator.session["analysis"] = analysis
 
     if interactive_mode:
         # Interactive mode: run gates one by one with manual clearance
