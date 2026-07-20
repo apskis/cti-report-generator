@@ -129,6 +129,18 @@ The tool is branded generically but "Illumina" is wired into 12 shared modules
 OSINT sources, peer set); make `illumina_osint_collector` an instance of a generic
 company-OSINT collector. **Effort:** L.
 
+**Status (partially done):** a `CustomerProfile` config (`config/customer_profile.yaml`,
+`CUSTOMER_PROFILE_PATH`-overridable) now holds name, brand color, security contact,
+OSINT source key, and product keywords, defaulting to the Illumina values. The report
+layer, the `Illumina-OSINT` data-flow key (producer + `function_app`/`gate1d/1e/1f`
+consumers), the gate quality-check keyword logic, and `quarterly_validation` all read
+from it. **Remaining:** `src/agents/threat_analyst.py` still embeds the company name and
+specifics (products, "life sciences" framing, market/regulatory context) throughout the
+prompt-builders and hardcoded fallback analysis. This is a design change (the profile
+would need industry/product/context fields feeding a reworked prompt), not a rename, and
+CI does not exercise those prompt paths — so it needs a live strategic-analysis run to
+verify. Tracked separately.
+
 ### 10. Untested core modules
 Tests cover gate1/1b/2/3/4, escape_handler, and 5 collectors — but **not** the
 orchestrator, Gate 5/6 (report draft + adversarial review), gate1c/1d/1e/1f, `halt`,
