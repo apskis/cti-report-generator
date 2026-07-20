@@ -5,8 +5,10 @@ HTTP-triggered functions for generating weekly tactical and quarterly strategic
 threat intelligence reports.
 """
 
+import asyncio
 import json
 import logging
+import uuid
 from datetime import date
 
 import azure.functions as func  # type: ignore
@@ -114,7 +116,7 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         # Step 1: Get API credentials from Key Vault
         vault_url = azure_config.get_key_vault_url()
         logger.info(f"Retrieving credentials from Key Vault: {vault_url}")
-        credentials = get_all_api_keys(vault_url)
+        credentials = await asyncio.to_thread(get_all_api_keys, vault_url)
 
         # Step 2: Collect threat intelligence data from all sources in parallel
         logger.info("Collecting threat intelligence data from enabled sources...")
@@ -162,7 +164,7 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
 
         # Get previous 4 weeks of context for trend analysis
         logger.info("Retrieving historical contexts for trend analysis...")
-        previous_contexts = context_mgr.get_previous_context("weekly", lookback_weeks=4)
+        previous_contexts = await asyncio.to_thread(context_mgr.get_previous_context, "weekly", lookback_weeks=4)
 
         # Calculate CVE trends
         current_cve_data = cve_data + rapid7_scans_data  # Combined CVE sources
@@ -192,7 +194,9 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
 
         # Save analysis context for next week's report
         logger.info("Saving analysis context for historical tracking...")
-        context_save_success = context_mgr.save_analysis_context("weekly", date.today(), analysis)
+        context_save_success = await asyncio.to_thread(
+            context_mgr.save_analysis_context, "weekly", date.today(), analysis
+        )
         if context_save_success:
             logger.info("Analysis context saved successfully")
         else:
@@ -201,7 +205,8 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         # Optional: gate framework validation pass (feature-flagged)
         if _gate_framework_enabled():
             logger.info("Running gate framework validation over collected data...")
-            publish_ok, gate_info, session = run_gate_framework_over_collected_data(
+            publish_ok, gate_info, session = await asyncio.to_thread(
+                run_gate_framework_over_collected_data,
                 report_type="weekly",
                 data_by_source=data_by_source,
                 osint_articles=osint_data,
@@ -234,7 +239,8 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         if not storage_account_name or not storage_account_key:
             raise ValueError("Storage account credentials not found in Key Vault")
 
-        report_result = create_and_upload_report(
+        report_result = await asyncio.to_thread(
+            create_and_upload_report,
             report_type="weekly",
             analysis_result=analysis,
             storage_account_name=storage_account_name,
@@ -267,10 +273,16 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception as e:
-        logger.error(f"Error generating weekly report: {str(e)}", exc_info=True)
+        correlation_id = str(uuid.uuid4())
+        logger.error(f"Error generating weekly report [correlation_id={correlation_id}]: {str(e)}", exc_info=True)
         return func.HttpResponse(
             json.dumps(
-                {"status": "error", "report_type": "weekly", "message": f"Failed to generate weekly report: {str(e)}"},
+                {
+                    "status": "error",
+                    "report_type": "weekly",
+                    "message": "Failed to generate weekly report. Check server logs for details.",
+                    "correlation_id": correlation_id,
+                },
                 indent=2,
             ),
             mimetype="application/json",
@@ -301,7 +313,7 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
         # Step 1: Get API credentials from Key Vault
         vault_url = azure_config.get_key_vault_url()
         logger.info(f"Retrieving credentials from Key Vault: {vault_url}")
-        credentials = get_all_api_keys(vault_url)
+        credentials = await asyncio.to_thread(get_all_api_keys, vault_url)
 
         # Step 2: Collect threat intelligence data
         # For quarterly reports, we focus on Intel471 and CrowdStrike
@@ -353,7 +365,7 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
 
         # Get previous quarters for trend analysis (look back 1 year = 4 quarters)
         logger.info("Retrieving historical quarterly contexts for trend analysis...")
-        context_mgr.get_previous_context("quarterly", lookback_weeks=52)  # ~1 year
+        await asyncio.to_thread(context_mgr.get_previous_context, "quarterly", lookback_weeks=52)  # ~1 year
 
         # Note: Quarterly reports focus on strategic trends, not individual CVEs
         # So CVE trends are less relevant, but we can still track high-level metrics
@@ -374,7 +386,9 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
 
         # Save analysis context for next quarter's report
         logger.info("Saving quarterly analysis context for historical tracking...")
-        context_save_success = context_mgr.save_analysis_context("quarterly", date.today(), analysis)
+        context_save_success = await asyncio.to_thread(
+            context_mgr.save_analysis_context, "quarterly", date.today(), analysis
+        )
         if context_save_success:
             logger.info("Quarterly analysis context saved successfully")
         else:
@@ -383,7 +397,8 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
         # Optional: gate framework validation pass (feature-flagged)
         if _gate_framework_enabled():
             logger.info("Running gate framework validation over collected data (quarterly)...")
-            publish_ok, gate_info, session = run_gate_framework_over_collected_data(
+            publish_ok, gate_info, session = await asyncio.to_thread(
+                run_gate_framework_over_collected_data,
                 report_type="quarterly",
                 data_by_source=data_by_source,
                 osint_articles=data_by_source.get("OSINT", []),
@@ -416,7 +431,8 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
         if not storage_account_name or not storage_account_key:
             raise ValueError("Storage account credentials not found in Key Vault")
 
-        report_result = create_and_upload_report(
+        report_result = await asyncio.to_thread(
+            create_and_upload_report,
             report_type="quarterly",
             analysis_result=analysis,
             storage_account_name=storage_account_name,
@@ -449,13 +465,15 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception as e:
-        logger.error(f"Error generating quarterly report: {str(e)}", exc_info=True)
+        correlation_id = str(uuid.uuid4())
+        logger.error(f"Error generating quarterly report [correlation_id={correlation_id}]: {str(e)}", exc_info=True)
         return func.HttpResponse(
             json.dumps(
                 {
                     "status": "error",
                     "report_type": "quarterly",
-                    "message": f"Failed to generate quarterly report: {str(e)}",
+                    "message": "Failed to generate quarterly report. Check server logs for details.",
+                    "correlation_id": correlation_id,
                 },
                 indent=2,
             ),

@@ -5,7 +5,7 @@ Shared functionality for uploading reports to Azure Blob Storage.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from azure.core.credentials import AzureNamedKeyCredential
@@ -111,7 +111,7 @@ def generate_sas_url(
         blob_name=blob_name,
         account_key=storage_account_key,
         permission=BlobSasPermissions(read=True),
-        expiry=datetime.utcnow() + timedelta(days=expiry_days),
+        expiry=datetime.now(UTC) + timedelta(days=expiry_days),
     )
 
     account_url = f"https://{storage_account_name}.blob.core.windows.net"
