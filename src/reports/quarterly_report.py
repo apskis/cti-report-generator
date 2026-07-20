@@ -321,7 +321,10 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         """Generate a default executive summary from available data."""
         stats = analysis_result.get("breach_landscape", {})
         total_incidents = stats.get("total_incidents", 0)
-        apt_groups = len(analysis_result.get("geopolitical_threats", {}).get("actors", []))
+        # geopolitical_threats is a list of per-country entries in the current format;
+        # tolerate the legacy dict form ({"actors": [...]}) without crashing.
+        geo = analysis_result.get("geopolitical_threats", [])
+        apt_groups = len(geo) if isinstance(geo, list) else len(geo.get("actors", []))
 
         return f"""The threat landscape for the genomics, life sciences, and precision manufacturing sectors \
 remained elevated throughout Q{self.quarter} {self._get_year()}, with {total_incidents} publicly disclosed \
@@ -1695,6 +1698,13 @@ and vulnerabilities observed are consistent with those historically used against
 
         # If missing or watch_items is empty, render unavailable message
         watch_items = looking_ahead.get("watch_items", [])
+        # Defensive: watch_items must be a list of {subject, detail} dicts. Older/
+        # malformed analyses sometimes supply a bare string or a list of strings;
+        # drop non-dict entries so one bad field cannot crash the whole report.
+        if isinstance(watch_items, str) or not isinstance(watch_items, list):
+            watch_items = []
+        else:
+            watch_items = [item for item in watch_items if isinstance(item, dict)]
         if not looking_ahead or not watch_items:
             logger.warning("looking_ahead missing or watch_items empty")
 

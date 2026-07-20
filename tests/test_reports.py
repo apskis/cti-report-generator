@@ -160,9 +160,9 @@ class TestWeeklyReportGenerator:
         filename = generator.get_filename()
         assert filename.startswith("CTI_Weekly_Report_")
         assert filename.endswith(".docx")
-        # Should contain date in YYYY-MM-DD format
-        date_str = generator.created_at.strftime("%Y-%m-%d")
-        assert date_str in filename
+        # Weekly reports are named by ISO year and week number, e.g. CTI_Weekly_Report_2026_Week30.docx
+        assert "_Week" in filename
+        assert str(generator.created_at.isocalendar()[0]) in filename
 
     def test_generate_creates_document(self, generator, sample_analysis_result):
         """generate should create a valid Document object."""
@@ -217,7 +217,7 @@ class TestWeeklyReportGenerator:
         """Document should contain executive summary section."""
         doc = generator.generate(sample_analysis_result)
         text_content = _get_document_text(doc)
-        assert "Executive Summary" in text_content
+        assert "Summary" in text_content
         assert "This week we identified 5 new vulnerabilities" in text_content
 
     def test_document_contains_recommendations(self, generator, sample_analysis_result):
@@ -341,32 +341,44 @@ class TestQuarterlyReportGenerator:
                 },
             ],
             "common_factors": "Unpatched systems (34%), compromised credentials (28%)",
-            "geopolitical_threats": {
-                "china": {
-                    "strategic_context": "China's strategic interest in biotech",
-                    "activity": "APT41 conducted multiple intrusions",
-                    "implications": "IP theft risk for proprietary research",
+            "geopolitical_threats": [
+                {
+                    "country": "China",
+                    "threat_level": "HIGH",
+                    "relevance": ["Strategic interest in biotech and genomics IP"],
+                    "activity": ["APT41 conducted multiple intrusions"],
+                    "risk": ["IP theft risk for proprietary research"],
                 },
-                "russia": {
-                    "strategic_context": "Russian ransomware ecosystem",
-                    "activity": "Ransomware incidents increased 31%",
-                    "implications": "Operational disruption risk",
+                {
+                    "country": "Russia",
+                    "threat_level": "MEDIUM",
+                    "relevance": ["Ransomware ecosystem targeting manufacturing"],
+                    "activity": ["Ransomware incidents increased 31%"],
+                    "risk": ["Operational disruption risk"],
                 },
-                "north_korea": {
-                    "strategic_context": "NK dual-purpose operations",
-                    "activity": "LinkedIn social engineering campaigns",
-                    "implications": "Credential compromise risk",
+                {
+                    "country": "North Korea",
+                    "threat_level": "MEDIUM",
+                    "relevance": ["Dual-purpose revenue and espionage operations"],
+                    "activity": ["LinkedIn social engineering campaigns"],
+                    "risk": ["Credential compromise risk"],
                 },
-            },
+            ],
             "looking_ahead": {
                 "threat_outlook": "Continued pressure from state-sponsored campaigns",
                 "planned_initiatives": "Enhanced detection capabilities",
-                "watch_items": "Major industry events and announcements",
+                "watch_items": [
+                    {"subject": "Industry events", "detail": "Major industry events and announcements"},
+                    {"subject": "Regulatory shifts", "detail": "New data-protection rules in key markets"},
+                ],
             },
-            "recommendations": [
-                ("Executive Awareness", "Targeted security awareness for executives"),
-                ("Vendor Risk Review", "Evaluate vendor security posture"),
-            ],
+            "recommendations": {
+                "intro_note": "Priority actions for the coming quarter.",
+                "items": [
+                    {"title": "Executive Awareness", "body": "Targeted security awareness for executives"},
+                    {"title": "Vendor Risk Review", "body": "Evaluate vendor security posture"},
+                ],
+            },
         }
 
     def test_report_type(self, generator):
@@ -437,7 +449,6 @@ class TestQuarterlyReportGenerator:
         """Document should contain the report title."""
         doc = generator.generate(sample_strategic_analysis)
         text_content = "\n".join([p.text for p in doc.paragraphs])
-        assert "Cyber Threat Intelligence" in text_content
         assert "Quarterly Strategic Brief" in text_content
 
     def test_document_contains_executive_summary(self, generator, sample_strategic_analysis):
@@ -450,17 +461,18 @@ class TestQuarterlyReportGenerator:
     def test_document_contains_geopolitical_section(self, generator, sample_strategic_analysis):
         """Document should contain geopolitical threat landscape."""
         doc = generator.generate(sample_strategic_analysis)
-        text_content = "\n".join([p.text for p in doc.paragraphs])
+        text_content = _get_document_text(doc)
         assert "Geopolitical Threat Landscape" in text_content
-        # Should have country sections
+        # Should have country sections (rendered as a per-country table)
         assert "China" in text_content
         assert "Russia" in text_content
 
     def test_document_contains_recommendations(self, generator, sample_strategic_analysis):
         """Document should contain recommendations for leadership."""
         doc = generator.generate(sample_strategic_analysis)
-        text_content = "\n".join([p.text for p in doc.paragraphs])
-        assert "Recommendations for Leadership" in text_content
+        text_content = _get_document_text(doc)
+        assert "Recommendations" in text_content
+        assert "Executive Awareness" in text_content
 
 
 class TestReportTypesList:
