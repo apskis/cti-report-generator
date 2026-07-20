@@ -396,51 +396,6 @@ class BaseReportGenerator(ABC):
 
         return para
 
-    def _create_metric_card_table(self, metrics: list[tuple[str, str, str]]):
-        """
-        Create a metric card table (like "4 New This Week" cards).
-
-        Args:
-            metrics: List of tuples (number, title, subtitle)
-        """
-        table = self.doc.add_table(rows=1, cols=len(metrics))
-        table.autofit = True
-
-        for i, (number, title, subtitle) in enumerate(metrics):
-            cell = table.rows[0].cells[i]
-
-            # Clear default paragraph
-            cell.paragraphs[0].clear()
-
-            # Add number (large, bold)
-            num_para = cell.paragraphs[0]
-            num_run = num_para.add_run(number)
-            num_run.font.name = "Arial"
-            num_run.font.size = Pt(24)
-            num_run.font.bold = True
-            num_run.font.color.rgb = BrandColors.ORANGE_PRIMARY
-
-            # Add title
-            title_para = cell.add_paragraph()
-            title_run = title_para.add_run(title)
-            title_run.font.name = "Arial"
-            title_run.font.size = FontSizes.BODY_SMALL
-            title_run.font.bold = True
-
-            # Add subtitle
-            sub_para = cell.add_paragraph()
-            sub_run = sub_para.add_run(subtitle)
-            sub_run.font.name = "Arial"
-            sub_run.font.size = FontSizes.FOOTNOTE
-            sub_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-            sub_run.font.italic = True
-
-            # Center align all paragraphs
-            for para in cell.paragraphs:
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        return table
-
     def _format_date_range(self, start_date: datetime | None = None, end_date: datetime | None = None) -> str:
         """Format a date range string."""
         if end_date is None:

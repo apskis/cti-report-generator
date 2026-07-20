@@ -23,7 +23,7 @@ from src.agents.exploit_enrichment import (
     fetch_epss_scores,
     fetch_kev_cves,
 )
-from src.core.config import analysis_config, industry_filter_config
+from src.core.config import analysis_config, customer_profile, industry_filter_config
 
 logger = logging.getLogger(__name__)
 
@@ -2094,19 +2094,19 @@ NVD records cross-referenced with CISA KEV and EPSS exploitation data."""
             logger.info("=" * 60)
 
             illumina_context_section = f"""
-## Current Illumina Company Context (sourced from public disclosures this quarter)
+## Current {customer_profile.name} Company Context (sourced from public disclosures this quarter)
 
 {illumina_context}
 
-IMPORTANT: Use the above Illumina context to ground your geopolitical_threats "relevance" bullets.
-Reference specific Illumina products, platforms, market position, or regulatory situations that are
-directly relevant to why each threat actor poses a risk to Illumina. Draw on current, public facts.
+IMPORTANT: Use the above {customer_profile.name} context to ground your geopolitical_threats "relevance" bullets.
+Reference specific {customer_profile.name} products, platforms, market position, or regulatory situations that are
+directly relevant to why each threat actor poses a risk to {customer_profile.name}. Draw on current, public facts.
 
-CRITICAL: If you reference any Illumina articles from the context above in your analysis, you MUST include them in osint_sources_used with proper citation."""
+CRITICAL: If you reference any {customer_profile.name} articles from the context above in your analysis, you MUST include them in osint_sources_used with proper citation."""
         else:
             logger.warning("No Illumina context available - AI will use generic life sciences context")
-            illumina_context_section = """
-## Current Illumina Company Context
+            illumina_context_section = f"""
+## Current {customer_profile.name} Company Context
 
 No current context available from public sources. Fall back to general life sciences sector exposure
 when writing "relevance" bullets, and note this limitation."""
@@ -2152,7 +2152,7 @@ Please provide your STRATEGIC analysis in the following JSON format:
   
   CRITICAL - DO NOT INVENT COMPARISONS: Do NOT use percentage increases/decreases like 'increased 20%' or 'rose 50%' unless you have ACTUAL prior quarter data. You are NOT being provided historical data - stick to absolute numbers from the current quarter's data only. Say '20 ransomware incidents this quarter' NOT 'ransomware increased 20%'.
   
-  CRITICAL - INLINE CITATIONS: If you reference ANY OSINT sources (including Illumina articles) in the executive summary, you MUST add inline citations using the citation_number from osint_sources_used. Format: [5], [6], [7], etc. Example: 'Illumina announced new precision medicine partnerships [5], which may increase...'
+  CRITICAL - INLINE CITATIONS: If you reference ANY OSINT sources (including {customer_profile.name} articles) in the executive summary, you MUST add inline citations using the citation_number from osint_sources_used. Format: [5], [6], [7], etc. Example: '{customer_profile.name} announced new precision medicine partnerships [5], which may increase...'
   
   Write in clear, business-focused language. Avoid technical jargon. This is for board members and executives who need the full picture quickly.",
   "risk_assessment": {{
@@ -2228,8 +2228,8 @@ Please provide your STRATEGIC analysis in the following JSON format:
       "vector": "Primary attack method (concise phrase, e.g., 'Espionage — IP theft', 'Ransomware — Disruption')",
       "exposure": "CRITICAL/HIGH/MEDIUM",
       "relevance": [
-        "Bullet 1: Illumina-specific relevance drawn from the Illumina context above (reference specific products, markets, or regulatory situations)",
-        "Bullet 2: Another Illumina-specific relevance point",
+        "Bullet 1: {customer_profile.name}-specific relevance drawn from the {customer_profile.name} context above (reference specific products, markets, or regulatory situations)",
+        "Bullet 2: Another {customer_profile.name}-specific relevance point",
         "Bullet 3: Third relevance point (max 3 bullets)"
       ],
       "activity": [
@@ -2238,7 +2238,7 @@ Please provide your STRATEGIC analysis in the following JSON format:
         "Bullet 3: Third activity point (max 3 bullets)"
       ],
       "risk": [
-        "Bullet 1: Specific business risk to Illumina from this actor",
+        "Bullet 1: Specific business risk to {customer_profile.name} from this actor",
         "Bullet 2: Additional risk",
         "Bullet 3: Third risk (max 3 bullets)"
       ]
@@ -2273,15 +2273,15 @@ If multiple actor groups are active, dedicate separate activity bullets to each 
     "watch_items": [
       {{
         "subject": "ALPHV/BlackCat successor groups",
-        "detail": "are actively rebuilding targeting infrastructure and re-engaging life sciences organizations. Expect elevated ransomware incident volume against sector peers in Q3. Illumina should validate that M365 playbooks reflect current RaaS TTPs."
+        "detail": "are actively rebuilding targeting infrastructure and re-engaging life sciences organizations. Expect elevated ransomware incident volume against sector peers in Q3. {customer_profile.name} should validate that M365 playbooks reflect current RaaS TTPs."
       }},
       {{
         "subject": "CISA KEV entries from Q2",
-        "detail": "affecting network management and VPN gateway software used in laboratory environments remain unpatched across a significant portion of the sector. Confirm patch status for all affected Illumina systems before Q3 close."
+        "detail": "affecting network management and VPN gateway software used in laboratory environments remain unpatched across a significant portion of the sector. Confirm patch status for all affected {customer_profile.name} systems before Q3 close."
       }},
       {{
         "subject": "Pending genomics data security legislation",
-        "detail": "in the United States and European Union — including provisions restricting foreign access to human genomic datasets — is expected to advance in Q3. Monitor for provisions relevant to ICA and BaseSpace customer data and Illumina's ongoing China market activity."
+        "detail": "in the United States and European Union — including provisions restricting foreign access to human genomic datasets — is expected to advance in Q3. Monitor for provisions relevant to ICA and BaseSpace customer data and {customer_profile.name}'s ongoing China market activity."
       }}
     ]
   }},
@@ -2290,15 +2290,15 @@ If multiple actor groups are active, dedicate separate activity bullets to each 
     "items": [
       {{
         "title": "Verify MFA Coverage Across Research and Manufacturing Environments",
-        "body": "Twelve percent of sector breaches this quarter involved absent MFA on critical systems. An MFA coverage audit across Illumina's sequencing systems, manufacturing network, and ICA/BaseSpace administrative interfaces should be completed before Q3 close, with any gaps remediated on an accelerated timeline."
+        "body": "Twelve percent of sector breaches this quarter involved absent MFA on critical systems. An MFA coverage audit across {customer_profile.name}'s sequencing systems, manufacturing network, and ICA/BaseSpace administrative interfaces should be completed before Q3 close, with any gaps remediated on an accelerated timeline."
       }},
       {{
         "title": "Conduct ICA and BaseSpace Threat Model Review",
-        "body": "Nation-state targeting of cloud-hosted genomic data is the intelligence trend with the highest potential business impact for Illumina identified this quarter. A threat model review scoped to ICA and BaseSpace — covering data access controls, customer data segregation, and detection capabilities for unauthorized access scenarios — should be initiated this quarter and completed before the Q3 board cycle."
+        "body": "Nation-state targeting of cloud-hosted genomic data is the intelligence trend with the highest potential business impact for {customer_profile.name} identified this quarter. A threat model review scoped to ICA and BaseSpace — covering data access controls, customer data segregation, and detection capabilities for unauthorized access scenarios — should be initiated this quarter and completed before the Q3 board cycle."
       }},
       {{
         "title": "Prioritize Security Attestation for Critical Vendor Tier",
-        "body": "Eighteen percent of sector breaches originated from third-party and vendor compromise. Illumina should accelerate contractual security requirements and attestation reviews for vendors with access to instrument firmware, ICA infrastructure, or clinical data systems."
+        "body": "Eighteen percent of sector breaches originated from third-party and vendor compromise. {customer_profile.name} should accelerate contractual security requirements and attestation reviews for vendors with access to instrument firmware, ICA infrastructure, or clinical data systems."
       }}
     ]
   }},
@@ -2315,16 +2315,16 @@ If multiple actor groups are active, dedicate separate activity bullets to each 
 CRITICAL - osint_sources_used Instructions:
 
 1. **Purpose**: List ONLY the OSINT articles that you ACTUALLY REFERENCE in your analysis. These should be articles that:
-   - Provide specific intelligence about Illumina (company news, SEC filings, regulatory updates, incidents)
+   - Provide specific intelligence about {customer_profile.name} (company news, SEC filings, regulatory updates, incidents)
    - Offer peer breach intelligence with named victim organizations
    - Discuss specific threat actors, vulnerabilities, or incidents relevant to the quarterly analysis
    
-2. **Illumina-Specific OSINT**: If the "Current Illumina Company Context" section above contains articles,
-   you MUST review them for relevance. If you use ANY of that Illumina context in your:
-   - Geopolitical threat "relevance" bullets (mentioning specific Illumina products, markets, or situations)
-   - Executive summary (referencing Illumina's business context)
+2. **{customer_profile.name}-Specific OSINT**: If the "Current {customer_profile.name} Company Context" section above contains articles,
+   you MUST review them for relevance. If you use ANY of that {customer_profile.name} context in your:
+   - Geopolitical threat "relevance" bullets (mentioning specific {customer_profile.name} products, markets, or situations)
+   - Executive summary (referencing {customer_profile.name}'s business context)
    - Risk assessment considerations
-   THEN you MUST include those Illumina articles in osint_sources_used with:
+   THEN you MUST include those {customer_profile.name} articles in osint_sources_used with:
    - Short title (2-5 words)
    - Original URL from the context
    - Description of what intelligence it provided (1 sentence)
@@ -2334,8 +2334,8 @@ CRITICAL - osint_sources_used Instructions:
 
 4. **Quality over quantity**: It's better to have 0-3 highly relevant OSINT sources than to list 10+ that weren't actually used
 
-5. **When to include zero OSINT**: ONLY if no OSINT articles (including Illumina articles) added unique value beyond what Intel471/CrowdStrike provided.
-   However, if Illumina context was provided and you referenced it, you MUST cite those sources.
+5. **When to include zero OSINT**: ONLY if no OSINT articles (including {customer_profile.name} articles) added unique value beyond what Intel471/CrowdStrike provided.
+   However, if {customer_profile.name} context was provided and you referenced it, you MUST cite those sources.
 
 CRITICAL - risk_assessment Instructions:
 
@@ -2374,9 +2374,9 @@ CRITICAL - geopolitical_threats Instructions:
    Identify every country or state-affiliated threat actor with meaningful activity targeting life sciences, pharmaceutical,
    biotechnology, genomics, or advanced manufacturing sectors.
 
-2. **Rank by threat relevance**: Order actors by threat relevance to Illumina specifically (not just the sector in general).
+2. **Rank by threat relevance**: Order actors by threat relevance to {customer_profile.name} specifically (not just the sector in general).
    Consider: direct targeting of genomics companies, IP theft capabilities, ransomware/disruption risk, and overlap with
-   Illumina's specific products/markets/regulatory environment.
+   {customer_profile.name}'s specific products/markets/regulatory environment.
 
 3. **Return up to 4 actors**: Include only actors with meaningful activity this quarter. If fewer than 4 have meaningful
    activity, return only those that do. DO NOT pad the list with irrelevant actors just to reach 4.
@@ -2400,15 +2400,15 @@ CRITICAL - geopolitical_threats Instructions:
    - Minimal sector-specific activity, OR
    - Primarily focused on other sectors with occasional healthcare targeting
 
-5. **For relevance bullets specifically**: Draw on the Illumina context provided above. Reference specific Illumina products
+5. **For relevance bullets specifically**: Draw on the {customer_profile.name} context provided above. Reference specific {customer_profile.name} products
    (e.g., NovaSeq X, sequencing platforms), market positions (e.g., "~80% global sequencing market share"), regulatory
    situations (e.g., recent SEC filings, FDA approvals), or partnerships mentioned in the context. If the context is empty
    or unparseable, fall back to general life sciences sector exposure and note the limitation in your analysis.
    
-   **CRITICAL - INLINE CITATIONS IN RELEVANCE BULLETS**: If you reference specific Illumina information from the "Current Illumina Company Context"
+   **CRITICAL - INLINE CITATIONS IN RELEVANCE BULLETS**: If you reference specific {customer_profile.name} information from the "Current {customer_profile.name} Company Context"
    section in your relevance bullets, you MUST add an inline citation using the source's citation_number from osint_sources_used.
-   Format: "Illumina's focus on precision medicine platforms [5] increases..." or "Recent partnerships in oncology [6] create..."
-   This allows readers to trace Illumina-specific claims back to their sources.
+   Format: "{customer_profile.name}'s focus on precision medicine platforms [5] increases..." or "Recent partnerships in oncology [6] create..."
+   This allows readers to trace {customer_profile.name}-specific claims back to their sources.
 
 5. **Keep bullets concise**: Each bullet should be one short sentence. Max 3 bullets per section (relevance, activity, risk).
 
@@ -2476,7 +2476,7 @@ Return only 3-4 incident types with NAMED examples. Quality over quantity.
      • "Genomics institute" ← NO - use "Broad Institute", "Sanger Institute", etc.
      • "Research institute" ← NO - use the actual organization name
      • "Genomics research institute" ← NO - use the specific institution name
-     • "Biotech company" ← NO - use "Genentech", "Amgen", "Illumina", etc.
+     • "Biotech company" ← NO - use "Genentech", "Amgen", "{customer_profile.name}", etc.
      • "Medical device mfg" ← NO - use "Medtronic", "Boston Scientific", etc.
      • "Lab software vendor" ← NO - use "LabCorp", "Quest Diagnostics", etc.
      • "Healthcare provider" ← NO - use "Kaiser Permanente", "Mayo Clinic", etc.
@@ -2517,7 +2517,7 @@ CRITICAL - looking_ahead Instructions:
 3. **Quality standards for watch items**:
    - Must be SPECIFIC and NAMED - not generic (e.g., "CVE-2024-1234" not "unpatched vulnerabilities")
    - Must be ACTIONABLE - give concrete next steps or monitoring guidance
-   - Must be RELEVANT to Illumina's specific business, products, or threat profile
+   - Must be RELEVANT to {customer_profile.name}'s specific business, products, or threat profile
    - Avoid generic monitoring reminders like "Continue monitoring threat landscape"
 
 CRITICAL - recommendations Instructions:
@@ -2545,16 +2545,16 @@ Do not use Hyphens.
 CRITICAL - INLINE CITATION REQUIREMENTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Whenever you reference information from an OSINT source (including Illumina articles from the "Current Illumina Company Context" section):
+Whenever you reference information from an OSINT source (including {customer_profile.name} articles from the "Current {customer_profile.name} Company Context" section):
 
 1. **Add inline citation numbers**: Use square brackets with the citation_number from osint_sources_used
    - Format: [5], [6], [7], etc.
-   - Example: "Illumina's recent precision medicine partnerships [5] increase exposure to..."
+   - Example: "{customer_profile.name}'s recent precision medicine partnerships [5] increase exposure to..."
    - Example: "Q2 saw increased targeting of genomics data [6] by nation-state actors..."
 
 2. **Where to include citations**:
    - Executive summary paragraphs (when referencing OSINT-sourced information)
-   - Geopolitical threat "relevance" bullets (when using Illumina-specific context)
+   - Geopolitical threat "relevance" bullets (when using {customer_profile.name}-specific context)
    - Any other section where you reference an OSINT article
 
 3. **Citation consistency**: Every source listed in osint_sources_used MUST be cited at least once in the report content.
@@ -2574,7 +2574,7 @@ GEOPOLITICAL BULLETS (relevance, activity, risk):
 - Maximum 2 bullets per section per country
 - Each bullet must be a maximum of 20 words
 - Bullets must be statements of fact or assessed risk — not explanatory prose
-- No bullet should begin with "Illumina" — vary the sentence openings
+- No bullet should begin with "{customer_profile.name}" — vary the sentence openings
 
 WATCH ITEMS (looking_ahead):
 - Maximum 3 items
@@ -2600,11 +2600,11 @@ Before returning your JSON, verify each item:
 
 ☐ Every source in osint_sources_used is cited with [N] in executive summary or relevance bullets
 ☐ Every notable_example includes an ACTUAL COMPANY NAME - verify no generic terms like "Pharma manufacturer", "Genomics institute", "Research institute", "Biotech company", "Medical device mfg", or "Lab software vendor"
-☐ If Illumina context was provided above, it's referenced in relevance bullets with inline citations [N]
+☐ If {customer_profile.name} context was provided above, it's referenced in relevance bullets with inline citations [N]
 ☐ Executive summary is 3-4 paragraphs covering: threat landscape, geopolitical threats, breach landscape, organizational impact
 ☐ Citation numbers start from 5 and are sequential (5, 6, 7, ...)
 ☐ Each incident type has current_count, prior_count, and a specific notable_example with NAMED company (check the Industry Breaches data above for actual victim names)
-☐ Geopolitical relevance bullets mention specific Illumina products/platforms/situations when context provided
+☐ Geopolitical relevance bullets mention specific {customer_profile.name} products/platforms/situations when context provided
 
 If any item is unchecked, fix it before returning.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
@@ -2643,7 +2643,7 @@ If any item is unchecked, fix it before returning.
         prior_year = current_year if current_q > 1 else current_year - 1
 
         return {
-            "executive_summary": f"""The threat landscape for the genomics, life sciences, and precision manufacturing sectors \
+            "executive_summary": f"""The threat landscape for the {customer_profile.industry} sectors \
 requires continued vigilance. This quarter's analysis identified {len(crowdstrike_data)} threat actor groups and \
 {len(intel471_data)} threat intelligence reports relevant to our sector.
 
