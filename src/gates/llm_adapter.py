@@ -112,6 +112,29 @@ class AzureOpenAILLMClient:
         return response.choices[0].message.content or ""
 
 
+class FakeLLMClientTier2:
+    """Fake LLM client that returns canned structured JSON for Tier 2 testing.
+
+    This allows unit tests to verify Tier 2 logic (structured review, quote-back,
+    multi-sampling) without requiring a live Azure OpenAI connection. Tests inject
+    the JSON responses they want to validate against.
+    """
+
+    def __init__(self, canned_responses: dict[str, str] | None = None):
+        """Initialize with a dict of {gate_id: json_response_string}.
+
+        If no canned response for a gate, falls back to StructuralLLMClient.
+        """
+        self._canned = canned_responses or {}
+        self._fallback = StructuralLLMClient()
+
+    def complete(self, system_prompt: str, user_prompt: str) -> str:
+        gate_id = _detect_gate_from_prompt(user_prompt)
+        if gate_id in self._canned:
+            return self._canned[gate_id]
+        return self._fallback.complete(system_prompt, user_prompt)
+
+
 def build_gate_llm_client(credentials: dict | None = None):
     """Return the configured gate LLM client.
 

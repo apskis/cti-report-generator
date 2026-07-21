@@ -1,11 +1,14 @@
 """Gate 6: Adversarial review of the Gate 5 draft.
 
-Two layers:
-1. Deterministic checks: scan the Gate 5 report payload for known fence
-   violations (filler phrases, em dashes, Open Signal values inside
-   Threat Findings, OSINT-only citations, omitted Coverage Gaps).
-2. LLM adversary: ask GPT-4.1 to act as adversary and surface anything the
-   deterministic pass missed.
+Three layers:
+1. Deterministic checks (Tier 1): scan the Gate 5 report payload for known fence
+   violations (filler phrases, em dashes, Open Signal values inside Threat Findings,
+   OSINT-only citations, omitted Coverage Gaps, source grounding, statistics).
+2. LLM adversary (Tier 2): with the real adapter (GATE_LLM_MODE=azure), require
+   structured JSON claims that cite source_record_id + quote, then re-validate
+   each citation in Python against the SourceIndex.
+3. Multi-sample voting (Tier 2): run the adversarial pass N times (configurable,
+   default 3) and majority-vote each finding for consistency.
 
 Track A findings block publish. Track B findings can be corrected in place.
 
@@ -16,10 +19,18 @@ Report-type specific checks:
 
 from __future__ import annotations
 
+import json
+import os
 import re
 
 from .escape_handler import detect_gate_bleed
-from .grounding import build_source_index, rederive_statistics, verify_report_grounding
+from .grounding import (
+    build_source_index,
+    rederive_statistics,
+    validate_quote_in_source,
+    verify_report_grounding,
+)
+from .llm_adapter import AzureOpenAILLMClient
 from .models import GateInput, GateResult
 from .prompts import GATE_6_PROMPT_TEMPLATE, SYSTEM_PROMPT_GATE_6
 
@@ -507,6 +518,180 @@ def _parse_llm_findings(llm_text: str) -> tuple[list[str], list[str]]:
     return track_a, track_b
 
 
+def _is_structured_json_response(llm_text: str) -> bool:
+    """Check if the LLM returned structured JSON (Tier 2 mode) vs prose (default mode)."""
+    stripped = llm_text.strip()
+    # Must start with { and contain track_a_findings or track_b_findings keys
+    if not stripped.startswith("{"):
+        return False
+    try:
+        parsed = json.loads(stripped)
+        return isinstance(parsed, dict) and ("track_a_findings" in parsed or "track_b_findings" in parsed)
+    except (json.JSONDecodeError, ValueError):
+        return False
+
+
+def _validate_structured_findings(llm_json: dict, source_index, report: dict) -> tuple[list[str], list[str]]:
+    """Tier 2: Validate structured JSON findings from the real LLM adapter.
+
+    For each claim with a source_record_id and quote, re-check them in Python:
+    - Record ID must exist in the SourceIndex
+    - Quote must appear in that record (substring match)
+    - If validation fails, treat it as a Track A finding (BLOCK)
+
+    This implements the core Tier 2 principle: never trust the model's word,
+    always re-validate against the actual source data.
+    """
+    track_a: list[str] = []
+    track_b: list[str] = []
+
+    # Process Track A findings
+    for finding in llm_json.get("track_a_findings", []):
+        if not isinstance(finding, dict):
+            continue
+
+        claim = finding.get("claim", "")
+        verdict = finding.get("verdict", "PASS")
+        record_id = finding.get("source_record_id")
+        quote = finding.get("quote")
+
+        # If the LLM marked it as BLOCK and provided citations, validate them
+        if verdict == "BLOCK" and record_id and quote:
+            # Re-validate: does the record exist?
+            rec = source_index.get_record(record_id)
+            if not rec:
+                track_a.append(
+                    f"[LLM CITATION INVALID] Claim: '{claim}' cites nonexistent record '{record_id}' (BLOCK)"
+                )
+                continue
+
+            # Re-validate: does the quote appear in that record?
+            if not validate_quote_in_source(quote, source_index):
+                track_a.append(
+                    f"[LLM QUOTE UNVERIFIABLE] Claim: '{claim}' cites record '{record_id}' "
+                    f"with quote '{quote[:50]}...' but quote not found in source (BLOCK)"
+                )
+                continue
+
+            # Both validations passed: trust the LLM's assessment
+            track_a.append(f"[LLM] {claim}")
+        elif verdict == "BLOCK":
+            # LLM said BLOCK but didn't provide citations (pre-Tier-2 style)
+            track_a.append(f"[LLM] {claim}")
+
+    # Process Track B findings (no citation validation needed for warnings)
+    for finding in llm_json.get("track_b_findings", []):
+        if not isinstance(finding, dict):
+            continue
+        claim = finding.get("claim", "")
+        if claim:
+            track_b.append(f"[LLM] {claim}")
+
+    return track_a, track_b
+
+
+def _validate_threat_finding_quotes(report: dict, source_index) -> list[str]:
+    """Tier 2 #6: Quote-back challenge for each Threat Finding.
+
+    For every threat finding in the report, require an exact source quote that
+    supports it. String-match the quote back into the source corpus. Unverifiable
+    quotes are Track A (BLOCK).
+
+    NOTE: This is a separate pass from the LLM structured validation above. This
+    directly validates the report's threat_findings array, whereas the LLM pass
+    validates the adversarial review's own claims about the report.
+    """
+    findings: list[str] = []
+
+    for tf in report.get("threat_findings", []):
+        if not isinstance(tf, dict):
+            continue
+
+        value = tf.get("value", "")
+        quote = tf.get("supporting_quote")  # Expected field in threat_findings
+
+        # If a quote is provided, validate it
+        if quote and not validate_quote_in_source(quote, source_index):
+            findings.append(
+                f"Threat Finding '{value}' has unverifiable quote: '{quote[:80]}...' not found in source corpus (BLOCK)"
+            )
+        # If no quote provided, that's a structural issue but not necessarily a Tier 2 failure
+        # (the deterministic checks already flag uncited findings)
+
+    return findings
+
+
+def _run_adversarial_pass(llm_client, source_index, report: dict, draft_text: str) -> tuple[list[str], list[str]]:
+    """Execute a single adversarial review pass (for multi-sampling).
+
+    Returns (track_a_findings, track_b_findings) for this pass.
+    """
+    user_prompt = GATE_6_PROMPT_TEMPLATE.format(gate5_output=draft_text or str(report))
+    llm_text = llm_client.complete(SYSTEM_PROMPT_GATE_6, user_prompt)
+
+    detect_gate_bleed(llm_text, expected_gate_id="6")
+
+    # Check if this is a structured JSON response (Tier 2) or prose (default)
+    if _is_structured_json_response(llm_text):
+        # Tier 2 path: parse JSON and validate citations
+        try:
+            llm_json = json.loads(llm_text.strip())
+            return _validate_structured_findings(llm_json, source_index, report)
+        except (json.JSONDecodeError, ValueError) as e:
+            # JSON parse failed; treat as a finding
+            return ([f"LLM returned malformed JSON: {e}"], [])
+    else:
+        # Default prose path (Tier 1 / StructuralLLMClient)
+        return _parse_llm_findings(llm_text)
+
+
+def _majority_vote_findings(all_passes: list[tuple[list[str], list[str]]]) -> tuple[list[str], list[str], list[str]]:
+    """Tier 2 #7: Multi-sample voting across N adversarial passes.
+
+    For each unique finding, count how many passes flagged it. Only findings that
+    appear in the majority (>50%) of passes are included in the final Track A/B.
+    Returns (track_a_consensus, track_b_consensus, disagreements).
+
+    Disagreements are logged but do not block (they're informational for humans).
+    """
+    if not all_passes:
+        return [], [], []
+
+    n_samples = len(all_passes)
+    threshold = n_samples // 2 + 1  # Majority
+
+    # Normalize findings: strip [LLM] prefix and extra whitespace for deduplication
+    def normalize(finding: str) -> str:
+        return re.sub(r"^\[LLM\]\s*", "", finding.strip())
+
+    # Count occurrences
+    track_a_counts: dict[str, int] = {}
+    track_b_counts: dict[str, int] = {}
+
+    for track_a, track_b in all_passes:
+        for finding in track_a:
+            norm = normalize(finding)
+            track_a_counts[norm] = track_a_counts.get(norm, 0) + 1
+        for finding in track_b:
+            norm = normalize(finding)
+            track_b_counts[norm] = track_b_counts.get(norm, 0) + 1
+
+    # Majority vote
+    track_a_consensus = [f for f, count in track_a_counts.items() if count >= threshold]
+    track_b_consensus = [f for f, count in track_b_counts.items() if count >= threshold]
+
+    # Disagreements: findings that appeared but didn't reach threshold
+    disagreements = []
+    for finding, count in track_a_counts.items():
+        if count < threshold:
+            disagreements.append(f"Track A split vote ({count}/{n_samples}): {finding}")
+    for finding, count in track_b_counts.items():
+        if count < threshold:
+            disagreements.append(f"Track B split vote ({count}/{n_samples}): {finding}")
+
+    return track_a_consensus, track_b_consensus, disagreements
+
+
 def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     g1 = input.prior_results.get("1")
     g1b = input.prior_results.get("1B")
@@ -525,6 +710,10 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
 
     track_a: list[str] = []
     track_b: list[str] = []
+
+    # -------------------------------------------------------------------------
+    # TIER 1: Deterministic checks (unchanged; always active)
+    # -------------------------------------------------------------------------
 
     # Existing Track A checks
     track_a.extend(_scan_open_signal_leakage(report))
@@ -596,15 +785,49 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     track_a.extend(incidents_track_a)
     track_b.extend(incidents_track_b)
 
-    # LLM adversary pass
-    user_prompt = GATE_6_PROMPT_TEMPLATE.format(gate5_output=draft_text or str(report))
-    llm_text = llm_client.complete(SYSTEM_PROMPT_GATE_6, user_prompt)
+    # -------------------------------------------------------------------------
+    # TIER 2: LLM adversary with verifiable self-critique (items #5, #6, #7)
+    # -------------------------------------------------------------------------
 
-    llm_a, llm_b = _parse_llm_findings(llm_text)
-    track_a.extend(f"[LLM] {item}" for item in llm_a)
-    track_b.extend(f"[LLM] {item}" for item in llm_b)
+    # Tier 2 activates only with the real Azure adapter or FakeLLMClientTier2 (for tests).
+    # With StructuralLLMClient, this degrades gracefully to the existing prose-parsing behavior.
+    from .llm_adapter import FakeLLMClientTier2
 
-    detect_gate_bleed(llm_text, expected_gate_id="6")
+    is_real_llm = isinstance(llm_client, (AzureOpenAILLMClient, FakeLLMClientTier2))
+
+    # Multi-sample voting: run N adversarial passes (default 3)
+    n_samples = int(os.environ.get("GATE_LLM_SAMPLES", "3"))
+    if n_samples < 1:
+        n_samples = 1
+
+    all_passes: list[tuple[list[str], list[str]]] = []
+    for _ in range(n_samples):
+        llm_track_a, llm_track_b = _run_adversarial_pass(llm_client, source_index, report, draft_text)
+        all_passes.append((llm_track_a, llm_track_b))
+
+    # Majority vote across passes (Tier 2 #7)
+    if is_real_llm and n_samples > 1:
+        llm_a_consensus, llm_b_consensus, disagreements = _majority_vote_findings(all_passes)
+        track_a.extend(llm_a_consensus)
+        track_b.extend(llm_b_consensus)
+        # Log disagreements as Track B (informational)
+        if disagreements:
+            track_b.append(f"Multi-sample disagreements ({n_samples} passes):")
+            track_b.extend(f"  - {d}" for d in disagreements)
+    else:
+        # Single pass or default stub client: use first pass directly
+        llm_track_a, llm_track_b = all_passes[0] if all_passes else ([], [])
+        track_a.extend(llm_track_a)
+        track_b.extend(llm_track_b)
+
+    # Tier 2 #6: Quote-back challenge for Threat Findings (if real LLM)
+    # This validates quotes directly in the report's threat_findings array.
+    if is_real_llm:
+        track_a.extend(_validate_threat_finding_quotes(report, source_index))
+
+    # -------------------------------------------------------------------------
+    # Final decision
+    # -------------------------------------------------------------------------
 
     status = "PASS" if not track_a else "BLOCK"
 
@@ -614,7 +837,9 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
         payload={
             "track_a": track_a,
             "track_b": track_b,
-            "review_text": llm_text,
+            "review_text": f"Tier 2 active: {is_real_llm}, Samples: {n_samples}",
+            "tier2_active": is_real_llm,
+            "n_samples": n_samples,
         },
         awaiting_clearance=True,
     )

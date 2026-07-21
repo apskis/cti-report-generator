@@ -38,6 +38,7 @@ class SourceIndex:
     cve_ids: set[str] = field(default_factory=set)  # upper-cased
     actor_names: set[str] = field(default_factory=set)  # lower-cased, from known fields
     text_blob: str = ""  # lowercased concatenation of all source text, for substring checks
+    records_by_id: dict[str, dict] = field(default_factory=dict)  # stable record ids -> raw records
 
     def has_cve(self, cve_id: str) -> bool:
         return bool(cve_id) and cve_id.upper() in self.cve_ids
@@ -58,6 +59,23 @@ class SourceIndex:
             return True
         tokens = {t.lower() for t in _TOKEN_RE.findall(name) if t.lower() not in _STOPWORDS}
         return any(tok in self.text_blob or tok in self.actor_names for tok in tokens)
+
+    def get_record(self, record_id: str) -> dict | None:
+        """Retrieve a source record by its stable ID."""
+        return self.records_by_id.get(record_id)
+
+    def record_contains_entity(self, record_id: str, entity: str) -> bool:
+        """Check if a specific record contains the given entity (CVE, actor, victim name).
+
+        Used for Tier 2 LLM citation validation: the model must cite a record that
+        actually supports its claim.
+        """
+        rec = self.get_record(record_id)
+        if not rec:
+            return False
+        rec_text = json.dumps(rec, default=str).lower()
+        entity_norm = entity.strip().lower()
+        return entity_norm in rec_text
 
 
 # Common words that must not, on their own, make a fabricated name look "grounded".
@@ -82,11 +100,16 @@ _STOPWORDS = {
 }
 
 
-def _iter_records(tier1_data: dict) -> list[dict]:
-    records: list[dict] = []
-    for value in (tier1_data or {}).values():
+def _iter_records(tier1_data: dict) -> list[tuple[str, dict]]:
+    """Yield (source_key, record) pairs with stable IDs for each record."""
+    records: list[tuple[str, dict]] = []
+    for source_key, value in (tier1_data or {}).items():
         if isinstance(value, list):
-            records.extend(r for r in value if isinstance(r, dict))
+            for idx, rec in enumerate(value):
+                if isinstance(rec, dict):
+                    # Stable ID: source_key + sequential index
+                    record_id = f"{source_key}_{idx}"
+                    records.append((record_id, rec))
     return records
 
 
@@ -96,7 +119,10 @@ def build_source_index(tier1_data: dict, osint_articles: list | None = None) -> 
     text_parts: list[str] = []
 
     records = _iter_records(tier1_data)
-    for rec in records:
+    for record_id, rec in records:
+        # Store with stable ID
+        idx.records_by_id[record_id] = rec
+
         # CVE ids: from explicit fields and from any text in the record.
         for key in ("cve_id",):
             v = rec.get(key)
@@ -112,14 +138,16 @@ def build_source_index(tier1_data: dict, osint_articles: list | None = None) -> 
                 idx.actor_names.add(v.strip().lower())
 
     # OSINT articles contribute victim/company/actor text (titles + summaries + urls).
-    osint_records: list[dict] = []
-    for art in osint_articles or []:
+    osint_records: list[tuple[str, dict]] = []
+    for idx_num, art in enumerate(osint_articles or []):
         if isinstance(art, dict):
-            osint_records.append(art)
+            osint_id = f"osint_{idx_num}"
+            idx.records_by_id[osint_id] = art
+            osint_records.append((osint_id, art))
 
     # Text blob: serialize every source record so substring checks see all fields
     # (descriptions, summaries, article titles, victim names in free text, etc.).
-    for rec in records + osint_records:
+    for _record_id, rec in list(records) + osint_records:
         text_parts.append(json.dumps(rec, default=str))
     idx.text_blob = " ".join(text_parts).lower()
 
@@ -188,3 +216,23 @@ def rederive_statistics(report: dict) -> list[str]:
             findings.append(f"Statistic '{metric}' = {stats[metric]} but the report contains {actual}")
 
     return findings
+
+
+def normalize_whitespace(text: str) -> str:
+    """Normalize whitespace for quote matching: collapse runs, lowercase, strip."""
+    import re
+
+    return re.sub(r"\s+", " ", text.lower().strip())
+
+
+def validate_quote_in_source(quote: str, index: SourceIndex) -> bool:
+    """Check if the exact quote appears in the source corpus (normalized whitespace/case).
+
+    Used for Tier 2 LLM quote-back validation: the model must produce a verifiable
+    quote that actually exists in the collected data.
+    """
+    if not quote or not quote.strip():
+        return False
+    norm_quote = normalize_whitespace(quote)
+    norm_blob = normalize_whitespace(index.text_blob)
+    return norm_quote in norm_blob

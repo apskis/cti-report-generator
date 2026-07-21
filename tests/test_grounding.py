@@ -3,6 +3,8 @@
 These verify the anti-hallucination primitive: fabricated CVEs, threat actors,
 and named victims that do not resolve to any collected source record are caught,
 while claims backed by real source data pass. All pure Python, no LLM.
+
+NEW (Tier 2): Tests for stable record IDs, quote validation, and citation checking.
 """
 
 from __future__ import annotations
@@ -10,7 +12,9 @@ from __future__ import annotations
 from src.gates.grounding import (
     SourceIndex,
     build_source_index,
+    normalize_whitespace,
     rederive_statistics,
+    validate_quote_in_source,
     verify_report_grounding,
 )
 
@@ -224,3 +228,99 @@ class TestSourceIndexMentions:
     def test_known_actor_name(self):
         idx = SourceIndex(actor_names={"lazarus"})
         assert idx.mentions("Lazarus") is True
+
+
+# ---------------------------------------------------------------------------
+# Tier 2 additions: stable record IDs, quote validation, citation checking
+# ---------------------------------------------------------------------------
+
+
+class TestStableRecordIds:
+    def test_records_have_stable_ids(self):
+        data = {
+            "nvd_cves": [{"cve_id": "CVE-2024-1234"}, {"cve_id": "CVE-2024-5678"}],
+            "crowdstrike_actors": [{"actor_name": "COZY BEAR"}],
+        }
+        idx = build_source_index(data)
+        # Records should be indexed by source_key + index
+        assert idx.get_record("nvd_cves_0") is not None
+        assert idx.get_record("nvd_cves_1") is not None
+        assert idx.get_record("crowdstrike_actors_0") is not None
+
+    def test_osint_articles_have_stable_ids(self):
+        osint = [
+            {"article_id": "a1", "title": "Test Article"},
+            {"article_id": "a2", "title": "Another Article"},
+        ]
+        idx = build_source_index({}, osint)
+        assert idx.get_record("osint_0") is not None
+        assert idx.get_record("osint_1") is not None
+
+    def test_get_nonexistent_record_returns_none(self):
+        idx = build_source_index(_tier1_data())
+        assert idx.get_record("nonexistent_999") is None
+
+
+class TestRecordContainsEntity:
+    def test_record_contains_cve(self):
+        idx = build_source_index(_tier1_data())
+        # nvd_cves_0 should contain CVE-2024-1234
+        assert idx.record_contains_entity("nvd_cves_0", "CVE-2024-1234") is True
+        assert idx.record_contains_entity("nvd_cves_0", "CVE-9999-9999") is False
+
+    def test_record_contains_actor(self):
+        idx = build_source_index(_tier1_data())
+        # crowdstrike_actors_0 should contain COZY BEAR
+        assert idx.record_contains_entity("crowdstrike_actors_0", "COZY BEAR") is True
+        assert idx.record_contains_entity("crowdstrike_actors_0", "PHANTOM") is False
+
+    def test_nonexistent_record_returns_false(self):
+        idx = build_source_index(_tier1_data())
+        assert idx.record_contains_entity("nonexistent_999", "anything") is False
+
+
+class TestQuoteValidation:
+    def test_exact_quote_found(self):
+        idx = build_source_index(_tier1_data())
+        # Quote from the NVD description
+        assert validate_quote_in_source("Heap overflow in Acme Server", idx) is True
+
+    def test_quote_with_normalized_whitespace_found(self):
+        data = {"reports": [{"body": "The   vulnerability    is   critical"}]}
+        idx = build_source_index(data)
+        # Extra whitespace should be normalized
+        assert validate_quote_in_source("The vulnerability is critical", idx) is True
+
+    def test_quote_case_insensitive(self):
+        data = {"reports": [{"body": "COZY BEAR is a threat actor"}]}
+        idx = build_source_index(data)
+        assert validate_quote_in_source("cozy bear is a threat actor", idx) is True
+
+    def test_fabricated_quote_not_found(self):
+        idx = build_source_index(_tier1_data())
+        assert validate_quote_in_source("This quote does not exist anywhere", idx) is False
+
+    def test_partial_quote_found(self):
+        data = {"reports": [{"body": "The actor exploited CVE-2024-1234 in the wild"}]}
+        idx = build_source_index(data)
+        # Partial substring should match
+        assert validate_quote_in_source("exploited CVE-2024-1234", idx) is True
+
+    def test_empty_quote_returns_false(self):
+        idx = build_source_index(_tier1_data())
+        assert validate_quote_in_source("", idx) is False
+        assert validate_quote_in_source("   ", idx) is False
+
+
+class TestNormalizeWhitespace:
+    def test_collapses_multiple_spaces(self):
+        assert normalize_whitespace("a    b    c") == "a b c"
+
+    def test_lowercases(self):
+        assert normalize_whitespace("UPPER case MiXeD") == "upper case mixed"
+
+    def test_strips_leading_trailing(self):
+        assert normalize_whitespace("  text  ") == "text"
+
+    def test_handles_newlines_and_tabs(self):
+        assert normalize_whitespace("line1\n\tline2\r\nline3") == "line1 line2 line3"

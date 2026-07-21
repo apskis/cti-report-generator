@@ -93,7 +93,11 @@ SYSTEM_PROMPT_GATE_6: str = (
     "claims not traceable to Gate 4 fields, training-knowledge facts, hidden coverage gaps, invented "
     "numbers, OSINT used as sole citation, Open Signals leaked into Threat Findings. Track B (fix in "
     "place): filler phrases, section order drift, formatting issues. Output findings only. Do NOT rewrite "
-    "the draft."
+    "the draft.\n\n"
+    "IMPORTANT: When operating in structured mode (GATE_LLM_MODE=azure), you MUST return a JSON array. "
+    "Each element represents a finding with the structure: {claim, verdict, source_record_id, quote}. "
+    "The source_record_id must reference an actual record from the source data (format: sourcename_index). "
+    "The quote must be an exact substring from that record that supports the claim."
 )
 
 # --- Gate prompt templates (str.format placeholders) ---
@@ -252,10 +256,37 @@ TRACK B (fix in place, no restart needed):
 - Missing context for why specific OSINT articles were included
 - Formatting issues (em dashes, bullets where prose was required)
 
-Output format:
+Output format (prose mode):
 - Track A findings: [list each with the offending text and why it fails]
 - Track B findings: [list each]
 - Overall: PASS (zero Track A findings) or BLOCK (any Track A finding present)
+
+Output format (structured mode - GATE_LLM_MODE=azure):
+Return a JSON object with this structure:
+{{
+  "track_a_findings": [
+    {{
+      "claim": "the specific claim text from the report",
+      "verdict": "BLOCK or PASS",
+      "source_record_id": "sourcename_index (e.g., NVD_0, crowdstrike_actors_2, osint_5)",
+      "quote": "exact quote from the source record that should support this claim"
+    }}
+  ],
+  "track_b_findings": [
+    {{
+      "claim": "the issue text",
+      "verdict": "WARN",
+      "source_record_id": null,
+      "quote": null
+    }}
+  ]
+}}
+
+For Threat Findings specifically, you MUST provide:
+1. The exact source_record_id that supposedly supports each claim
+2. An exact quote from that record
+
+The system will re-validate these citations against the actual source data.
 
 Do NOT rewrite the draft. Output findings only.
 End with: GATE 6 COMPLETE. AWAITING CLEARANCE."""
