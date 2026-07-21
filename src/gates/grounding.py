@@ -220,19 +220,36 @@ def rederive_statistics(report: dict) -> list[str]:
 
 def normalize_whitespace(text: str) -> str:
     """Normalize whitespace for quote matching: collapse runs, lowercase, strip."""
-    import re
-
     return re.sub(r"\s+", " ", text.lower().strip())
 
 
 def validate_quote_in_source(quote: str, index: SourceIndex) -> bool:
-    """Check if the exact quote appears in the source corpus (normalized whitespace/case).
+    """Check if the exact quote appears anywhere in the source corpus (normalized).
 
-    Used for Tier 2 LLM quote-back validation: the model must produce a verifiable
-    quote that actually exists in the collected data.
+    Corpus-wide check: used for the report's own threat-finding quote-back (the
+    finding does not name a specific source record). For an LLM citation that names
+    a specific ``source_record_id``, use ``validate_quote_in_record`` instead so the
+    quote is checked against the cited record, not merely somewhere in the corpus.
     """
     if not quote or not quote.strip():
         return False
     norm_quote = normalize_whitespace(quote)
     norm_blob = normalize_whitespace(index.text_blob)
     return norm_quote in norm_blob
+
+
+def validate_quote_in_record(quote: str, record_id: str, index: SourceIndex) -> bool:
+    """Check that the exact quote appears in the SPECIFIC cited record (normalized).
+
+    This is the strong form of Tier 2 citation validation: a model must not be able
+    to cite record A while quoting text that only exists in record B. Returns False
+    if the record is unknown or the quote is empty.
+    """
+    if not quote or not quote.strip():
+        return False
+    rec = index.get_record(record_id)
+    if rec is None:
+        return False
+    norm_quote = normalize_whitespace(quote)
+    norm_rec = normalize_whitespace(json.dumps(rec, default=str))
+    return norm_quote in norm_rec

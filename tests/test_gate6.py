@@ -161,6 +161,37 @@ def test_tier2_fabricated_quote_blocks():
     assert any("QUOTE UNVERIFIABLE" in f for f in result.payload["track_a"])
 
 
+def test_tier2_quote_from_wrong_record_blocks():
+    """Tier 2 #5: A quote that exists in the corpus but NOT in the cited record → BLOCK.
+
+    Guards the record-specific citation check: the model cites NVD_0 but quotes text
+    that only appears in the CrowdStrike record. A corpus-wide match would wrongly pass
+    this; the record-specific check must catch it.
+    """
+    tier1 = {
+        "NVD": [{"cve_id": "CVE-2024-1234", "description": "Heap overflow in Acme Server"}],
+        "CrowdStrike": [{"actor_name": "COZY BEAR"}],
+    }
+    report = {"cve_analysis": [{"cve_id": "CVE-2024-1234", "citation": "NVD"}]}
+    llm_response = json.dumps(
+        {
+            "track_a_findings": [
+                {
+                    "claim": "This CVE is linked to a named actor",
+                    "verdict": "BLOCK",
+                    "source_record_id": "NVD_0",  # cited record...
+                    "quote": "COZY BEAR",  # ...but this text lives in CrowdStrike_0, not NVD_0
+                }
+            ],
+            "track_b_findings": [],
+        }
+    )
+    client = FakeLLMClientTier2({"6": llm_response})
+    result = run(_gate_input(report, tier1), client, "WEEKLY")
+    assert result.status == "BLOCK"
+    assert any("QUOTE UNVERIFIABLE" in f and "NVD_0" in f for f in result.payload["track_a"])
+
+
 def test_tier2_multi_sample_majority_vote():
     """Tier 2 #7: With multiple samples, only findings in the majority pass through.
 

@@ -27,6 +27,7 @@ from .escape_handler import detect_gate_bleed
 from .grounding import (
     build_source_index,
     rederive_statistics,
+    validate_quote_in_record,
     validate_quote_in_source,
     verify_report_grounding,
 )
@@ -536,7 +537,7 @@ def _validate_structured_findings(llm_json: dict, source_index, report: dict) ->
 
     For each claim with a source_record_id and quote, re-check them in Python:
     - Record ID must exist in the SourceIndex
-    - Quote must appear in that record (substring match)
+    - Quote must appear in THAT specific record (not merely somewhere in the corpus)
     - If validation fails, treat it as a Track A finding (BLOCK)
 
     This implements the core Tier 2 principle: never trust the model's word,
@@ -565,11 +566,11 @@ def _validate_structured_findings(llm_json: dict, source_index, report: dict) ->
                 )
                 continue
 
-            # Re-validate: does the quote appear in that record?
-            if not validate_quote_in_source(quote, source_index):
+            # Re-validate: does the quote appear in THAT cited record specifically?
+            if not validate_quote_in_record(quote, record_id, source_index):
                 track_a.append(
                     f"[LLM QUOTE UNVERIFIABLE] Claim: '{claim}' cites record '{record_id}' "
-                    f"with quote '{quote[:50]}...' but quote not found in source (BLOCK)"
+                    f"with quote '{quote[:50]}...' but quote not found in that record (BLOCK)"
                 )
                 continue
 
@@ -621,10 +622,10 @@ def _validate_threat_finding_quotes(report: dict, source_index) -> list[str]:
     return findings
 
 
-def _run_adversarial_pass(llm_client, source_index, report: dict, draft_text: str) -> tuple[list[str], list[str]]:
+def _run_adversarial_pass(llm_client, source_index, report: dict, draft_text: str) -> tuple[list[str], list[str], str]:
     """Execute a single adversarial review pass (for multi-sampling).
 
-    Returns (track_a_findings, track_b_findings) for this pass.
+    Returns (track_a_findings, track_b_findings, raw_llm_text) for this pass.
     """
     user_prompt = GATE_6_PROMPT_TEMPLATE.format(gate5_output=draft_text or str(report))
     llm_text = llm_client.complete(SYSTEM_PROMPT_GATE_6, user_prompt)
@@ -636,13 +637,15 @@ def _run_adversarial_pass(llm_client, source_index, report: dict, draft_text: st
         # Tier 2 path: parse JSON and validate citations
         try:
             llm_json = json.loads(llm_text.strip())
-            return _validate_structured_findings(llm_json, source_index, report)
+            track_a, track_b = _validate_structured_findings(llm_json, source_index, report)
+            return track_a, track_b, llm_text
         except (json.JSONDecodeError, ValueError) as e:
             # JSON parse failed; treat as a finding
-            return ([f"LLM returned malformed JSON: {e}"], [])
+            return ([f"LLM returned malformed JSON: {e}"], [], llm_text)
     else:
         # Default prose path (Tier 1 / StructuralLLMClient)
-        return _parse_llm_findings(llm_text)
+        track_a, track_b = _parse_llm_findings(llm_text)
+        return track_a, track_b, llm_text
 
 
 def _majority_vote_findings(all_passes: list[tuple[list[str], list[str]]]) -> tuple[list[str], list[str], list[str]]:
@@ -795,15 +798,22 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
 
     is_real_llm = isinstance(llm_client, (AzureOpenAILLMClient, FakeLLMClientTier2))
 
-    # Multi-sample voting: run N adversarial passes (default 3)
-    n_samples = int(os.environ.get("GATE_LLM_SAMPLES", "3"))
-    if n_samples < 1:
+    # Multi-sample voting only makes sense against a real (non-deterministic) model.
+    # The StructuralLLMClient stub is deterministic — N identical passes would be pure
+    # wasted work — so it always runs exactly one pass.
+    if is_real_llm:
+        n_samples = int(os.environ.get("GATE_LLM_SAMPLES", "3"))
+        n_samples = max(1, n_samples)
+    else:
         n_samples = 1
 
     all_passes: list[tuple[list[str], list[str]]] = []
-    for _ in range(n_samples):
-        llm_track_a, llm_track_b = _run_adversarial_pass(llm_client, source_index, report, draft_text)
+    review_text = ""
+    for i in range(n_samples):
+        llm_track_a, llm_track_b, raw_text = _run_adversarial_pass(llm_client, source_index, report, draft_text)
         all_passes.append((llm_track_a, llm_track_b))
+        if i == 0:
+            review_text = raw_text  # keep the first pass's raw adversary output for diagnostics
 
     # Majority vote across passes (Tier 2 #7)
     if is_real_llm and n_samples > 1:
@@ -837,7 +847,7 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
         payload={
             "track_a": track_a,
             "track_b": track_b,
-            "review_text": f"Tier 2 active: {is_real_llm}, Samples: {n_samples}",
+            "review_text": review_text,  # raw adversary output from the first pass (diagnostics)
             "tier2_active": is_real_llm,
             "n_samples": n_samples,
         },

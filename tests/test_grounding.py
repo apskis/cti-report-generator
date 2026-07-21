@@ -14,6 +14,7 @@ from src.gates.grounding import (
     build_source_index,
     normalize_whitespace,
     rederive_statistics,
+    validate_quote_in_record,
     validate_quote_in_source,
     verify_report_grounding,
 )
@@ -310,6 +311,27 @@ class TestQuoteValidation:
         idx = build_source_index(_tier1_data())
         assert validate_quote_in_source("", idx) is False
         assert validate_quote_in_source("   ", idx) is False
+
+
+class TestQuoteInRecord:
+    def test_quote_found_in_cited_record(self):
+        idx = build_source_index(_tier1_data())
+        assert validate_quote_in_record("Heap overflow in Acme Server", "nvd_cves_0", idx) is True
+
+    def test_quote_in_corpus_but_wrong_record_is_false(self):
+        # "COZY BEAR" is in crowdstrike_actors_0, NOT in nvd_cves_0. A corpus-wide check
+        # would pass; the record-specific check must reject it.
+        idx = build_source_index(_tier1_data())
+        assert validate_quote_in_source("COZY BEAR", idx) is True
+        assert validate_quote_in_record("COZY BEAR", "nvd_cves_0", idx) is False
+
+    def test_unknown_record_is_false(self):
+        idx = build_source_index(_tier1_data())
+        assert validate_quote_in_record("anything", "nonexistent_999", idx) is False
+
+    def test_empty_quote_is_false(self):
+        idx = build_source_index(_tier1_data())
+        assert validate_quote_in_record("", "nvd_cves_0", idx) is False
 
 
 class TestNormalizeWhitespace:
