@@ -415,28 +415,19 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
     if not issues and not warnings:
         logger.info("✓ Gate 1E: All AI output quality checks passed")
 
-    # Determine status - treat generic company names as warnings, not blocking errors
-    # The AI validation should have filtered these out already
+    # Gate 1E is non-halting: it surfaces critical AI-quality issues in the payload,
+    # and Gate 6 folds payload['issues'] into Track A to block publish. This keeps a
+    # single blocking chokepoint (Gate 6) with a complete findings list, rather than
+    # halting mid-sequence and hiding downstream findings.
+    #
+    # The previous behaviour downgraded the most concrete fabrication check here
+    # (generic/fake victim names) to a non-blocking warning, so fabricated victims
+    # could never stop a report. That downgrade is removed: generic-term issues now
+    # stay in `issues` and therefore block via Gate 6.
     if issues:
-        # Check if issues are ONLY about generic company names
-        generic_only = all("generic term" in issue.lower() for issue in issues)
-
-        if generic_only:
-            # These should have been filtered by the AI validation
-            # Treat as warnings - don't block the report
-            logger.warning(f"Gate 1E: {len(issues)} breach(es) with generic terms detected (non-blocking)")
-            logger.warning("These should have been filtered during AI validation.")
-            status = "COMPLETE"
-            halt_reason = None
-            warnings.extend(issues)  # Move to warnings
-            issues = []  # Clear critical issues
-        else:
-            # Other types of issues - still block
-            status = "HALT"
-            halt_reason = f"{len(issues)} AI quality issue(s) found: {'; '.join(issues[:2])}"
-    else:
-        status = "COMPLETE"
-        halt_reason = None
+        logger.error(f"Gate 1E surfacing {len(issues)} critical quality issue(s) for Gate 6 to block on")
+    status = "COMPLETE"
+    halt_reason = None
 
     return GateResult(
         gate_id="1E",

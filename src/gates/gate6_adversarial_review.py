@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 
 from .escape_handler import detect_gate_bleed
+from .grounding import build_source_index, rederive_statistics, verify_report_grounding
 from .models import GateInput, GateResult
 from .prompts import GATE_6_PROMPT_TEMPLATE, SYSTEM_PROMPT_GATE_6
 
@@ -461,6 +462,24 @@ def _scan_uncited_findings(report: dict) -> list[str]:
     ]
 
 
+def _collect_prior_gate_blockers(prior_results: dict) -> list[str]:
+    """Gather blocking findings from the pre-Gate-6 reconciliation gates.
+
+    Gate 1C surfaces ungrounded technology mentions under payload['issues']; Gates
+    1E/1F surface their critical findings under payload['issues'] / payload
+    ['critical_issues']. Each such finding blocks publish via Track A.
+    """
+    blockers: list[str] = []
+    for gate_id, payload_key in (("1C", "issues"), ("1E", "issues"), ("1F", "critical_issues")):
+        result = prior_results.get(gate_id)
+        payload = getattr(result, "payload", None)
+        if not isinstance(payload, dict):
+            continue
+        for item in payload.get(payload_key) or []:
+            blockers.append(f"[Gate {gate_id}] {item}")
+    return blockers
+
+
 def _parse_llm_findings(llm_text: str) -> tuple[list[str], list[str]]:
     """Parse 'Track A findings:' and 'Track B findings:' sections from the adversarial response."""
     track_a: list[str] = []
@@ -511,6 +530,21 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     track_a.extend(_scan_open_signal_leakage(report))
     track_a.extend(_scan_osint_only_citations(report))
     track_a.extend(_scan_uncited_findings(report))
+
+    # Deterministic source grounding (Tier 1 anti-hallucination): verify every
+    # concrete claim in the report resolves to a real collected source record, and
+    # re-derive the headline statistics from the report's own arrays. Unlike the
+    # internal-consistency scanners above, this catches internally-consistent
+    # fabrications — the failure mode no other gate covered. Blocking (Track A).
+    source_index = build_source_index(input.tier1_data, input.osint_articles)
+    track_a.extend(verify_report_grounding(report, source_index))
+    track_a.extend(rederive_statistics(report))
+
+    # Fold blocking findings from the reconciliation gates that run before Gate 6
+    # (1C tech coherence, 1E AI quality, 1F source audit) into Track A. Those gates
+    # are non-halting by design so the pipeline reaches this adversarial review with
+    # all findings collected; Gate 6 is where they become a publish block.
+    track_a.extend(_collect_prior_gate_blockers(input.prior_results))
 
     # Coverage gap validation: Different behavior for quarterly vs weekly
     # - Quarterly reports: Gaps are informational only, not blocking. Only block if AI cites empty sources.

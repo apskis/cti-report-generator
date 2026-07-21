@@ -37,6 +37,25 @@ class EscapeDetectedError(Exception):
 _GATE_COMPLETE_RE = re.compile(r"GATE\s+([0-9]+B?)\s+COMPLETE", re.IGNORECASE)
 _NON_NARRATIVE_GATES = {"1", "1B", "2", "3"}
 
+# Positive identifiers of Tier 1 (primary) sources. A finding is Tier-1-backed only
+# if it cites one of these — inferring "Tier 1" from the mere ABSENCE of an "OSINT"
+# prefix let any arbitrary/fabricated source label launder an OSINT-only value into
+# Threat Findings. Membership is asserted, not assumed.
+_TIER1_SOURCE_TOKENS = ("nvd", "intel471", "intel 471", "crowdstrike", "crowd strike", "cisa", "kev")
+
+
+def _is_tier1_source(source) -> bool:
+    """True only if a finding source positively identifies as a Tier 1 primary feed."""
+    if isinstance(source, dict):
+        tier = source.get("tier")
+        if tier is not None:
+            return str(tier) == "1"
+        source = source.get("name") or source.get("source_name") or ""
+    text = str(source).lower()
+    if "osint" in text:
+        return False
+    return any(token in text for token in _TIER1_SOURCE_TOKENS)
+
 
 def detect_gate_bleed(response_text: str, expected_gate_id: str) -> None:
     """Raise EscapeDetectedError(GATE_BLEED) if response contains more than one GATE N COMPLETE marker."""
@@ -110,7 +129,7 @@ def detect_osint_promotion(assembly: dict, open_signals: list[OpenSignal]) -> No
         if isinstance(finding, dict):
             value = finding.get("value") or finding.get("ioc_value") or finding.get("actor_name") or ""
             sources = finding.get("sources") or []
-            tier1_sources = [s for s in sources if s and not str(s).startswith("OSINT")]
+            tier1_sources = [s for s in sources if _is_tier1_source(s)]
             if value in open_values and not tier1_sources:
                 raise EscapeDetectedError(
                     escape_type=EscapeType.OSINT_PROMOTION,
@@ -120,7 +139,15 @@ def detect_osint_promotion(assembly: dict, open_signals: list[OpenSignal]) -> No
 
 
 def detect_missing_clearance_marker(response_text: str, gate_id: str) -> None:
-    """Raise EscapeDetectedError(GATE_BLEED) if the response does not end with the expected marker."""
+    """Raise EscapeDetectedError(GATE_BLEED) if the response does not end with the expected marker.
+
+    Opt-in helper for the interactive, real-LLM workflow (Tier 2), where each gate
+    response is expected to end with its clearance marker. It is intentionally NOT
+    wired into the default automated pipeline: the structural stub client
+    (``StructuralLLMClient``) does not emit clearance markers, so auto-calling this on
+    every gate would raise spurious escapes. Callers running against a real model that
+    is instructed to emit the marker should invoke this after each gate response.
+    """
     expected = f"GATE {gate_id.upper()} COMPLETE. AWAITING CLEARANCE."
     if expected not in response_text.upper().replace("\n", " "):
         raise EscapeDetectedError(

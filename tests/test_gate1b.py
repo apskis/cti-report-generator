@@ -72,6 +72,50 @@ def test_article_id_assignment_is_sequential():
     assert ids == ["A001", "A002", "A003"]
 
 
+def test_actor_names_grounded_against_tier1_sources():
+    """An OSINT article mentioning a known Tier 1 actor yields that actor as a signal."""
+    article = {
+        "title": "New campaign attributed to Cozy Bear",
+        "url": "http://example.com/a",
+        "summary": "Researchers link the intrusion to COZY BEAR operators.",
+        "published_date": "2026-05-15",
+        "source": "Krebs on Security",
+        "cves_mentioned": [],
+    }
+    gi = GateInput(
+        report_type="WEEKLY",
+        period_start="2026-05-12",
+        period_end="2026-05-19",
+        osint_articles=[article],
+        tier1_data={"CrowdStrike": [{"actor_name": "COZY BEAR"}]},
+    )
+    result = run(gi, _FakeLLM(), "WEEKLY")
+    signal = result.payload["osint_signals"][0]
+    assert "COZY BEAR" in signal.actor_names
+    assert signal.has_structured_signals is True
+
+
+def test_actor_names_not_invented_without_tier1_match():
+    """Actors NOT present in any Tier 1 source are never fabricated into signals."""
+    article = {
+        "title": "Unknown group breaches firm, dubbed Phantom Serpent",
+        "url": "http://example.com/b",
+        "summary": "The actor Phantom Serpent has no prior attribution.",
+        "published_date": "2026-05-15",
+        "source": "Dark Reading",
+        "cves_mentioned": [],
+    }
+    gi = GateInput(
+        report_type="WEEKLY",
+        period_start="2026-05-12",
+        period_end="2026-05-19",
+        osint_articles=[article],
+        tier1_data={"CrowdStrike": [{"actor_name": "COZY BEAR"}]},
+    )
+    result = run(gi, _FakeLLM(), "WEEKLY")
+    assert result.payload["osint_signals"][0].actor_names == []
+
+
 def test_signal_with_no_iocs_actors_cves_has_no_structured_signals():
     article = {
         "title": "Industry news, no indicators",

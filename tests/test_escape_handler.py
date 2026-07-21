@@ -81,6 +81,31 @@ def test_osint_promotion_passes_when_value_only_in_open_signals():
     detect_osint_promotion(assembly, open_signals)
 
 
+def test_osint_promotion_blocks_fabricated_non_osint_source_label():
+    """A finding citing an arbitrary non-Tier-1 label must NOT count as Tier 1 backing.
+
+    The old check treated 'anything not starting with OSINT' as Tier 1, so a
+    fabricated source string laundered an OSINT-only value into threat findings.
+    """
+    assembly = {"top_iocs": [{"value": "EVIL.COM", "sources": ["MadeUpFeed"]}]}
+    open_signals = [OpenSignal(article_id="A001", signal_type="ioc", value="EVIL.COM", context_quote="q")]
+    with pytest.raises(EscapeDetectedError) as exc:
+        detect_osint_promotion(assembly, open_signals)
+    assert exc.value.escape_type == EscapeType.OSINT_PROMOTION
+
+
+def test_osint_promotion_passes_with_real_tier1_source():
+    assembly = {"top_iocs": [{"value": "EVIL.COM", "sources": ["Intel471"]}]}
+    open_signals = [OpenSignal(article_id="A001", signal_type="ioc", value="EVIL.COM", context_quote="q")]
+    detect_osint_promotion(assembly, open_signals)
+
+
+def test_osint_promotion_passes_with_explicit_tier_field():
+    assembly = {"top_iocs": [{"value": "EVIL.COM", "sources": [{"name": "X", "tier": 1}]}]}
+    open_signals = [OpenSignal(article_id="A001", signal_type="ioc", value="EVIL.COM", context_quote="q")]
+    detect_osint_promotion(assembly, open_signals)
+
+
 def test_missing_clearance_marker_catches_missing_marker():
     response = "| Source | Records |\n| Intel471 | 5 |\n"
     with pytest.raises(EscapeDetectedError):

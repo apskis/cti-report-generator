@@ -74,8 +74,9 @@ def run_gate_framework_over_collected_data(
         orchestrator.session["analysis"] = analysis
 
     if interactive_mode:
-        # Interactive mode: run gates one by one with manual clearance
-        gate_sequence = ["1", "1A", "1B", "2", "3", "4", "5", "1C", "6"]
+        # Interactive mode: run gates one by one with manual clearance.
+        # 1A/1C reconcile the drafted report, so they run in the post-Gate-5 band.
+        gate_sequence = ["1", "1B", "2", "3", "4", "5", "1A", "1C", "6"]
 
         for gate_id in gate_sequence:
             try:
