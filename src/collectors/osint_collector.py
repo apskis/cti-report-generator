@@ -8,6 +8,7 @@ add and enable will be collected.
 No API key required - uses public RSS/Atom feeds.
 """
 
+import asyncio
 import logging
 import re
 from datetime import UTC, datetime
@@ -20,6 +21,7 @@ import feedparser
 import yaml
 
 from src.collectors.base import BaseCollector
+from src.core.config import enrichment_config
 from src.core.models import CollectorResult
 
 logger = logging.getLogger(__name__)
@@ -120,9 +122,7 @@ class OSINTCollector(BaseCollector):
 
         all_articles: list[dict[str, Any]] = []
 
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=15), headers=_REQUEST_HEADERS
-        ) as session:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15), headers=_REQUEST_HEADERS) as session:
             for source in sources:
                 if len(all_articles) >= max_total:
                     break
@@ -146,12 +146,82 @@ class OSINTCollector(BaseCollector):
                 except Exception as e:
                     logger.warning(f"  {name}: Failed to fetch - {e}")
 
-        all_articles = all_articles[:max_total]
+            all_articles = all_articles[:max_total]
+
+            # Opt-in: fetch each article URL and extract the full body (trafilatura)
+            # so the AI sees the whole article, not just the RSS summary snippet.
+            if enrichment_config.enable_osint_fulltext:
+                await self._enrich_full_text(session, all_articles)
+
         all_articles.sort(key=lambda a: a.get("published_date", ""), reverse=True)
 
         logger.info(f"OSINT collection complete: {len(all_articles)} articles from {len(sources)} sources")
 
         return CollectorResult(source=self.source_name, success=True, data=all_articles, record_count=len(all_articles))
+
+    async def _enrich_full_text(self, session: aiohttp.ClientSession, articles: list[dict[str, Any]]) -> None:
+        """Attach extracted article bodies as ``full_text`` (opt-in, best-effort).
+
+        Fetches each article URL and extracts the main content with trafilatura. Any
+        failure (missing dependency, HTTP error, unextractable page) is logged and the
+        article simply keeps its RSS summary. Bounded concurrency keeps it polite.
+        """
+        try:
+            import trafilatura  # noqa: F401  (import-guarded; optional dependency)
+        except ImportError:
+            logger.warning(
+                "ENABLE_OSINT_FULLTEXT is set but 'trafilatura' is not installed; "
+                "skipping full-text extraction (articles keep their RSS summary)."
+            )
+            return
+
+        max_chars = enrichment_config.osint_fulltext_max_chars
+        timeout = aiohttp.ClientTimeout(total=enrichment_config.osint_fulltext_timeout_seconds)
+        semaphore = asyncio.Semaphore(8)
+
+        async def _one(article: dict[str, Any]) -> None:
+            url = article.get("url")
+            if not url:
+                return
+            async with semaphore:
+                text = await self._fetch_full_text(session, url, max_chars, timeout)
+            if text:
+                article["full_text"] = text
+
+        await asyncio.gather(*(_one(a) for a in articles), return_exceptions=True)
+        enriched = sum(1 for a in articles if a.get("full_text"))
+        logger.info(f"OSINT full-text extraction: {enriched}/{len(articles)} articles enriched")
+
+    async def _fetch_full_text(
+        self,
+        session: aiohttp.ClientSession,
+        url: str,
+        max_chars: int,
+        timeout: aiohttp.ClientTimeout,
+    ) -> str | None:
+        """Fetch a URL and return the extracted main article text (capped), or None."""
+        import trafilatura
+
+        try:
+            async with session.get(url, timeout=timeout) as resp:
+                if resp.status != 200:
+                    logger.debug(f"full-text: {url} -> HTTP {resp.status}")
+                    return None
+                html = await resp.text()
+        except Exception as e:
+            logger.debug(f"full-text fetch failed for {url}: {e}")
+            return None
+
+        try:
+            text = trafilatura.extract(html, include_comments=False, include_tables=False)
+        except Exception as e:
+            logger.debug(f"full-text extract failed for {url}: {e}")
+            return None
+
+        if not text:
+            return None
+        text = text.strip()
+        return text[:max_chars] if len(text) > max_chars else text
 
     async def _fetch_rss(
         self,

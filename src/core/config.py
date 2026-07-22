@@ -100,6 +100,15 @@ class EnrichmentConfig:
     # CISA KEV cache duration (hours)
     kev_cache_duration_hours: int = 24
 
+    # OSINT full-text extraction (opt-in). When enabled, each OSINT article URL is
+    # fetched and its body extracted with trafilatura (stored as `full_text`) so the
+    # AI analyst sees the full article instead of the short RSS summary. Off by
+    # default; toggle with ENABLE_OSINT_FULLTEXT. Per-article body is capped
+    # (OSINT_FULLTEXT_MAX_CHARS) to keep prompt size and token cost bounded.
+    enable_osint_fulltext: bool = os.getenv("ENABLE_OSINT_FULLTEXT", "false").lower() in {"1", "true", "yes"}
+    osint_fulltext_max_chars: int = int(os.getenv("OSINT_FULLTEXT_MAX_CHARS", "4000"))
+    osint_fulltext_timeout_seconds: int = int(os.getenv("OSINT_FULLTEXT_TIMEOUT", "12"))
+
 
 _TEMPERATURE_OMIT_TOKENS = {"", "default", "none", "off", "unset", "null"}
 

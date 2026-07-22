@@ -283,3 +283,76 @@ class TestRegistry:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# =============================================================================
+# OSINT full-text extraction (opt-in)
+# =============================================================================
+
+
+class _FakeResp:
+    def __init__(self, html: str, status: int = 200):
+        self._html = html
+        self.status = status
+
+    async def text(self):
+        return self._html
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+
+class _FakeSession:
+    def __init__(self, html: str, status: int = 200):
+        self._html = html
+        self._status = status
+
+    def get(self, url, timeout=None):
+        return _FakeResp(self._html, self._status)
+
+
+_ARTICLE_HTML = (
+    "<html><body><article><h1>Breach at Acme</h1>"
+    "<p>Acme Corp confirmed a ransomware attack by Qilin exploiting CVE-2026-29059. "
+    "Attackers exfiltrated 2TB of research data.</p></article></body></html>"
+)
+
+
+class TestOSINTFullText:
+    @pytest.mark.asyncio
+    async def test_enrich_attaches_capped_full_text(self):
+        from src.collectors.osint_collector import OSINTCollector
+
+        collector = OSINTCollector()
+        articles = [
+            {"title": "a", "url": "https://example.com/a", "summary": "short"},
+            {"title": "b", "url": "", "summary": "no url"},  # skipped: no url
+        ]
+        with patch("src.collectors.osint_collector.enrichment_config") as cfg:
+            cfg.enable_osint_fulltext = True
+            cfg.osint_fulltext_max_chars = 40
+            cfg.osint_fulltext_timeout_seconds = 5
+            await collector._enrich_full_text(_FakeSession(_ARTICLE_HTML), articles)
+
+        assert "Acme Corp" in articles[0]["full_text"]
+        assert len(articles[0]["full_text"]) <= 40  # capped
+        assert "full_text" not in articles[1]  # no url -> untouched
+
+    @pytest.mark.asyncio
+    async def test_fetch_full_text_returns_none_on_http_error(self):
+        from src.collectors.osint_collector import OSINTCollector
+        from src.core.config import enrichment_config
+
+        collector = OSINTCollector()
+        import aiohttp
+
+        result = await collector._fetch_full_text(
+            _FakeSession("", status=403),
+            "https://example.com/x",
+            enrichment_config.osint_fulltext_max_chars,
+            aiohttp.ClientTimeout(total=5),
+        )
+        assert result is None

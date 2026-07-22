@@ -539,6 +539,12 @@ Cross-reference with CrowdStrike actors when possible to provide:
                     "url": article.get("url", ""),
                     "summary": article.get("summary", "")[:150],
                 }
+                # When full-text extraction is enabled, give the model the full article
+                # body (already length-capped at collection time) instead of only the
+                # short summary teaser — richer context for breach/IOC/victim extraction.
+                full_text = article.get("full_text")
+                if full_text:
+                    entry["content"] = full_text
                 if article.get("cves_mentioned"):
                     entry["cves_mentioned"] = article["cves_mentioned"]
                 osint_articles.append(entry)

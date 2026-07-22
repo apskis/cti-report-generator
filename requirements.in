@@ -28,6 +28,8 @@ colorama>=0.4.6,<1.0.0
 feedparser>=6.0.0,<7.0.0
 beautifulsoup4>=4.12.0,<5.0.0
 pyyaml>=6.0,<7.0
+# Optional OSINT full-text extraction (ENABLE_OSINT_FULLTEXT); pulls article bodies.
+trafilatura>=1.8.0,<3.0.0
 
 # Rapid7 Bulk Export - Parquet file parsing
 # >=14.0.1 avoids CVE-2023-47248 (deserialization RCE)
