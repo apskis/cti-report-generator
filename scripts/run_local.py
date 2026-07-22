@@ -898,7 +898,10 @@ async def check_openai_connectivity(
 
     deploy = deployment or analysis_config.deployment_name
 
-    url = endpoint.rstrip("/") + f"/openai/deployments/{deploy}/chat/completions?api-version=2024-02-01"
+    url = (
+        endpoint.rstrip("/")
+        + f"/openai/deployments/{deploy}/chat/completions?api-version={analysis_config.api_version}"
+    )
     body = json.dumps({"messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}).encode("utf-8")
 
     try:

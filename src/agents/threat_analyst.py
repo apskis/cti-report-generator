@@ -76,6 +76,20 @@ Avoid tactical details like specific CVEs or IOCs unless they have strategic sig
 Do not use Hyphens."""
 
 
+def _build_execution_settings(**overrides: Any) -> "AzureChatPromptExecutionSettings":
+    """Build execution settings with a config-driven, omittable temperature.
+
+    Some newer/reasoning models reject any non-default temperature; when
+    ``analysis_config.temperature`` is None (AZURE_OPENAI_TEMPERATURE=default) the
+    parameter is left off entirely so the model uses its own default.
+    """
+    kwargs: dict[str, Any] = {"response_format": {"type": "json_object"}, "seed": 789}
+    if analysis_config.temperature is not None:
+        kwargs["temperature"] = analysis_config.temperature
+    kwargs.update(overrides)
+    return AzureChatPromptExecutionSettings(**kwargs)
+
+
 def _sanitize_for_prompt(data: Any, max_chars: int | None = None) -> str:
     """
     Serialize data for safe inclusion in an LLM prompt.
@@ -139,9 +153,14 @@ class ThreatAnalystAgent:
         # Initialize Semantic Kernel
         self.kernel = Kernel()
 
-        # Add Azure OpenAI chat service
+        # Add Azure OpenAI chat service. api_version is config-driven so newer models
+        # (which often need a newer REST version) can be pointed at without code edits.
         self.chat_service = AzureChatCompletion(
-            deployment_name=self.deployment_name, endpoint=openai_endpoint, api_key=openai_key, service_id="cti_analyst"
+            deployment_name=self.deployment_name,
+            endpoint=openai_endpoint,
+            api_key=openai_key,
+            api_version=analysis_config.api_version,
+            service_id="cti_analyst",
         )
 
         self.kernel.add_service(self.chat_service)
@@ -216,11 +235,7 @@ class ThreatAnalystAgent:
             chat_history.add_user_message(analysis_prompt)
 
             # Configure execution settings
-            settings = AzureChatPromptExecutionSettings(
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                seed=789,
-            )
+            settings = _build_execution_settings()
 
             # Get response from GPT
             logger.info("Sending context-aware request to Azure OpenAI")
@@ -317,11 +332,7 @@ class ThreatAnalystAgent:
             chat_history.add_user_message(analysis_prompt)
 
             # Configure execution settings
-            settings = AzureChatPromptExecutionSettings(
-                response_format={"type": "json_object"},
-                temperature=0.1,  # Slightly higher temperature for more variation in breach selection
-                seed=789,  # New seed for different selections
-            )
+            settings = _build_execution_settings()
 
             # Get response from GPT
             logger.info("Sending request to Azure OpenAI")
@@ -1300,11 +1311,7 @@ NVD records cross-referenced with CISA KEV and EPSS exploitation data."""
             chat_history.add_user_message(strategic_prompt)
 
             # Configure execution settings
-            settings = AzureChatPromptExecutionSettings(
-                response_format={"type": "json_object"},
-                temperature=0.1,  # Slightly higher temperature for more variation in breach selection
-                seed=789,  # New seed for different selections
-            )
+            settings = _build_execution_settings()
 
             # Get response from GPT
             logger.info("Sending strategic analysis request to Azure OpenAI")

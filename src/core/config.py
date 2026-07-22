@@ -101,6 +101,28 @@ class EnrichmentConfig:
     kev_cache_duration_hours: int = 24
 
 
+_TEMPERATURE_OMIT_TOKENS = {"", "default", "none", "off", "unset", "null"}
+
+
+def _resolve_temperature() -> float | None:
+    """Resolve the sampling temperature from AZURE_OPENAI_TEMPERATURE.
+
+    Returns 0.1 when unset (the historical default). Returns None — meaning "omit the
+    temperature parameter entirely and let the model use its own default" — when the
+    env var is one of the omit tokens (e.g. "default"). Some newer/reasoning models
+    reject any non-default temperature, so this lets you turn it off without code.
+    """
+    raw = os.environ.get("AZURE_OPENAI_TEMPERATURE")
+    if raw is None:
+        return 0.1
+    if raw.strip().lower() in _TEMPERATURE_OMIT_TOKENS:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return 0.1
+
+
 @dataclass(frozen=True)
 class AnalysisConfig:
     """Configuration for threat analysis."""
@@ -109,9 +131,15 @@ class AnalysisConfig:
     # you gave the deployment in Foundry), NOT the underlying model id. Override per
     # environment with the AZURE_OPENAI_DEPLOYMENT app setting so switching models is
     # a config change, not a code change.
-    deployment_name: str = field(
-        default_factory=lambda: os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-cti")
-    )
+    deployment_name: str = field(default_factory=lambda: os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-cti"))
+
+    # Azure OpenAI REST API version. Newer models often require a newer version than
+    # the 2024 default; override with AZURE_OPENAI_API_VERSION (use the value shown in
+    # the model's "Use this model" code sample in Foundry).
+    api_version: str = field(default_factory=lambda: os.environ.get("AZURE_OPENAI_API_VERSION", "2024-06-01"))
+
+    # Sampling temperature, or None to omit the parameter. See _resolve_temperature.
+    temperature: float | None = field(default_factory=_resolve_temperature)
 
     # Data truncation limits for AI analysis
     max_cves_for_analysis: int = 50

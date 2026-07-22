@@ -94,21 +94,37 @@ class AzureOpenAILLMClient:
     (imported lazily so this module loads without the SDK installed).
     """
 
-    def __init__(self, endpoint: str, api_key: str, deployment: str, api_version: str = "2024-06-01"):
+    def __init__(
+        self,
+        endpoint: str,
+        api_key: str,
+        deployment: str,
+        api_version: str | None = None,
+        temperature: float | None = ...,  # sentinel: fall back to configured temperature
+    ):
         from openai import AzureOpenAI  # lazy import; only needed when opted in
 
+        from src.core.config import analysis_config
+
         self._deployment = deployment
-        self._client = AzureOpenAI(azure_endpoint=endpoint, api_key=api_key, api_version=api_version)
+        # None sentinel -> use configured api version; explicit value wins.
+        resolved_version = api_version or analysis_config.api_version
+        # ... sentinel means "use the configured temperature"; an explicit value
+        # (including None to omit the parameter) overrides it.
+        self._temperature = analysis_config.temperature if temperature is ... else temperature
+        self._client = AzureOpenAI(azure_endpoint=endpoint, api_key=api_key, api_version=resolved_version)
 
     def complete(self, system_prompt: str, user_prompt: str) -> str:
-        response = self._client.chat.completions.create(
-            model=self._deployment,
-            messages=[
+        kwargs: dict = {
+            "model": self._deployment,
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.1,
-        )
+        }
+        if self._temperature is not None:
+            kwargs["temperature"] = self._temperature
+        response = self._client.chat.completions.create(**kwargs)
         return response.choices[0].message.content or ""
 
 
