@@ -493,3 +493,44 @@ class TestReportTypesList:
         assert len(REPORT_REGISTRY) >= 2
         assert "weekly" in REPORT_REGISTRY
         assert "quarterly" in REPORT_REGISTRY
+
+
+# =============================================================================
+# Inline citation superscript rendering (executive summary)
+# =============================================================================
+
+
+class TestCitationSuperscripts:
+    def test_split_citations_extracts_numbers_and_drops_brackets(self):
+        from src.reports.weekly_report import _split_citations
+
+        parts = _split_citations("platform [1] and system [3][4]. Done.")
+        assert parts == [
+            ("platform", False),
+            ("1", True),
+            (" and system", False),
+            ("3,4", True),
+            (". Done.", False),
+        ]
+
+    def test_no_citations_returns_single_segment(self):
+        from src.reports.weekly_report import _split_citations
+
+        assert _split_citations("no citations here") == [("no citations here", False)]
+
+    def test_body_renders_citations_as_superscript_runs(self):
+        from docx import Document
+
+        from src.reports.weekly_report import WeeklyReportGenerator
+
+        gen = WeeklyReportGenerator.__new__(WeeklyReportGenerator)
+        gen.doc = Document()
+        para = gen.doc.add_paragraph()
+        gen._add_body_text_with_citations(para, "breach at Stadler Rail [1] this week [2].")
+
+        superscript_runs = [r.text for r in para.runs if r.font.superscript]
+        normal_text = "".join(r.text for r in para.runs if not r.font.superscript)
+        assert superscript_runs == ["1", "2"]
+        # The bracketed markers are gone from the normal (non-superscript) text.
+        assert "[1]" not in normal_text and "[2]" not in normal_text
+        assert "Stadler Rail" in normal_text

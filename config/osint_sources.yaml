@@ -64,14 +64,18 @@ sources:
     category: "Vendor Research"
     enabled: true
 
-  - name: "Google Threat Analysis Group"
-    url: "https://blog.google/threat-analysis-group/rss/"
+  # Google TAG's old blog.google feed is gone (404). The Google Online Security Blog
+  # (Blogger) carries Google's security/threat research and has a stable Atom feed.
+  - name: "Google Online Security Blog"
+    url: "https://security.googleblog.com/feeds/posts/default"
     type: rss
     category: "Vendor Research"
     enabled: true
 
-  - name: "Mandiant Blog"
-    url: "https://www.mandiant.com/resources/blog/rss.xml"
+  # Mandiant was acquired by Google; its research now publishes on the Google Cloud
+  # Threat Intelligence blog. The old mandiant.com feed returns non-RSS content.
+  - name: "Google Cloud Threat Intelligence (Mandiant)"
+    url: "https://cloudblog.withgoogle.com/topics/threat-intelligence/rss/"
     type: rss
     category: "Vendor Research"
     enabled: true

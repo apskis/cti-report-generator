@@ -5,6 +5,7 @@ Generates weekly threat intelligence reports matching the branded template.
 """
 
 import logging
+import re
 from datetime import timedelta
 from typing import Any
 
@@ -18,6 +19,32 @@ from src.reports.base import BaseReportGenerator, BrandColors, FontSizes
 from src.reports.registry import register_report_generator
 
 logger = logging.getLogger(__name__)
+
+# Matches a run of one or more inline citation markers like "[1]" or "[3][4]",
+# together with any whitespace immediately before them, so the citation can be
+# rendered as a superscript attached to the preceding word (academic exponent style).
+_CITATION_RUN_RE = re.compile(r"\s*(?:\[\d+\])+")
+_CITATION_NUM_RE = re.compile(r"\d+")
+
+
+def _split_citations(text: str) -> list[tuple[str, bool]]:
+    """Split text into ``(segment, is_citation)`` runs.
+
+    Citation groups (" [3][4]") become a single citation segment carrying the joined
+    numbers ("3,4"); the leading whitespace is dropped so the superscript attaches to
+    the previous character. Everything else is returned as normal text.
+    """
+    parts: list[tuple[str, bool]] = []
+    last = 0
+    for m in _CITATION_RUN_RE.finditer(text):
+        if m.start() > last:
+            parts.append((text[last : m.start()], False))
+        nums = _CITATION_NUM_RE.findall(m.group(0))
+        parts.append((",".join(nums), True))
+        last = m.end()
+    if last < len(text):
+        parts.append((text[last:], False))
+    return parts
 
 
 @register_report_generator("weekly")
@@ -199,14 +226,28 @@ class WeeklyReportGenerator(BaseReportGenerator):
             if trend_intro:
                 summary = "\n\n".join(trend_intro) + "\n\n" + summary
 
-        para = self.doc.add_paragraph(summary)
+        para = self.doc.add_paragraph()
         para.paragraph_format.space_before = Pt(0)
         para.paragraph_format.space_after = Pt(4)
         para.paragraph_format.line_spacing = 1.5
-        for run in para.runs:
+        self._add_body_text_with_citations(para, summary)
+
+    def _add_body_text_with_citations(self, para, text: str) -> None:
+        """Write body text into ``para``, rendering [N] citation markers as superscripts.
+
+        Each inline citation like "[1]" or "[3][4]" becomes a superscript number
+        (e.g. "1", "3,4") attached to the preceding word, instead of a bracketed inline
+        marker. Body runs get the standard body font/color.
+        """
+        for segment, is_citation in _split_citations(text):
+            if not segment:
+                continue
+            run = para.add_run(segment)
             run.font.size = FontSizes.BODY
             run.font.color.rgb = BrandColors.TEXT_DARK
             run.font.name = "Arial"
+            if is_citation:
+                run.font.superscript = True
 
     def _add_week_at_glance(self, analysis_result: dict[str, Any]) -> None:
         """Add 'This Week at a Glance': bold orange heading; space before subtitle."""
