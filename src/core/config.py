@@ -8,7 +8,7 @@ Application settings (limits, timeouts, feature flags) are defined here.
 """
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -105,8 +105,13 @@ class EnrichmentConfig:
 class AnalysisConfig:
     """Configuration for threat analysis."""
 
-    # AI model deployment name
-    deployment_name: str = "gpt-4.1-cti"
+    # AI model deployment name. This is the Azure OpenAI *deployment* name (the name
+    # you gave the deployment in Foundry), NOT the underlying model id. Override per
+    # environment with the AZURE_OPENAI_DEPLOYMENT app setting so switching models is
+    # a config change, not a code change.
+    deployment_name: str = field(
+        default_factory=lambda: os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-cti")
+    )
 
     # Data truncation limits for AI analysis
     max_cves_for_analysis: int = 50
