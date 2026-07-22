@@ -58,8 +58,11 @@ def _extract_technology_keywords(detected_technologies: set[str]) -> set[str]:
 # Narrative-bearing fields to scan for technology mentions. We deliberately exclude
 # cve_analysis (the structured detection data itself is the source of truth, not a
 # claim to be validated against it).
+# NOTE: "recommendations" is intentionally excluded — it is a list of imperative
+# action items ("Apply patches", "Upgrade systems", "Require MFA") whose capitalized
+# leading verbs are not technology mentions and generated large false-positive noise.
 _NARRATIVE_STRING_FIELDS = ("executive_summary", "key_takeaways", "outlook", "narrative", "conclusion")
-_NARRATIVE_LIST_FIELDS = ("recommendations", "apt_activity", "industry_incidents", "geopolitical_threats")
+_NARRATIVE_LIST_FIELDS = ("apt_activity", "industry_incidents", "geopolitical_threats")
 _NARRATIVE_SUBFIELDS = ("summary", "description", "activity", "details", "impact", "relevance", "notable_example")
 
 
@@ -96,6 +99,48 @@ def _gather_narrative_text(report: dict) -> str:
                         parts.append(_coerce_text(item[sub]))
 
     return "\n".join(p for p in parts if p)
+
+
+# Common capitalized narrative words that are NOT technologies — chiefly the imperative
+# verbs and generic report nouns that begin sentences/bullets. A mention whose every
+# token is in this set is never treated as a technology mention.
+_COMMON_NON_TECH_WORDS = {
+    "apply",
+    "upgrade",
+    "update",
+    "patch",
+    "review",
+    "monitor",
+    "enable",
+    "disable",
+    "ensure",
+    "implement",
+    "deploy",
+    "investigate",
+    "remediate",
+    "mitigate",
+    "restrict",
+    "rotate",
+    "prioritize",
+    "require",
+    "identify",
+    "increase",
+    "decrease",
+    "continue",
+    "consider",
+    "refer",
+    "hunt",
+    "peer",
+    "alert",
+    "block",
+    "verify",
+    "validate",
+    "confirm",
+    "report",
+    "immediate",
+    "critical",
+    "active",
+}
 
 
 def _mention_tokens(mention: str) -> set[str]:
@@ -207,6 +252,15 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     # Scan the WHOLE report narrative, not just the executive summary.
     narrative_text = _gather_narrative_text(report)
 
+    # Ground mentions against the raw source corpus. A capitalized narrative token
+    # that appears anywhere in the collected data (an actor name like "Qilin", a victim
+    # like "Abbott Laboratories", a country, or an industry from CrowdStrike's
+    # target_industries) is NOT a fabricated technology — it just isn't a CVE product.
+    # Only terms absent from BOTH the detected CVE tech and the source corpus are suspect.
+    from .grounding import build_source_index
+
+    source_blob = build_source_index(input.tier1_data, input.osint_articles).text_blob
+
     # Extract technology mentions from the full narrative
     mentioned_products = _extract_product_mentions(narrative_text)
 
@@ -231,10 +285,14 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
         product_tokens = _mention_tokens(product)
         if not product_tokens:
             continue
+        # Skip mentions that are purely common action-verbs / generic report words.
+        if product_tokens <= _COMMON_NON_TECH_WORDS:
+            continue
 
         found_in_detected = bool(product_tokens & detected_technologies)
+        found_in_source = any(tok in source_blob for tok in product_tokens)
 
-        if not found_in_detected:
+        if not found_in_detected and not found_in_source:
             # Check if the mention explicitly states "not detected" / "industry threat".
             context_window = 150  # characters before/after
             pattern = (

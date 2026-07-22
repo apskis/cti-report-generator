@@ -474,22 +474,32 @@ def _scan_uncited_findings(report: dict) -> list[str]:
     ]
 
 
-def _collect_prior_gate_blockers(prior_results: dict) -> list[str]:
-    """Gather blocking findings from the pre-Gate-6 reconciliation gates.
+def _collect_prior_gate_findings(prior_results: dict) -> tuple[list[str], list[str]]:
+    """Gather findings from the pre-Gate-6 reconciliation gates, split by track.
 
-    Gate 1C surfaces ungrounded technology mentions under payload['issues']; Gates
-    1E/1F surface their critical findings under payload['issues'] / payload
-    ['critical_issues']. Each such finding blocks publish via Track A.
+    Returns ``(track_a, track_b)``.
+
+    - Gates 1E/1F use precise blocklists (forbidden generic victim names, hallucinated
+      URLs), so their critical findings BLOCK via Track A.
+    - Gate 1C's technology-coherence heuristic is fuzzy — it flags capitalized narrative
+      tokens, which include legitimate actor/victim/country/industry names and action
+      verbs — so it must NOT hard-block. Its issues are surfaced as non-blocking Track B
+      warnings. The precise per-claim grounding in this gate (verify_report_grounding)
+      is the actual anti-hallucination guard.
     """
-    blockers: list[str] = []
-    for gate_id, payload_key in (("1C", "issues"), ("1E", "issues"), ("1F", "critical_issues")):
-        result = prior_results.get(gate_id)
-        payload = getattr(result, "payload", None)
-        if not isinstance(payload, dict):
-            continue
-        for item in payload.get(payload_key) or []:
-            blockers.append(f"[Gate {gate_id}] {item}")
-    return blockers
+    track_a: list[str] = []
+    track_b: list[str] = []
+    blocking = (("1E", "issues"), ("1F", "critical_issues"))
+    advisory = (("1C", "issues"),)
+    for target, spec in ((track_a, blocking), (track_b, advisory)):
+        for gate_id, payload_key in spec:
+            result = prior_results.get(gate_id)
+            payload = getattr(result, "payload", None)
+            if not isinstance(payload, dict):
+                continue
+            for item in payload.get(payload_key) or []:
+                target.append(f"[Gate {gate_id}] {item}")
+    return track_a, track_b
 
 
 def _parse_llm_findings(llm_text: str) -> tuple[list[str], list[str]]:
@@ -736,7 +746,9 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     # (1C tech coherence, 1E AI quality, 1F source audit) into Track A. Those gates
     # are non-halting by design so the pipeline reaches this adversarial review with
     # all findings collected; Gate 6 is where they become a publish block.
-    track_a.extend(_collect_prior_gate_blockers(input.prior_results))
+    prior_a, prior_b = _collect_prior_gate_findings(input.prior_results)
+    track_a.extend(prior_a)
+    track_b.extend(prior_b)
 
     # Coverage gap validation: Different behavior for quarterly vs weekly
     # - Quarterly reports: Gaps are informational only, not blocking. Only block if AI cites empty sources.

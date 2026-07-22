@@ -67,12 +67,17 @@ def test_inflated_statistic_blocks():
     assert any("threat_actors" in f for f in result.payload["track_a"])
 
 
-def test_prior_gate_1c_issue_blocks():
+def test_prior_gate_1c_issue_is_advisory_not_blocking():
+    """Gate 1C's fuzzy tech-coherence findings are Track B (advisory), never a block.
+
+    Its heuristic flags capitalized narrative tokens (actor/victim/country names,
+    action verbs), so blocking on it produced massive false positives.
+    """
     report = {"cve_analysis": [{"cve_id": "CVE-2024-1234", "citation": "NVD"}]}
     g1c = GateResult(gate_id="1C", status="COMPLETE", payload={"issues": ["Technology 'Wordpress' not detected"]})
     result = run(_gate_input(report, _source(), {"1C": g1c}), StructuralLLMClient(), "WEEKLY")
-    assert result.status == "BLOCK"
-    assert any("Gate 1C" in f and "Wordpress" in f for f in result.payload["track_a"])
+    assert result.status == "PASS"
+    assert any("Gate 1C" in f and "Wordpress" in f for f in result.payload["track_b"])
 
 
 def test_prior_gate_1f_critical_issue_blocks():
