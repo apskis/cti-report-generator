@@ -123,6 +123,25 @@ def _resolve_temperature() -> float | None:
         return 0.1
 
 
+def _resolve_seed() -> int | None:
+    """Resolve the sampling seed from AZURE_OPENAI_SEED.
+
+    Returns 789 when unset (the historical default, for reproducibility). Returns
+    None — meaning "omit the seed parameter entirely" — when the env var is one of the
+    omit tokens (e.g. "default"). Reasoning models that reject a custom temperature
+    typically reject seed too, so this lets you turn it off without code.
+    """
+    raw = os.environ.get("AZURE_OPENAI_SEED")
+    if raw is None:
+        return 789
+    if raw.strip().lower() in _TEMPERATURE_OMIT_TOKENS:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return 789
+
+
 @dataclass(frozen=True)
 class AnalysisConfig:
     """Configuration for threat analysis."""
@@ -140,6 +159,9 @@ class AnalysisConfig:
 
     # Sampling temperature, or None to omit the parameter. See _resolve_temperature.
     temperature: float | None = field(default_factory=_resolve_temperature)
+
+    # Sampling seed, or None to omit the parameter. See _resolve_seed.
+    seed: int | None = field(default_factory=_resolve_seed)
 
     # Data truncation limits for AI analysis
     max_cves_for_analysis: int = 50

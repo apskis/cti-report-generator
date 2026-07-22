@@ -77,15 +77,18 @@ Do not use Hyphens."""
 
 
 def _build_execution_settings(**overrides: Any) -> "AzureChatPromptExecutionSettings":
-    """Build execution settings with a config-driven, omittable temperature.
+    """Build execution settings with config-driven, omittable temperature and seed.
 
-    Some newer/reasoning models reject any non-default temperature; when
-    ``analysis_config.temperature`` is None (AZURE_OPENAI_TEMPERATURE=default) the
-    parameter is left off entirely so the model uses its own default.
+    Some newer/reasoning models reject a non-default temperature and/or seed; when
+    ``analysis_config.temperature`` / ``.seed`` is None (AZURE_OPENAI_TEMPERATURE or
+    AZURE_OPENAI_SEED set to "default") that parameter is left off entirely so the
+    model uses its own default.
     """
-    kwargs: dict[str, Any] = {"response_format": {"type": "json_object"}, "seed": 789}
+    kwargs: dict[str, Any] = {"response_format": {"type": "json_object"}}
     if analysis_config.temperature is not None:
         kwargs["temperature"] = analysis_config.temperature
+    if analysis_config.seed is not None:
+        kwargs["seed"] = analysis_config.seed
     kwargs.update(overrides)
     return AzureChatPromptExecutionSettings(**kwargs)
 
