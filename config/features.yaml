@@ -17,8 +17,9 @@ features:
   # When disabled:
   #   - Reports are generated directly from collected data (existing behavior)
   #
-  # Default: false (disabled by default, enable when ready for production use)
-  
+  # Default: true (ON by default — the framework is the anti-hallucination guard).
+  # Force it off with ENABLE_GATE_FRAMEWORK=0 or by setting enabled: false below.
+
   gate_framework:
     enabled: true
     

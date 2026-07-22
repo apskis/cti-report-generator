@@ -135,8 +135,10 @@ class ReportConfig:
 class FeatureConfig:
     """Configuration for feature flags and experimental features."""
 
-    # Gate framework validation pipeline
-    gate_framework_enabled: bool = False
+    # Gate framework validation pipeline. On by default: the framework is the
+    # anti-hallucination guard between collection and publish, so a deployment with
+    # no features.yaml still gets gating. Force it off with ENABLE_GATE_FRAMEWORK=0.
+    gate_framework_enabled: bool = True
 
     # Gate framework interactive mode (manual clearance after each gate)
     gate_framework_interactive: bool = False
@@ -264,7 +266,7 @@ def _load_features_from_yaml() -> FeatureConfig:
     gate_framework = features.get("gate_framework", {})
 
     return FeatureConfig(
-        gate_framework_enabled=gate_framework.get("enabled", False),
+        gate_framework_enabled=gate_framework.get("enabled", True),
         gate_framework_interactive=gate_framework.get("interactive_mode", False),
     )
 
@@ -274,9 +276,9 @@ def get_feature_config() -> FeatureConfig:
     Get feature configuration.
 
     Priority order:
-      1. Environment variable overrides (e.g., ENABLE_GATE_FRAMEWORK=1)
+      1. Environment variable overrides (e.g., ENABLE_GATE_FRAMEWORK=0 to force off)
       2. config/features.yaml settings
-      3. Default values (all features disabled)
+      3. Default values (gate framework ON; interactive mode off)
     """
     config = _load_features_from_yaml()
 
