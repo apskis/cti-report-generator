@@ -35,6 +35,17 @@ from pathlib import Path
 # Allow running this script directly (adds the repo root to sys.path for src/gates imports)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# Load a local .env file (if present) so vars like AZURE_OPENAI_* persist across
+# terminal sessions without exporting them each time. This MUST run before any
+# src.core.config import, which snapshots env vars into its config singletons.
+# Existing (already-exported) env vars are NOT overridden. .env is gitignored.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
 # Add colorama for colored console output
 try:
     from colorama import Fore, Style, init
