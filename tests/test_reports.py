@@ -496,41 +496,53 @@ class TestReportTypesList:
 
 
 # =============================================================================
-# Inline citation superscript rendering (executive summary)
+# Inline citation subscript rendering (brackets kept, document-wide)
 # =============================================================================
 
 
-class TestCitationSuperscripts:
-    def test_split_citations_extracts_numbers_and_drops_brackets(self):
-        from src.reports.weekly_report import _split_citations
+class TestCitationSubscripts:
+    def test_split_markers_keeps_brackets(self):
+        from src.reports.weekly_report import _split_citation_markers
 
-        parts = _split_citations("platform [1] and system [3][4]. Done.")
-        assert parts == [
-            ("platform", False),
-            ("1", True),
-            (" and system", False),
-            ("3,4", True),
-            (". Done.", False),
-        ]
+        parts = _split_citation_markers("system [3][4]. Done.")
+        assert parts == [("system ", False), ("[3][4]", True), (". Done.", False)]
 
     def test_no_citations_returns_single_segment(self):
-        from src.reports.weekly_report import _split_citations
+        from src.reports.weekly_report import _split_citation_markers
 
-        assert _split_citations("no citations here") == [("no citations here", False)]
+        assert _split_citation_markers("no citations here") == [("no citations here", False)]
 
-    def test_body_renders_citations_as_superscript_runs(self):
+    def test_paragraph_citations_become_subscript_with_brackets(self):
+        from docx import Document
+
+        from src.reports.weekly_report import _subscript_citations_in_paragraph
+
+        doc = Document()
+        para = doc.add_paragraph("breach at Stadler Rail [1] this week [2].")
+        _subscript_citations_in_paragraph(para)
+
+        subscript_runs = [r.text for r in para.runs if r.font.subscript]
+        # Brackets are KEPT and the markers are subscripted.
+        assert subscript_runs == ["[1]", "[2]"]
+        assert "Stadler Rail" in "".join(r.text for r in para.runs)
+
+    def test_document_wide_pass_covers_table_cells(self):
         from docx import Document
 
         from src.reports.weekly_report import WeeklyReportGenerator
 
         gen = WeeklyReportGenerator.__new__(WeeklyReportGenerator)
         gen.doc = Document()
-        para = gen.doc.add_paragraph()
-        gen._add_body_text_with_citations(para, "breach at Stadler Rail [1] this week [2].")
+        gen.doc.add_paragraph("Summary cites [1].")
+        table = gen.doc.add_table(rows=1, cols=1)
+        table.rows[0].cells[0].paragraphs[0].add_run("[3] CrowdStrike")
 
-        superscript_runs = [r.text for r in para.runs if r.font.superscript]
-        normal_text = "".join(r.text for r in para.runs if not r.font.superscript)
-        assert superscript_runs == ["1", "2"]
-        # The bracketed markers are gone from the normal (non-superscript) text.
-        assert "[1]" not in normal_text and "[2]" not in normal_text
-        assert "Stadler Rail" in normal_text
+        gen._subscript_all_citations()
+
+        # Body paragraph citation subscripted...
+        body = gen.doc.paragraphs[0]
+        assert [r.text for r in body.runs if r.font.subscript] == ["[1]"]
+        # ...and the table-cell citation too.
+        cell_para = table.rows[0].cells[0].paragraphs[0]
+        assert [r.text for r in cell_para.runs if r.font.subscript] == ["[3]"]
+        assert "CrowdStrike" in "".join(r.text for r in cell_para.runs)

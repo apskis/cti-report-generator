@@ -4,6 +4,7 @@ Weekly CTI Report Generator.
 Generates weekly threat intelligence reports matching the branded template.
 """
 
+import copy
 import logging
 import re
 from datetime import timedelta
@@ -12,6 +13,8 @@ from typing import Any
 from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 from src.core.config import customer_profile
@@ -20,31 +23,85 @@ from src.reports.registry import register_report_generator
 
 logger = logging.getLogger(__name__)
 
-# Matches a run of one or more inline citation markers like "[1]" or "[3][4]",
-# together with any whitespace immediately before them, so the citation can be
-# rendered as a superscript attached to the preceding word (academic exponent style).
-_CITATION_RUN_RE = re.compile(r"\s*(?:\[\d+\])+")
-_CITATION_NUM_RE = re.compile(r"\d+")
+# One or more inline citation markers like "[1]" or "[3][4]" — brackets kept.
+_CITATION_MARKER_RE = re.compile(r"(?:\[\d+\])+")
 
 
-def _split_citations(text: str) -> list[tuple[str, bool]]:
-    """Split text into ``(segment, is_citation)`` runs.
+def _split_citation_markers(text: str) -> list[tuple[str, bool]]:
+    """Split text into ``(segment, is_citation)`` parts, KEEPING the brackets.
 
-    Citation groups (" [3][4]") become a single citation segment carrying the joined
-    numbers ("3,4"); the leading whitespace is dropped so the superscript attaches to
-    the previous character. Everything else is returned as normal text.
+    "system [3][4]." -> [("system ", False), ("[3][4]", True), (".", False)].
     """
     parts: list[tuple[str, bool]] = []
     last = 0
-    for m in _CITATION_RUN_RE.finditer(text):
+    for m in _CITATION_MARKER_RE.finditer(text):
         if m.start() > last:
             parts.append((text[last : m.start()], False))
-        nums = _CITATION_NUM_RE.findall(m.group(0))
-        parts.append((",".join(nums), True))
+        parts.append((m.group(0), True))
         last = m.end()
     if last < len(text):
         parts.append((text[last:], False))
     return parts
+
+
+def _iter_report_paragraphs(container):
+    """Yield every paragraph in a container (Document or _Cell), descending into tables."""
+    yield from container.paragraphs
+    for table in container.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                yield from _iter_report_paragraphs(cell)
+
+
+def _set_run_text(r_elem, text: str) -> None:
+    for t in r_elem.findall(qn("w:t")):
+        r_elem.remove(t)
+    t = OxmlElement("w:t")
+    t.set(qn("xml:space"), "preserve")
+    t.text = text
+    r_elem.append(t)
+
+
+def _apply_citation_segment(r_elem, seg_text: str, is_citation: bool) -> None:
+    """Set a run element's text and toggle subscript for citation segments."""
+    _set_run_text(r_elem, seg_text)
+    rpr = r_elem.find(qn("w:rPr"))
+    if rpr is not None:
+        for va in rpr.findall(qn("w:vertAlign")):
+            rpr.remove(va)
+    if is_citation:
+        rpr = r_elem.get_or_add_rPr()
+        va = OxmlElement("w:vertAlign")
+        va.set(qn("w:val"), "subscript")
+        rpr.append(va)
+
+
+def _subscript_citations_in_paragraph(paragraph) -> None:
+    """Split runs so citation markers ([1], [3][4]) render as subscript in place.
+
+    Each new sub-run is a deep copy of the original run element, so it inherits the
+    surrounding text's font/color/size/bold; only the citation segments get subscript.
+    """
+    for run in list(paragraph.runs):
+        text = run.text
+        if not text or not _CITATION_MARKER_RE.search(text):
+            continue
+        segments = _split_citation_markers(text)
+        if len(segments) <= 1:
+            continue
+        r = run._r
+        parent = r.getparent()
+        idx = parent.index(r)
+        template = copy.deepcopy(r)  # clean copy of the original formatting
+        tmpl_rpr = template.find(qn("w:rPr"))
+        if tmpl_rpr is not None:
+            for va in tmpl_rpr.findall(qn("w:vertAlign")):
+                tmpl_rpr.remove(va)
+        _apply_citation_segment(r, *segments[0])  # first segment reuses original run
+        for offset, (seg_text, is_cite) in enumerate(segments[1:], start=1):
+            new_r = copy.deepcopy(template)
+            _apply_citation_segment(new_r, seg_text, is_cite)
+            parent.insert(idx + offset, new_r)
 
 
 @register_report_generator("weekly")
@@ -122,12 +179,21 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._add_resources_section(analysis_result)
             self._add_footer()
 
+            # Document-wide pass: render every inline citation marker ([1], [3][4]) as a
+            # subscript, wherever it appears (summary, tables, incidents, etc.).
+            self._subscript_all_citations()
+
             logger.info("Weekly CTI Report generated successfully")
             return self.doc
 
         except Exception as e:
             logger.error(f"Error generating weekly report: {str(e)}", exc_info=True)
             raise
+
+    def _subscript_all_citations(self) -> None:
+        """Render every inline citation marker ([N], [N][M]) as a subscript, document-wide."""
+        for paragraph in _iter_report_paragraphs(self.doc):
+            _subscript_citations_in_paragraph(paragraph)
 
     def _calculate_date_range(self) -> None:
         """Calculate the reporting period based on actual data lookback window."""
@@ -226,28 +292,14 @@ class WeeklyReportGenerator(BaseReportGenerator):
             if trend_intro:
                 summary = "\n\n".join(trend_intro) + "\n\n" + summary
 
-        para = self.doc.add_paragraph()
+        para = self.doc.add_paragraph(summary)
         para.paragraph_format.space_before = Pt(0)
         para.paragraph_format.space_after = Pt(4)
         para.paragraph_format.line_spacing = 1.5
-        self._add_body_text_with_citations(para, summary)
-
-    def _add_body_text_with_citations(self, para, text: str) -> None:
-        """Write body text into ``para``, rendering [N] citation markers as superscripts.
-
-        Each inline citation like "[1]" or "[3][4]" becomes a superscript number
-        (e.g. "1", "3,4") attached to the preceding word, instead of a bracketed inline
-        marker. Body runs get the standard body font/color.
-        """
-        for segment, is_citation in _split_citations(text):
-            if not segment:
-                continue
-            run = para.add_run(segment)
+        for run in para.runs:
             run.font.size = FontSizes.BODY
             run.font.color.rgb = BrandColors.TEXT_DARK
             run.font.name = "Arial"
-            if is_citation:
-                run.font.superscript = True
 
     def _add_week_at_glance(self, analysis_result: dict[str, Any]) -> None:
         """Add 'This Week at a Glance': bold orange heading; space before subtitle."""
