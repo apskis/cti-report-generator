@@ -6,7 +6,11 @@
 
         "KEY_VAULT_URL": "https://kv-cti-rep-prod.vault.azure.net/",
 
-        "ENABLED_COLLECTORS": "nvd,intel471,crowdstrike"
+        "ENABLED_COLLECTORS": "nvd,intel471,crowdstrike",
+
+        "AZURE_OPENAI_DEPLOYMENT": "gpt-5.6-sol",
+        "AZURE_OPENAI_API_VERSION": "2024-12-01-preview",
+        "AZURE_OPENAI_TEMPERATURE": "default"
     },
     "ConnectionStrings": {
         "SqlConnection": "Server=sql-cti-automation-ilmn.database.windows.net;Database=;User ID=;Password=;Encrypt=True;"
