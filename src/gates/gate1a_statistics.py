@@ -21,6 +21,18 @@ from .models import GateInput, GateResult
 logger = logging.getLogger(__name__)
 
 
+def _field(obj: Any, name: str):
+    """Read a field from a gate payload item that may be a dataclass or a dict.
+
+    Gate 2 stores IOC dataclasses and Gate 3 stores ActorLink dataclasses in their
+    payloads (attribute access), but some callers/tests pass plain dicts. This reads
+    either without assuming ``.get``.
+    """
+    if isinstance(obj, dict):
+        return obj.get(name)
+    return getattr(obj, name, None)
+
+
 def run(gate_input: GateInput, llm_client: Any, report_type: str) -> GateResult:
     """
     Run statistics validation based on report type.
@@ -114,6 +126,10 @@ def _validate_weekly_statistics(gate_input: GateInput) -> GateResult:
             if isinstance(cve, dict) and "published_date" in cve:
                 try:
                     pub_date = datetime.fromisoformat(cve["published_date"].replace("Z", "+00:00"))
+                    # NVD publish dates are often naive (no offset); treat as UTC so they
+                    # can be compared against the tz-aware reporting window.
+                    if pub_date.tzinfo is None:
+                        pub_date = pub_date.replace(tzinfo=UTC)
                     if pub_date < period_start or pub_date > period_end:
                         data_timestamp_issues.append(
                             f"NVD CVE {cve.get('cve_id', 'Unknown')} published {pub_date.date()} outside window"
@@ -184,7 +200,7 @@ def _validate_weekly_statistics(gate_input: GateInput) -> GateResult:
     cve_count = 0
     if gate2_result:
         iocs = gate2_result.payload.get("iocs", [])
-        cve_iocs = [ioc for ioc in iocs if ioc.get("ioc_type") == "CVE"]
+        cve_iocs = [ioc for ioc in iocs if _field(ioc, "ioc_type") == "CVE"]
         cve_count = len(cve_iocs)
 
     # Validation 1: If Tier 1 sources have data, we should have CVEs
@@ -221,7 +237,7 @@ def _validate_weekly_statistics(gate_input: GateInput) -> GateResult:
     if gate3_result:
         actor_links = gate3_result.payload.get("actor_links", [])
         # Count unique actors
-        unique_actors = set(link.get("actor_name") for link in actor_links if link.get("actor_name"))
+        unique_actors = {_field(link, "actor_name") for link in actor_links if _field(link, "actor_name")}
         actor_count = len(unique_actors)
 
     validations.append(

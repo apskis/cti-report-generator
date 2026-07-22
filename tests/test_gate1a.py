@@ -11,7 +11,7 @@ import pytest
 
 from src.gates.gate1a_statistics import run
 from src.gates.halt import GateHaltError
-from src.gates.models import GateInput, GateResult, SourceRecord
+from src.gates.models import IOC, ActorLink, GateInput, GateResult, SourceRecord
 
 
 def _gate1_prior(records_returned: int = 5, status: str = "OK") -> GateResult:
@@ -67,6 +67,46 @@ def test_weekly_stats_survives_malformed_timestamp():
     # The bad record produced no timestamp issue (it was skipped, not flagged).
     checks = {v["check"]: v for v in result.payload["validations"]}
     assert checks["data_timestamps_within_window"]["passed"] is True
+
+
+def test_weekly_stats_reads_gate2_ioc_and_gate3_actorlink_dataclasses():
+    """Regression: Gate 1A must read Gate 2 IOC / Gate 3 ActorLink DATACLASSES.
+
+    Since 1A now runs after Gates 2-5, its cross-gate checks receive the real
+    dataclass objects (not dicts). Calling ``.get()`` on them raised
+    'IOC object has no attribute get' and aborted report generation.
+    """
+    gate2 = GateResult(
+        gate_id="2",
+        status="COMPLETE",
+        payload={
+            "iocs": [
+                IOC(
+                    ioc_type="CVE", value="CVE-2026-1", sources=["NVD"], source_severity="HIGH", cross_source_hit=False
+                ),
+                IOC(
+                    ioc_type="IP", value="1.2.3.4", sources=["Intel471"], source_severity="MED", cross_source_hit=False
+                ),
+            ]
+        },
+    )
+    gate3 = GateResult(
+        gate_id="3",
+        status="COMPLETE",
+        payload={
+            "actor_links": [ActorLink(ioc_value="CVE-2026-1", actor_name="PANDA", attribution_source="CrowdStrike")]
+        },
+    )
+    gi = _weekly_input(
+        [{"cve_id": "CVE-2026-1", "published_date": "2026-05-15T00:00:00Z"}],
+        prior_results={"2": gate2, "3": gate3},
+    )
+    result = run(gi, llm_client=None, report_type="WEEKLY")
+    assert result.status == "COMPLETE"
+    checks = {v["check"]: v for v in result.payload["validations"]}
+    # One CVE IOC counted, one unique actor counted — proves attribute access worked.
+    assert "1" in checks["tier1_data_to_cve_mapping"]["details"]
+    assert result.payload["summary"]["actors_identified"] == 1
 
 
 def test_unknown_report_type_is_noop_complete():
