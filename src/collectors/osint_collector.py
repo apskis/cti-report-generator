@@ -26,6 +26,18 @@ logger = logging.getLogger(__name__)
 
 CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "osint_sources.yaml"
 
+# Some feeds (notably CISA / US-CERT, behind a CDN) return HTTP 403 to non-browser
+# user agents. Present a realistic browser UA plus feed-appropriate Accept headers so
+# those sources are reachable. This only affects the request headers, not parsing.
+_REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 
 def _load_osint_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
     """Load and validate the OSINT sources configuration file."""
@@ -109,7 +121,7 @@ class OSINTCollector(BaseCollector):
         all_articles: list[dict[str, Any]] = []
 
         async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=15), headers={"User-Agent": "CTI-Report-Generator/1.0"}
+            timeout=aiohttp.ClientTimeout(total=15), headers=_REQUEST_HEADERS
         ) as session:
             for source in sources:
                 if len(all_articles) >= max_total:
