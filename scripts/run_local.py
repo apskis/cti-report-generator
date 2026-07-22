@@ -902,7 +902,10 @@ async def check_openai_connectivity(
         endpoint.rstrip("/")
         + f"/openai/deployments/{deploy}/chat/completions?api-version={analysis_config.api_version}"
     )
-    body = json.dumps({"messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}).encode("utf-8")
+    # No token-cap param: max_tokens is rejected by reasoning models (which want
+    # max_completion_tokens), and max_completion_tokens isn't accepted on older api
+    # versions — so omit it entirely. This is a tiny connectivity/auth ping.
+    body = json.dumps({"messages": [{"role": "user", "content": "ping"}]}).encode("utf-8")
 
     try:
         req = urllib.request.Request(url, data=body, method="POST")
