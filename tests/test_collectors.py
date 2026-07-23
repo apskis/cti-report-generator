@@ -5,6 +5,7 @@ These tests use mocked HTTP responses to test collector logic
 without making actual API calls.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -405,3 +406,62 @@ class TestIlluminaSecFilings:
         data = {"filings": {"recent": {"form": ["4", "144"], "filingDate": ["2026-07-02", "2026-07-01"]}}}
         out = IlluminaOSINTCollector._format_sec_filings(data, cik="1110803")
         assert "No recent material filings" in out
+
+
+class TestIlluminaIRFeed:
+    """The IR press-release feed reader should parse RSS/Atom and JSON shapes and
+    drop items outside the lookback window."""
+
+    _CUTOFF = datetime(2026, 4, 24, tzinfo=UTC)
+
+    def test_json_feed_standard_shape_and_lookback(self):
+        import json
+
+        from src.collectors.illumina_osint_collector import IlluminaOSINTCollector
+
+        body = json.dumps(
+            {
+                "items": [
+                    {"title": "Illumina expands Billion Cell Atlas program", "url": "https://x/1",
+                     "date_published": "2026-07-02T00:00:00Z"},
+                    {"title": "Old release from January 2026", "url": "https://x/old",
+                     "date_published": "2026-01-05T00:00:00Z"},  # outside window -> dropped
+                ]
+            }
+        )
+        out = IlluminaOSINTCollector._format_json_feed(body, self._CUTOFF)
+        assert "Billion Cell Atlas" in out and "https://x/1" in out
+        assert "January 2026" not in out
+
+    def test_json_feed_ir_api_shape_and_rfc_date(self):
+        import json
+
+        from src.collectors.illumina_osint_collector import IlluminaOSINTCollector
+
+        body = json.dumps(
+            {
+                "GetPressReleaseListResult": [
+                    {"Headline": "Illumina appoints new Chief Legal Officer", "LinkToDetailPage": "https://x/2",
+                     "PressReleaseDate": "Tue, 24 Jun 2026 08:00:00 GMT"}
+                ]
+            }
+        )
+        out = IlluminaOSINTCollector._format_json_feed(body, self._CUTOFF)
+        assert "Chief Legal Officer" in out and "2026-06-24" in out
+
+    def test_rss_via_feedparser(self):
+        from src.collectors.illumina_osint_collector import IlluminaOSINTCollector
+
+        rss = (
+            b"<?xml version='1.0'?><rss version='2.0'><channel>"
+            b"<item><title>Illumina Q2 2026 Financial Results</title>"
+            b"<link>https://investor.illumina.com/news/q2-2026</link>"
+            b"<pubDate>Wed, 15 Jul 2026 12:00:00 GMT</pubDate></item>"
+            b"<item><title>Stale item from 2025</title>"
+            b"<link>https://x/stale</link>"
+            b"<pubDate>Wed, 15 Jan 2025 12:00:00 GMT</pubDate></item>"
+            b"</channel></rss>"
+        )
+        out = IlluminaOSINTCollector._format_feed_entries(rss, self._CUTOFF)
+        assert "Q2 2026 Financial Results" in out
+        assert "Stale item" not in out

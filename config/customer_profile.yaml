@@ -40,6 +40,16 @@ strategic_profile: |
 # and reports read from data_by_source.
 osint_source_name: "Illumina-OSINT"
 
+# Investor-relations press-release feed URLs (RSS/Atom or JSON), tried in order.
+# A feed is far more stable than scraping the JS-rendered news-center HTML. The
+# collector logs which one succeeds ("IR feed: using <url>") - once you confirm
+# the working endpoint, put it first (or make it the only entry) to pin it.
+ir_feed_urls:
+  - "https://investor.illumina.com/rss/news-releases.xml"
+  - "https://investor.illumina.com/rss/pressreleases.xml"
+  - "https://investor.illumina.com/news-releases/rss"
+  - "https://investor.illumina.com/rss/news.xml"
+
 # Lowercase keywords (company name plus product/platform names) used by the
 # quality gates to detect company-specific grounding in geopolitical relevance
 # bullets. Set these to your organization's products.

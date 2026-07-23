@@ -8,6 +8,8 @@ regulatory status, and partnerships from official sources.
 import logging
 import re
 import ssl
+from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
 
 import aiohttp
 import certifi
@@ -18,16 +20,26 @@ from src.core.config import customer_profile
 
 logger = logging.getLogger(__name__)
 
+# Browser-style headers: some IR/CDN feeds reject the default aiohttp User-Agent.
+_FEED_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/rss+xml, application/atom+xml, application/xml;q=0.9, application/json;q=0.8, */*;q=0.5",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 
 class IlluminaOSINTCollector(BaseCollector):
     """
     Collector for Illumina public information.
 
     Fetches from:
-    1. SEC EDGAR submissions API
-    2. Illumina news center
-    3. Illumina investor relations press releases
-    4. Web search fallback (if available)
+    0. Durable strategic profile (from customer_profile config; always present)
+    1. SEC EDGAR submissions API (material filings only)
+    2. Investor-relations press releases (RSS/Atom/JSON feed, HTML scrape fallback)
+    3. Web search fallback (not yet implemented)
 
     Returns a consolidated context string for AI analysis.
 
@@ -82,21 +94,21 @@ class IlluminaOSINTCollector(BaseCollector):
             except Exception as e:
                 logger.warning(f"Failed to fetch SEC EDGAR data: {e}")
 
-            # SOURCE 2: Illumina news center
+            # SOURCE 2: Investor-relations press releases. Prefer a stable RSS/JSON feed;
+            # fall back to HTML scraping only if no feed responds (the JS-rendered pages
+            # are brittle). Both are labeled the same so downstream treats them uniformly.
+            ir_data = ""
             try:
-                news_data = await self._fetch_news_center()
-                if news_data:
-                    context_parts.append(f"## Illumina News Center\n{news_data}\n")
+                ir_data = await self._fetch_ir_feed(lookback_days=lookback_days)
             except Exception as e:
-                logger.warning(f"Failed to fetch Illumina news center: {e}")
-
-            # SOURCE 3: Investor relations press releases
-            try:
-                ir_data = await self._fetch_investor_relations()
-                if ir_data:
-                    context_parts.append(f"## Investor Relations Press Releases\n{ir_data}\n")
-            except Exception as e:
-                logger.warning(f"Failed to fetch investor relations data: {e}")
+                logger.warning(f"Failed to fetch IR press-release feed: {e}")
+            if not ir_data:
+                try:
+                    ir_data = await self._fetch_investor_relations()
+                except Exception as e:
+                    logger.warning(f"Failed to scrape investor relations HTML: {e}")
+            if ir_data:
+                context_parts.append(f"## Investor Relations Press Releases\n{ir_data}\n")
 
             # SOURCE 4: Web search fallback
             # TODO: Add web search utility integration when available
@@ -230,77 +242,153 @@ class IlluminaOSINTCollector(BaseCollector):
             return "No recent material filings (10-K/10-Q/8-K/DEF 14A) found in the lookback window"
         return "\n".join(lines)
 
-    async def _fetch_news_center(self) -> str:
-        """
-        Fetch headlines and validate URLs from Illumina news center.
+    async def _fetch_ir_feed(self, lookback_days: int = 90) -> str:
+        """Fetch investor-relations press releases from a stable RSS/Atom/JSON feed.
 
-        Returns:
-            Formatted string of news headlines with validated URLs
+        Tries each configured ``ir_feed_urls`` in order and returns the first one that
+        yields recent items. Feeds are far more reliable than scraping the JS-rendered
+        news pages. Returns an empty string if no feed responds (caller falls back to HTML).
         """
-        url = "https://www.illumina.com/company/news-center.html"
-
-        # Create SSL context with certifi certificates
+        cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
         ssl_context = ssl.create_default_context(cafile=certifi.where())
         connector = aiohttp.TCPConnector(ssl=ssl_context)
 
-        async with aiohttp.ClientSession(connector=connector) as session:
-            async with session.get(url) as response:
-                if response.status != 200:
-                    logger.warning(f"Illumina news center returned status {response.status}")
-                    return ""
+        async with aiohttp.ClientSession(
+            connector=connector, headers=_FEED_HEADERS, timeout=aiohttp.ClientTimeout(total=15)
+        ) as session:
+            for feed_url in customer_profile.ir_feed_urls:
+                try:
+                    async with session.get(feed_url) as resp:
+                        if resp.status != 200:
+                            logger.debug(f"IR feed {feed_url} -> HTTP {resp.status}")
+                            continue
+                        body = await resp.read()
+                except Exception as e:
+                    logger.debug(f"IR feed {feed_url} error: {e}")
+                    continue
 
-                html = await response.text()
-                soup = BeautifulSoup(html, "html.parser")
+                formatted = self._format_feed_entries(body, cutoff, max_items=8)
+                if formatted:
+                    logger.info(f"IR feed: using {feed_url}")
+                    return formatted
+                logger.debug(f"IR feed {feed_url} parsed but yielded no recent items")
 
-                # Try to find news items with links
-                news_items = []
+        return ""
 
-                # Try various selectors for article containers
-                selectors = ["article", ".news-item", ".press-release", ".news-card"]
+    @classmethod
+    def _format_feed_entries(cls, body, cutoff: datetime, max_items: int = 8) -> str:
+        """Pure formatter for a feed body (RSS/Atom via feedparser, or JSON).
 
-                for selector in selectors:
-                    items = soup.select(selector)
-                    if items:
-                        for item in items[:10]:
-                            # Extract headline
-                            headline_elem = item.find(["h3", "h2", "h4", "a"])
-                            headline = self._clean_text(headline_elem.get_text()) if headline_elem else None
+        Keeps only items on/after ``cutoff`` (undated items are kept). Pure/no-network
+        so the parsing is unit-testable; the JSON path uses only the standard library.
+        """
+        text = body.decode("utf-8", "replace") if isinstance(body, (bytes, bytearray)) else str(body)
+        stripped = text.lstrip()
+        if stripped[:1] in ("{", "["):
+            json_out = cls._format_json_feed(stripped, cutoff, max_items)
+            if json_out:
+                return json_out
+            # fall through to feedparser in case it was XML with odd leading chars
 
-                            # Extract URL
-                            link_elem = item.find("a", href=True)
-                            article_url = None
-                            if link_elem:
-                                href = link_elem["href"]
-                                # Handle relative URLs
-                                if href.startswith("/"):
-                                    article_url = f"https://www.illumina.com{href}"
-                                elif href.startswith("http"):
-                                    article_url = href
+        import feedparser
 
-                            if headline and article_url:
-                                news_items.append((headline, article_url))
+        feed = feedparser.parse(text)
+        items: list[str] = []
+        for entry in getattr(feed, "entries", []) or []:
+            title = cls._clean_text(entry.get("title", ""))
+            link = entry.get("link", "")
+            if not title or not link:
+                continue
+            pub = cls._entry_date(entry)
+            if pub and pub < cutoff:
+                continue
+            items.append(cls._format_feed_line(title, link, pub))
+            if len(items) >= max_items:
+                break
+        return "\n".join(items)
 
-                        if news_items:
-                            break
+    @classmethod
+    def _format_json_feed(cls, text: str, cutoff: datetime, max_items: int = 8) -> str:
+        """Best-effort JSON feed parser (JSONFeed standard + common IR-API shapes)."""
+        import json
 
-                if not news_items:
-                    logger.warning("Could not parse Illumina news center - page structure may have changed")
-                    return "Unable to parse news center (page structure changed)"
+        try:
+            data = json.loads(text)
+        except (ValueError, TypeError):
+            return ""
 
-                # Validate URLs and format output
-                validated_items = []
-                for headline, article_url in news_items[:8]:  # Limit to 8 items
-                    # Validate URL is accessible
-                    is_valid = await self._validate_url(article_url, session)
-                    if is_valid:
-                        validated_items.append(f"- {headline}\n  URL: {article_url}")
-                    else:
-                        logger.warning(f"Skipping broken link: {article_url}")
+        # Accept either a top-level list, a JSONFeed {"items": [...]}, or common
+        # IR-API wrappers like {"GetPressReleaseListResult": [...]} / {"news": [...]}.
+        candidates = None
+        if isinstance(data, list):
+            candidates = data
+        elif isinstance(data, dict):
+            for key in ("items", "news", "results", "data", "GetPressReleaseListResult", "pressReleases"):
+                if isinstance(data.get(key), list):
+                    candidates = data[key]
+                    break
+        if not candidates:
+            return ""
 
-                if not validated_items:
-                    return "News center accessible but all article links are broken"
+        items: list[str] = []
+        for rec in candidates:
+            if not isinstance(rec, dict):
+                continue
+            title = cls._clean_text(
+                str(rec.get("title") or rec.get("headline") or rec.get("Headline") or rec.get("name") or "")
+            )
+            link = str(rec.get("url") or rec.get("link") or rec.get("LinkToDetailPage") or rec.get("permalink") or "")
+            if not title or not link:
+                continue
+            raw_date = rec.get("date_published") or rec.get("date") or rec.get("PressReleaseDate") or rec.get("pubDate")
+            pub = cls._parse_iso_or_rfc(str(raw_date)) if raw_date else None
+            if pub and pub < cutoff:
+                continue
+            items.append(cls._format_feed_line(title, link, pub))
+            if len(items) >= max_items:
+                break
+        return "\n".join(items)
 
-                return "\n".join(validated_items)
+    @staticmethod
+    def _format_feed_line(title: str, link: str, pub: datetime | None) -> str:
+        prefix = f"{pub.date().isoformat()}: " if pub else ""
+        return f"- {prefix}{title}\n  URL: {link}"
+
+    @staticmethod
+    def _entry_date(entry: dict) -> datetime | None:
+        """Extract a publication date from a feedparser entry."""
+        from time import mktime
+
+        for field in ("published_parsed", "updated_parsed"):
+            tp = entry.get(field)
+            if tp:
+                try:
+                    return datetime.fromtimestamp(mktime(tp), tz=UTC)
+                except Exception:
+                    pass
+        for field in ("published", "updated"):
+            raw = entry.get(field, "")
+            if raw:
+                dt = IlluminaOSINTCollector._parse_iso_or_rfc(raw)
+                if dt:
+                    return dt
+        return None
+
+    @staticmethod
+    def _parse_iso_or_rfc(raw: str) -> datetime | None:
+        """Parse an ISO-8601 or RFC-2822 date string to a tz-aware UTC datetime."""
+        raw = (raw or "").strip()
+        if not raw:
+            return None
+        try:
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+        except ValueError:
+            pass
+        try:
+            return parsedate_to_datetime(raw).replace(tzinfo=UTC)
+        except (TypeError, ValueError):
+            return None
 
     async def _fetch_investor_relations(self) -> str:
         """

@@ -278,6 +278,15 @@ class CustomerProfile:
         "- Operates in an FDA-regulated clinical environment; US/EU genomic-data-privacy and "
         "foreign-access legislation directly affects the business."
     )
+    # Candidate investor-relations press-release RSS/Atom (or JSON) feed URLs, tried in
+    # order. A feed is far more stable than scraping the JS-rendered news-center HTML.
+    # Pin the one that works for your org (it is logged when it succeeds).
+    ir_feed_urls: tuple[str, ...] = (
+        "https://investor.illumina.com/rss/news-releases.xml",
+        "https://investor.illumina.com/rss/pressreleases.xml",
+        "https://investor.illumina.com/news-releases/rss",
+        "https://investor.illumina.com/rss/news.xml",
+    )
     # Lowercase keywords (company name + product/platform names) used to detect
     # company-specific grounding in geopolitical relevance bullets.
     product_keywords: tuple[str, ...] = (
@@ -400,6 +409,7 @@ def _load_customer_profile() -> CustomerProfile:
         products=cfg.get("products", defaults.products),
         flagship_product=cfg.get("flagship_product", defaults.flagship_product),
         strategic_profile=cfg.get("strategic_profile", defaults.strategic_profile),
+        ir_feed_urls=tuple(cfg["ir_feed_urls"]) if cfg.get("ir_feed_urls") else defaults.ir_feed_urls,
         product_keywords=tuple(k.lower() for k in keywords) if keywords else defaults.product_keywords,
     )
 
