@@ -16,6 +16,16 @@ from src.reports.registry import (
 from src.reports.weekly_report import WeeklyReportGenerator
 
 
+@pytest.fixture(autouse=True)
+def _isolate_quarterly_history(monkeypatch, tmp_path):
+    """Keep the quarterly history-file side effect out of the working tree (Q25).
+
+    Quarterly generate() persists risk history; redirect it to a temp dir so tests
+    never write data/historical/ into the repo checkout.
+    """
+    monkeypatch.setenv("QUARTERLY_HISTORY_DIR", str(tmp_path / "quarterly_hist"))
+
+
 def _get_document_text(doc):
     """Collect all text from document paragraphs and table cells."""
     parts = [p.text for p in doc.paragraphs]
@@ -473,6 +483,111 @@ class TestQuarterlyReportGenerator:
         text_content = _get_document_text(doc)
         assert "Recommendations" in text_content
         assert "Executive Awareness" in text_content
+
+
+# =============================================================================
+# Quarterly robustness (Part 5): malformed AI output must degrade, not crash;
+# plus regression tests for the display bugs (Q17 badge, Q18 trend, Q26 cards, Q23).
+# =============================================================================
+
+
+class TestQuarterlyRobustness:
+    @pytest.fixture
+    def generator(self):
+        return QuarterlyReportGenerator()
+
+    # ----- Part 5: malformed strategic analysis degrades without raising -----
+
+    @pytest.mark.parametrize(
+        "analysis",
+        [
+            {"risk_assessment": None},
+            {"risk_assessment": {"nation_state": None, "ransomware": None}},
+            {"geopolitical_threats": ["China", "Russia"]},
+            {"looking_ahead": None},
+            {
+                "breach_landscape": {
+                    "stat_cards": [
+                        {"value": 20, "label": "Total", "prior_value": "N/A", "change_pct": "N/A"}
+                    ],
+                    "incidents_by_type": [
+                        {"type": "Ransomware", "current_count": 12, "prev_count": 10, "notable_example": "Acme: hit"}
+                    ],
+                }
+            },
+            {"breach_landscape": {"stat_cards": [{"value": 1, "change_pct": "+high%"}]}},
+            {"incidents_by_type": [{"type": "X", "current_count": 3, "notable_example": "Y: z"}]},
+        ],
+    )
+    def test_malformed_strategic_analysis_does_not_raise(self, generator, analysis):
+        doc = generator.generate(analysis)
+        assert doc is not None
+        assert len(doc.paragraphs) > 0
+
+    # ----- Q18: risk-card trend arrows map to a direction, not "Unchanged" -----
+
+    def test_trend_arrows_render_direction(self, generator):
+        analysis = {
+            "risk_assessment": {
+                "nation_state": "HIGH",
+                "nation_state_trend": "↑",
+                "ransomware": "MEDIUM",
+                "ransomware_trend": "↓",
+                "supply_chain": "LOW",
+                "supply_chain_trend": "Unchanged",
+                "insider": "LOW",
+                "insider_trend": "Unchanged",
+            }
+        }
+        doc = generator.generate(analysis)
+        text = _get_document_text(doc)
+        assert "Increased" in text
+        assert "Decreased" in text
+
+    # ----- Q17: geopolitical badge honors the AI's "level"/"threat_level" -----
+
+    def test_threat_level_badge_reads_level_key(self, generator):
+        analysis = {
+            "geopolitical_threats": [
+                {"name": "China", "level": "CRITICAL", "relevance": ["x"], "activity": ["y"], "risk": ["z"]}
+            ]
+        }
+        doc = generator.generate(analysis)
+        text = _get_document_text(doc)
+        # The real assessed level must appear, not a hardcoded MEDIUM default.
+        assert "CRITICAL" in text
+
+    # ----- Q26: stat cards render for counts other than exactly 4 -----
+
+    @pytest.mark.parametrize("num_cards", [1, 2, 3, 4])
+    def test_stat_cards_render_for_varied_counts(self, generator, num_cards):
+        cards = [
+            {"value": str(i), "label": f"Metric {i}", "prior_value": "N/A", "change_pct": "N/A"}
+            for i in range(num_cards)
+        ]
+        analysis = {"breach_landscape": {"stat_cards": cards, "incidents_by_type": []}}
+        doc = generator.generate(analysis)
+        text = _get_document_text(doc)
+        for i in range(num_cards):
+            assert f"Metric {i}" in text
+
+    def test_na_prior_value_does_not_render_fabricated_percent(self, generator):
+        cards = [{"value": "20", "label": "Total Incidents", "prior_label": "Q1 2026", "prior_value": "N/A", "change_pct": "N/A"}]
+        analysis = {"breach_landscape": {"stat_cards": cards, "incidents_by_type": []}}
+        doc = generator.generate(analysis)
+        text = _get_document_text(doc)
+        assert "Total Incidents" in text
+        # No parenthetical percentage when there is no real prior data.
+        assert "(N/A)" not in text
+
+    # ----- Q23: inline citations are subscripted document-wide in quarterly -----
+
+    def test_quarterly_citations_are_subscripted(self, generator):
+        analysis = {"executive_summary": "Breach at Stadler Rail [1] and follow-up [2] noted."}
+        doc = generator.generate(analysis)
+        subscript_runs = [r.text for p in doc.paragraphs for r in p.runs if r.font.subscript]
+        assert "[1]" in subscript_runs
+        assert "[2]" in subscript_runs
 
 
 class TestReportTypesList:

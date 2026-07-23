@@ -349,6 +349,71 @@ def _validate_quarterly_statistics(gate_input: GateInput) -> GateResult:
         }
     )
 
+    # Validation 2b: Lookback-window / freshness check (Q22). Weekly enforces a 7-day
+    # window and flags out-of-window records; quarterly did neither, so stale records
+    # went unnoticed. Quarterly windows are ~90 days; flag a materially different window
+    # and sample source timestamps for records that fall outside it. Advisory (warnings).
+    from datetime import UTC, datetime
+
+    try:
+        q_period_start = datetime.fromisoformat(gate_input.period_start).replace(tzinfo=UTC)
+        q_period_end = datetime.fromisoformat(gate_input.period_end).replace(tzinfo=UTC)
+        window_days = (q_period_end - q_period_start).days
+    except (ValueError, TypeError) as e:
+        logger.debug(f"Skipping quarterly window validation - unparseable period: {e}")
+        q_period_start = q_period_end = None
+        window_days = None
+
+    if window_days is not None:
+        # A quarter is ~90 days; tolerate 80-100 to allow for month-length variation.
+        window_ok = 80 <= window_days <= 100
+        if not window_ok:
+            warnings.append(
+                f"Expected a ~90-day quarterly lookback window, but got {window_days} days "
+                f"({gate_input.period_start} to {gate_input.period_end})"
+            )
+        validations.append(
+            {
+                "check": "quarterly_lookback_window",
+                "passed": window_ok,
+                "details": f"Collection window: {window_days} days",
+            }
+        )
+
+        # Sample source timestamps for out-of-window (stale) records.
+        stale_issues: list[str] = []
+        for source_name, date_keys in (("Intel471", ("date", "published_date")), ("CrowdStrike", ("last_activity",))):
+            records = gate_input.tier1_data.get(source_name, [])
+            if not isinstance(records, list):
+                continue
+            for record in records[:5]:  # Sample first 5
+                if not isinstance(record, dict):
+                    continue
+                raw = next((record[k] for k in date_keys if record.get(k)), None)
+                if not isinstance(raw, str):
+                    continue
+                try:
+                    parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=UTC)
+                    if parsed < q_period_start or parsed > q_period_end:
+                        stale_issues.append(f"{source_name} record dated {parsed.date()} outside quarterly window")
+                except (ValueError, TypeError, AttributeError, OSError, OverflowError) as e:
+                    logger.debug(f"Skipping {source_name} timestamp validation for a record: {e}")
+
+        if stale_issues:
+            warnings.append(
+                f"{len(stale_issues)} sampled record(s) fall outside the quarterly window: "
+                + "; ".join(stale_issues[:3])
+            )
+        validations.append(
+            {
+                "check": "quarterly_record_freshness",
+                "passed": not stale_issues,
+                "details": f"{len(stale_issues)} out-of-window record(s) in sample",
+            }
+        )
+
     # Validation 3: Check Gate 4 for geopolitical context (quarterly-specific field).
     # Gate 4 stores its payload under "assembly" (not "structured_assembly"), and when
     # empty it sets geopolitical_context_signals to a STRING placeholder — so require a

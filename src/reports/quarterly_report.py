@@ -170,8 +170,15 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             self.quarter = 4
 
     def _get_historical_file_path(self) -> Path:
-        """Get the path to the historical data JSON file."""
-        data_dir = Path("data/historical")
+        """Get the path to the historical data JSON file.
+
+        The directory is overridable via ``QUARTERLY_HISTORY_DIR`` so tests/CI can
+        redirect the write out of the repo tree instead of the generator writing
+        ``data/historical/`` into the working directory as a render side effect.
+        """
+        import os
+
+        data_dir = Path(os.environ.get("QUARTERLY_HISTORY_DIR", "data/historical"))
         data_dir.mkdir(parents=True, exist_ok=True)
         return data_dir / "quarterly_risk_history.json"
 
@@ -683,17 +690,22 @@ and vulnerabilities observed are consistent with those historically used against
         spacer = self.doc.add_paragraph()
         spacer.paragraph_format.space_after = Pt(6)
 
-        # COMPONENT 3 — Stat cards
-        stat_cards = breach_data.get("stat_cards", [])
-        if stat_cards and len(stat_cards) == 4:
-            # Create single-row table with 4 columns
-            table = self.doc.add_table(rows=1, cols=4)
+        # COMPONENT 3 — Stat cards. Render whatever the AI provides, up to 4 (previously
+        # only an exact count of 4 rendered, so 1-3 or 5 cards silently produced nothing).
+        stat_cards = breach_data.get("stat_cards")
+        stat_cards = [c for c in stat_cards if isinstance(c, dict)] if isinstance(stat_cards, list) else []
+        if stat_cards:
+            num_cards = min(len(stat_cards), 4)
+            stat_cards = stat_cards[:num_cards]
+            # Create single-row table sized to the number of cards
+            table = self.doc.add_table(rows=1, cols=num_cards)
             table.autofit = False
             table.style = None
 
-            # Set column widths
+            # Set column widths to divide the ~6.5in content width evenly
+            col_width = Inches(6.5 / num_cards)
             for col in table.columns:
-                col.width = Inches(1.625)
+                col.width = col_width
 
             for i, card in enumerate(stat_cards):
                 cell = table.rows[0].cells[i]
@@ -739,15 +751,27 @@ and vulnerabilities observed are consistent with those historically used against
                 label_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)  # Black
 
                 # Paragraph 3 — prior quarter comparison (red italic, single line)
-                prior_label = card.get("prior_label", "")
-                prior_value = card.get("prior_value", "")
-                change_pct = card.get("change_pct", "")
+                prior_label = str(card.get("prior_label", "")).strip()
+                prior_value = str(card.get("prior_value", "")).strip()
+                change_pct = str(card.get("change_pct", "")).strip()
 
                 prior_para = cell.add_paragraph()
                 prior_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-                # Single run with full comparison text
-                comparison_text = f"{prior_label}: {prior_value} ({change_pct})"
+                # Compose the comparison text, degrading gracefully when no real
+                # prior-quarter data is available (Q9: prior_value/change_pct == "N/A").
+                # A fabricated "(+25%)" must never appear just to fill the slot.
+                na_tokens = {"", "n/a", "na", "none", "null"}
+                has_prior = prior_value.lower() not in na_tokens
+                has_change = change_pct.lower() not in na_tokens
+                if not has_prior and not has_change:
+                    comparison_text = f"{prior_label}: N/A" if prior_label else "No prior-quarter comparison"
+                elif has_prior and has_change:
+                    comparison_text = f"{prior_label}: {prior_value} ({change_pct})"
+                elif has_prior:
+                    comparison_text = f"{prior_label}: {prior_value}"
+                else:
+                    comparison_text = f"{prior_label}: {change_pct}"
                 comparison_run = prior_para.add_run(comparison_text)
                 comparison_run.font.name = "Arial"
                 comparison_run.font.size = Pt(8)
@@ -942,158 +966,6 @@ and vulnerabilities observed are consistent with those historically used against
         spacer = self.doc.add_paragraph()
         spacer.paragraph_format.space_after = Pt(6)
         logger.info("Breach landscape section added")
-
-    def _create_metric_cards(self, metrics: list[tuple]) -> None:
-        """Create metric cards for breach landscape."""
-        table = self.doc.add_table(rows=1, cols=len(metrics))
-        table.alignment = WD_TABLE_ALIGNMENT.CENTER
-
-        for i, (number, title, subtitle) in enumerate(metrics):
-            cell = table.rows[0].cells[i]
-            cell.paragraphs[0].clear()
-
-            # Number
-            num_para = cell.paragraphs[0]
-            num_run = num_para.add_run(number)
-            num_run.font.name = "Arial"
-            num_run.font.size = Pt(24)
-            num_run.font.bold = True
-            num_run.font.color.rgb = BrandColors.ORANGE_PRIMARY  # Orange for emphasis
-            num_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-            # Title
-            title_para = cell.add_paragraph()
-            title_run = title_para.add_run(title)
-            title_run.font.name = "Arial"
-            title_run.font.size = FontSizes.BODY_SMALL
-            title_run.font.bold = True
-            title_run.font.color.rgb = BrandColors.GRAY_DARK  # Dark text
-            title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-            # Subtitle (previous quarter comparison) - check for percentage increases
-            sub_para = cell.add_paragraph()
-            # Extract percentage from subtitle if present
-            if "+" in subtitle and "%" in subtitle:
-                # Has percentage increase - color it green
-                sub_run = sub_para.add_run(subtitle)
-                sub_run.font.name = "Arial"
-                sub_run.font.size = FontSizes.FOOTNOTE
-                sub_run.font.color.rgb = BrandColors.GREEN_LOW  # Green for increases
-            else:
-                sub_run = sub_para.add_run(subtitle)
-                sub_run.font.name = "Arial"
-                sub_run.font.size = FontSizes.FOOTNOTE
-                sub_run.font.color.rgb = BrandColors.GRAY_MEDIUM  # Gray for other text
-            sub_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-    def _create_breach_metric_cards(self, metrics: list[tuple], prev_quarter: str) -> None:
-        """Create metric cards for breach landscape with dark olive background."""
-        # Create horizontal table (1 row, 4 columns) - same structure as risk boxes
-        table = self.doc.add_table(rows=1, cols=len(metrics))
-        table.alignment = WD_TABLE_ALIGNMENT.LEFT
-
-        # Remove any table style that might override cell shading
-        table.style = None
-
-        # Set table width to 100%
-        tbl = table._element
-        tbl_pr = tbl.find(qn("w:tblPr"))
-        if tbl_pr is None:
-            tbl_pr = OxmlElement("w:tblPr")
-            tbl.insert(0, tbl_pr)
-
-        # Remove any table style reference that might override
-        tbl_style = tbl_pr.find(qn("w:tblStyle"))
-        if tbl_style is not None:
-            tbl_pr.remove(tbl_style)
-
-        tbl_w = tbl_pr.find(qn("w:tblW"))
-        if tbl_w is None:
-            tbl_w = OxmlElement("w:tblW")
-            tbl_pr.append(tbl_w)
-        tbl_w.set(qn("w:w"), "5000")  # 5000 = 100% in Word's 50ths of a percent
-        tbl_w.set(qn("w:type"), "pct")
-
-        for i, (number, title, prev_value, percentage) in enumerate(metrics):
-            cell = table.rows[0].cells[i]
-            cell.paragraphs[0].clear()
-
-            # Set cell vertical alignment to center
-            tc_pr = cell._element.get_or_add_tcPr()
-            v_align = tc_pr.find(qn("w:vAlign"))
-            if v_align is None:
-                v_align = OxmlElement("w:vAlign")
-                tc_pr.append(v_align)
-            v_align.set(qn("w:val"), "center")
-
-            # Set cell margins for lean/compact spacing
-            tc_mar = tc_pr.find(qn("w:tcMar"))
-            if tc_mar is None:
-                tc_mar = OxmlElement("w:tcMar")
-                tc_pr.append(tc_mar)
-
-            for margin_type in ["top", "bottom", "left", "right"]:
-                margin = tc_mar.find(qn(f"w:{margin_type}"))
-                if margin is None:
-                    margin = OxmlElement(f"w:{margin_type}")
-                    tc_mar.append(margin)
-                margin.set(qn("w:w"), "72")  # 72 twips = 0.05 inches
-                margin.set(qn("w:type"), "dxa")
-
-            # Set cell background to dark olive (#372E00) with val=clear
-            self._set_cell_shading(cell, "372E00")  # Dark olive background
-
-            # Set cell borders (light gray, thinner - 1/2 pt)
-            self._set_cell_borders(cell, color_hex="C0C0C0", size="1")
-
-            # Main value (font size 18, bold, white/light gray)
-            num_para = cell.paragraphs[0]
-            num_para.paragraph_format.space_before = Pt(0)
-            num_para.paragraph_format.space_after = Pt(0)
-            num_run = num_para.add_run(number)
-            num_run.font.name = "Arial"
-            num_run.font.size = Pt(18)  # Font size 18 as requested
-            num_run.font.bold = True
-            num_run.font.color.rgb = RGBColor(0xF0, 0xF0, 0xF0)  # Light gray/white for dark background
-            num_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-            # Title/label (font size 8.5)
-            title_para = cell.add_paragraph()
-            title_para.paragraph_format.space_before = Pt(0)
-            title_para.paragraph_format.space_after = Pt(0)
-            title_run = title_para.add_run(title)
-            title_run.font.name = "Arial"
-            title_run.font.size = Pt(8.5)  # Font size 8.5 as requested
-            title_run.font.bold = True
-            title_run.font.color.rgb = RGBColor(0xF0, 0xF0, 0xF0)  # Light gray/white for dark background
-            title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-            # Comparison line (previous quarter with percentage)
-            comp_para = cell.add_paragraph()
-            comp_para.paragraph_format.space_before = Pt(0)
-            comp_para.paragraph_format.space_after = Pt(0)
-            comp_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-            # Format: "Q4 2025: 36 +31%" where percentage is orange
-            if percentage:
-                # Add base text
-                base_text = f"{prev_quarter}: {prev_value} "
-                comp_run = comp_para.add_run(base_text)
-                comp_run.font.name = "Arial"
-                comp_run.font.size = Pt(7)  # Font size 7 for base text
-                comp_run.font.color.rgb = RGBColor(0xF0, 0xF0, 0xF0)  # Light gray/white
-
-                # Add percentage in orange (font size 7)
-                pct_run = comp_para.add_run(percentage)
-                pct_run.font.name = "Arial"
-                pct_run.font.size = Pt(7)  # Font size 7 as requested
-                pct_run.font.color.rgb = BrandColors.ORANGE_PRIMARY  # Orange for percentage
-            else:
-                comp_text = f"{prev_quarter}: {prev_value}"
-                comp_run = comp_para.add_run(comp_text)
-                comp_run.font.name = "Arial"
-                comp_run.font.size = Pt(7)  # Font size 7
-                comp_run.font.color.rgb = RGBColor(0xF0, 0xF0, 0xF0)  # Light gray/white
 
     def _add_geopolitical_landscape(self, analysis_result: dict[str, Any]) -> None:
         """Add geopolitical threat landscape section with dynamic card table."""
