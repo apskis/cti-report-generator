@@ -296,7 +296,13 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
             CacheManager(credentials["storage_account_name"], credentials["storage_account_key"])
         )
         logger.info("Retrieving historical quarterly contexts for trend analysis...")
-        await asyncio.to_thread(context_mgr.get_previous_context, "quarterly", lookback_weeks=52)  # ~1 year
+        previous_context = await asyncio.to_thread(
+            context_mgr.get_previous_context, "quarterly", lookback_weeks=52
+        )  # ~1 year
+        if previous_context:
+            logger.info("Prior-quarter context available - real quarter-over-quarter deltas will be computed")
+        else:
+            logger.info("No prior-quarter context - QoQ comparisons will be reported as N/A (no fabrication)")
 
         # Split breach alerts out of the Intel471 stream
         breach_data = [item for item in intel471_data if item.get("threat_type", "").upper() == "BREACH ALERT"]
@@ -307,6 +313,8 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
             crowdstrike_data=crowdstrike_data,
             breach_data=breach_data if breach_data else None,
             illumina_context=illumina_context,
+            previous_context=previous_context,
+            osint_data=data_by_source.get("OSINT", []),
         )
 
         logger.info("Saving quarterly analysis context for historical tracking...")

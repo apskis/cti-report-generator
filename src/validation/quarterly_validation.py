@@ -33,13 +33,21 @@ class QuarterlyReportValidator:
         self.issues = []
         self.warnings = []
 
-    def validate(self, analysis_result: dict[str, Any], illumina_context: str = "") -> bool:
+    def validate(
+        self,
+        analysis_result: dict[str, Any],
+        illumina_context: str = "",
+        source_text: str = "",
+    ) -> bool:
         """
         Validate quarterly report AI output.
 
         Args:
             analysis_result: The AI's analysis dictionary
             illumina_context: The Illumina OSINT context that was provided to the AI
+            source_text: Concatenated raw source data (breach/OSINT/intel) the AI was
+                given. When provided, notable_example victims are checked for presence
+                in the source so a plausible-but-absent company is flagged (Q12).
 
         Returns:
             True if validation passes (no critical issues), False otherwise
@@ -51,7 +59,7 @@ class QuarterlyReportValidator:
 
         # Run all validation checks
         self._check_osint_citations(analysis_result)
-        self._check_notable_examples(analysis_result)
+        self._check_notable_examples(analysis_result, source_text)
         self._check_illumina_context_usage(analysis_result, illumina_context)
         self._check_executive_summary_length(analysis_result)
         self._check_citation_consistency(analysis_result)
@@ -106,10 +114,11 @@ class QuarterlyReportValidator:
             if uncited:
                 self.warnings.append(f"OSINT sources {uncited} are listed but never cited in report content")
 
-    def _check_notable_examples(self, analysis_result: dict[str, Any]) -> None:
+    def _check_notable_examples(self, analysis_result: dict[str, Any], source_text: str = "") -> None:
         """Check that notable examples include actual company names."""
         breach_landscape = analysis_result.get("breach_landscape", {})
         incidents = breach_landscape.get("incidents_by_type", [])
+        source_blob = source_text.lower() if source_text else ""
 
         for incident in incidents:
             incident_type = incident.get("type", "Unknown")
@@ -133,6 +142,32 @@ class QuarterlyReportValidator:
                 self.warnings.append(
                     f"{incident_type} notable_example may not follow 'CompanyName: description' format: \"{example}\""
                 )
+
+            # Source-grounding: the named victim must actually appear in the collected
+            # source data. A specific, plausible, but ABSENT company ("Regeneron: ...")
+            # is a fabrication the generic-term blocklist can never catch (Q12). Advisory
+            # here; Gate 6's deterministic grounding is the hard publish block.
+            if source_blob:
+                victim = self._extract_victim(example)
+                if victim and victim.lower() not in source_blob:
+                    self.warnings.append(
+                        f"{incident_type} notable_example names '{victim}', which does not appear in "
+                        f"any collected source record - verify it is not fabricated: \"{example}\""
+                    )
+
+    @staticmethod
+    def _extract_victim(notable_example: str) -> str:
+        """Extract the named victim (segment before the first ':' or ' - ')."""
+        text = (notable_example or "").strip()
+        if not text:
+            return ""
+        for sep in (":", " - "):
+            if sep in text:
+                candidate = text.split(sep, 1)[0].strip()
+                # Trailing parenthetical qualifier, e.g. "Acme (a biotech firm)".
+                candidate = re.sub(r"\s*\(.*?\)\s*$", "", candidate).strip()
+                return candidate
+        return ""
 
     def _check_illumina_context_usage(self, analysis_result: dict[str, Any], illumina_context: str) -> None:
         """Check that Illumina context was used if provided."""

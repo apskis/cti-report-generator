@@ -86,6 +86,7 @@ def _compute_gate5_analysis(report_type, cve_data, intel471_data, crowdstrike_da
                             intel471_data=intel471_filtered,
                             crowdstrike_data=crowdstrike_data,
                             breach_data=breach_data if breach_data else None,
+                            osint_data=osint_data,
                         )
                     )
 
@@ -125,6 +126,7 @@ def _compute_gate5_analysis(report_type, cve_data, intel471_data, crowdstrike_da
                         intel471_data=intel471_filtered,
                         crowdstrike_data=crowdstrike_data,
                         breach_data=breach_data if breach_data else None,
+                        osint_data=osint_data,
                     )
                 )
             else:

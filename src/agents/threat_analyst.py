@@ -1285,6 +1285,8 @@ NVD records cross-referenced with CISA KEV and EPSS exploitation data."""
         crowdstrike_data: list[dict],
         breach_data: list[dict] | None = None,
         illumina_context: str = "",
+        previous_context: dict[str, Any] | list[dict[str, Any]] | None = None,
+        osint_data: list[dict] | None = None,
     ) -> dict[str, Any]:
         """
         Analyze threat intelligence data for quarterly strategic reports.
@@ -1297,6 +1299,9 @@ NVD records cross-referenced with CISA KEV and EPSS exploitation data."""
             crowdstrike_data: List of APT intelligence from CrowdStrike
             breach_data: Optional list of industry breach incidents
             illumina_context: Current Illumina company context from public sources
+            previous_context: Real prior-quarter analysis context for genuine QoQ deltas.
+                When absent, the prompt forbids inventing any quarter-over-quarter numbers.
+            osint_data: Curated OSINT public breach articles for [5]+ citations.
 
         Returns:
             Dictionary containing strategic analysis results
@@ -1311,7 +1316,12 @@ NVD records cross-referenced with CISA KEV and EPSS exploitation data."""
 
             # Build strategic analysis prompt
             strategic_prompt = self._build_strategic_prompt(
-                intel471_data, crowdstrike_data, breach_data, illumina_context
+                intel471_data,
+                crowdstrike_data,
+                breach_data,
+                illumina_context,
+                previous_context=previous_context,
+                osint_data=osint_data,
             )
 
             # Create chat history with strategic system prompt
@@ -1347,7 +1357,11 @@ NVD records cross-referenced with CISA KEV and EPSS exploitation data."""
                 from src.validation import QuarterlyReportValidator
 
                 validator = QuarterlyReportValidator()
-                is_valid = validator.validate(analysis_result, illumina_context)
+                # Provide the raw source data so notable_example victims can be grounded (Q12).
+                source_text = json.dumps(
+                    [*(breach_data or []), *(osint_data or []), *intel471_data], default=str
+                )
+                is_valid = validator.validate(analysis_result, illumina_context, source_text=source_text)
 
                 if not is_valid:
                     logger.error("AI output failed validation checks")
@@ -1742,20 +1756,112 @@ NVD records cross-referenced with CISA KEV and EPSS exploitation data."""
 
         return analysis_result
 
+    @staticmethod
+    def _build_prior_context_section(
+        previous_context: dict[str, Any] | list[dict[str, Any]] | None,
+    ) -> str:
+        """Build the prior-quarter data block for the strategic prompt.
+
+        When real prior-quarter context is supplied the model is told to compute genuine
+        quarter-over-quarter deltas from it. When it is absent (the common case) the model
+        is explicitly forbidden from inventing any comparison and must emit "N/A" for every
+        QoQ field — this is what stops the fabricated red percentages (Q9/Q13).
+        """
+        # Normalize to the most recent usable context dict.
+        ctx: dict[str, Any] | None = None
+        if isinstance(previous_context, list):
+            for item in reversed(previous_context):
+                if isinstance(item, dict) and item:
+                    ctx = item
+                    break
+        elif isinstance(previous_context, dict) and previous_context:
+            ctx = previous_context
+
+        if not ctx:
+            return (
+                "## Prior Quarter Data\n"
+                "No prior-quarter data is available for this report. You MUST set every "
+                "stat_cards.prior_value and every incidents_by_type.prior_count to the literal "
+                'string "N/A", and every stat_cards.change_pct to "N/A". DO NOT invent prior '
+                "numbers or percentage changes, and do not describe any metric as increasing or "
+                "decreasing. Report only absolute current-quarter figures."
+            )
+
+        prior_summary = ctx.get("breach_landscape") or ctx.get("risk_assessment") or ctx
+        return (
+            "## Prior Quarter Data (ACTUAL — use for real quarter-over-quarter deltas)\n"
+            f"{json.dumps(prior_summary, indent=2, default=str)[:2500]}\n\n"
+            "Compute stat_cards.change_pct and incidents_by_type.prior_count from THESE actual "
+            "prior numbers only. If a specific prior metric is not present above, set its "
+            'prior_value/prior_count and change_pct to "N/A" rather than guessing.'
+        )
+
+    @staticmethod
+    def _build_strategic_osint_section(osint_data: list[dict] | None) -> str:
+        """Build the OSINT public-breach-news block for the strategic prompt (Q14).
+
+        Surfaces curated public breach articles (title + source + full body when the
+        opt-in full-text step captured it) so the model can ground [5]+ citations and
+        populate osint_sources_used against real articles instead of inventing them.
+        """
+        osint_data = osint_data or []
+        if not osint_data:
+            return (
+                "## OSINT Public Breach News\n"
+                "No curated OSINT articles were provided this quarter. Do not fabricate "
+                "osint_sources_used entries or [5]+ citations."
+            )
+
+        lines: list[str] = [
+            "## OSINT Public Breach News (curated public sources — cite as [5], [6], ... )",
+            "Only cite an article you actually use; number citations sequentially from [5].",
+            "",
+        ]
+        for offset, article in enumerate(osint_data[:15]):
+            if not isinstance(article, dict):
+                continue
+            citation_num = 5 + offset
+            title = str(article.get("title") or article.get("headline") or "Untitled").strip()
+            source = str(article.get("source") or article.get("source_name") or "").strip()
+            url = str(article.get("url") or article.get("link") or "").strip()
+            body = str(article.get("full_text") or article.get("content") or article.get("summary") or "").strip()
+            header = f"[{citation_num}] {title}"
+            if source:
+                header += f" — {source}"
+            lines.append(header)
+            if url:
+                lines.append(f"    url: {url}")
+            if body:
+                lines.append(f"    excerpt: {body[:800]}")
+            lines.append("")
+        return "\n".join(lines)
+
     def _build_strategic_prompt(
         self,
         intel471_data: list[dict],
         crowdstrike_data: list[dict],
         breach_data: list[dict] | None,
         illumina_context: str = "",
+        previous_context: dict[str, Any] | list[dict[str, Any]] | None = None,
+        osint_data: list[dict] | None = None,
     ) -> str:
         """Build the strategic analysis prompt for quarterly reports."""
         breach_data = breach_data or []
+        osint_data = osint_data or []
 
         # Group APT data by country/region
         china_actors = [a for a in crowdstrike_data if self._is_china_related(a)]
         russia_actors = [a for a in crowdstrike_data if self._is_russia_related(a)]
         nk_actors = [a for a in crowdstrike_data if self._is_nk_related(a)]
+
+        # Prior-quarter grounding (Q9/Q13). The QoQ fields (prior_value/change_pct/
+        # prior_count) may ONLY carry real numbers when we actually supply prior-quarter
+        # data. Without it, the model must emit "N/A" — never invent a comparison.
+        prior_context_section = self._build_prior_context_section(previous_context)
+
+        # OSINT full-text section (Q14): make the curated public breach news available to
+        # the strategic analyzer so [5]+ citations and osint_sources_used are groundable.
+        osint_section = self._build_strategic_osint_section(osint_data)
 
         # Get target industries from config
         target_industries = ", ".join(industry_filter_config.target_industries)
@@ -1803,6 +1909,10 @@ IMPORTANT:
 
 {illumina_context_section}
 
+{prior_context_section}
+
+{osint_section}
+
 DATA SUMMARY:
 - Intel471 Threat Reports: {len(intel471_data)} records (filtered for relevance to: {target_industries})
 - CrowdStrike APT Activity: {len(crowdstrike_data)} records
@@ -1810,6 +1920,7 @@ DATA SUMMARY:
   - Russia-linked actors: {len(russia_actors)}
   - North Korea-linked actors: {len(nk_actors)}
 - Industry Breach Incidents: {len(breach_data)} records
+- OSINT Public Breach News: {len(osint_data)} articles
 
 RAW DATA:
 Intel471 Data (sample - filter by industry relevance):
@@ -1833,7 +1944,7 @@ Please provide your STRATEGIC analysis in the following JSON format:
   
   PARAGRAPH 4 (OPTIONAL) — Direct organizational impact: Note whether any direct threats were identified, and briefly mention 1-2 key watch items for next quarter or critical recommendations.
   
-  CRITICAL - DO NOT INVENT COMPARISONS: Do NOT use percentage increases/decreases like 'increased 20%' or 'rose 50%' unless you have ACTUAL prior quarter data. You are NOT being provided historical data - stick to absolute numbers from the current quarter's data only. Say '20 ransomware incidents this quarter' NOT 'ransomware increased 20%'.
+  CRITICAL - DO NOT INVENT COMPARISONS: Do NOT use percentage increases/decreases like 'increased 20%' or 'rose 50%' unless the "Prior Quarter Data" section above actually supplies prior numbers. This rule also governs the STRUCTURED fields below: unless prior-quarter data was supplied, every stat_cards.prior_value, stat_cards.change_pct, and incidents_by_type.prior_count MUST be the literal string "N/A". The numeric prior_value/change_pct/prior_count values shown in the JSON example below are ILLUSTRATIVE ONLY — replace them with "N/A" when no prior data is given. Stick to absolute numbers from the current quarter. Say '20 ransomware incidents this quarter' NOT 'ransomware increased 20%'.
   
   CRITICAL - INLINE CITATIONS: If you reference ANY OSINT sources (including {customer_profile.name} articles) in the executive summary, you MUST add inline citations using the citation_number from osint_sources_used. Format: [5], [6], [7], etc. Example: '{customer_profile.name} announced new precision medicine partnerships [5], which may increase...'
   
@@ -2320,9 +2431,13 @@ If any item is unchecked, fix it before returning.
         prior_year = current_year if current_q > 1 else current_year - 1
 
         return {
-            "executive_summary": f"""The threat landscape for the {customer_profile.industry} sectors \
-requires continued vigilance. This quarter's analysis identified {len(crowdstrike_data)} threat actor groups and \
-{len(intel471_data)} threat intelligence reports relevant to our sector.
+            # Marker: this brief is the deterministic template, NOT model output. The AI
+            # either failed or returned unparseable content. Gate 6 blocks on this flag so a
+            # templated brief can never publish silently as if the model had run. (Q11)
+            "ai_unavailable": True,
+            "executive_summary": f"""[AI ANALYSIS UNAVAILABLE — TEMPLATED FALLBACK] The threat landscape for the \
+{customer_profile.industry} sectors requires continued vigilance. This quarter's analysis identified \
+{len(crowdstrike_data)} threat actor groups and {len(intel471_data)} threat intelligence reports relevant to our sector.
 
 While no direct threats to the organization were identified, the threat actors and techniques observed are consistent \
 with those historically targeting genomics and life sciences companies. Strategic monitoring and proactive defense \

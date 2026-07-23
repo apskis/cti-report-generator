@@ -169,6 +169,88 @@ class TestVerifyReportGrounding:
 
 
 # ---------------------------------------------------------------------------
+# verify_report_grounding — quarterly shapes (notable_example victims + geo actors)
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyQuarterlyGrounding:
+    def _quarterly_source(self):
+        # Source mentions Covenant Health (a real breach victim) and APT29.
+        tier1 = {
+            "intel471": [
+                {"title": "Covenant Health ransomware disrupts hospital operations"},
+                {"body": "APT29 activity observed against biotech targets"},
+            ]
+        }
+        return build_source_index(tier1)
+
+    def test_grounded_victim_and_actor_pass(self):
+        idx = self._quarterly_source()
+        report = {
+            "breach_landscape": {
+                "incidents_by_type": [
+                    {"type": "Ransomware", "notable_example": "Covenant Health: 3-week outage"}
+                ]
+            },
+            "geopolitical_threats": [{"name": "APT29", "level": "HIGH"}],
+        }
+        assert verify_report_grounding(report, idx) == []
+
+    def test_fabricated_notable_example_victim_is_flagged(self):
+        idx = self._quarterly_source()
+        report = {
+            "breach_landscape": {
+                "incidents_by_type": [
+                    {"type": "Ransomware", "notable_example": "Regeneron: ransomware attack exposed 2M records"}
+                ]
+            }
+        }
+        findings = verify_report_grounding(report, idx)
+        assert any("Regeneron" in f and "breach victim" in f for f in findings)
+
+    def test_top_level_incidents_by_type_also_checked(self):
+        idx = self._quarterly_source()
+        report = {
+            "incidents_by_type": [
+                {"type": "Supply Chain", "notable_example": "Acme Genomics Inc: credentials leaked"}
+            ]
+        }
+        findings = verify_report_grounding(report, idx)
+        assert any("Acme Genomics" in f for f in findings)
+
+    def test_fabricated_geopolitical_actor_is_flagged(self):
+        idx = self._quarterly_source()
+        report = {"geopolitical_threats": [{"name": "Nebula Serpent", "level": "HIGH"}]}
+        findings = verify_report_grounding(report, idx)
+        assert any("Nebula Serpent" in f and "geopolitical actor" in f for f in findings)
+
+    def test_generic_victim_placeholder_is_not_flagged(self):
+        idx = self._quarterly_source()
+        report = {
+            "breach_landscape": {
+                "incidents_by_type": [
+                    {"type": "Data Exposure", "notable_example": "Multiple organizations: phishing wave"}
+                ]
+            }
+        }
+        assert verify_report_grounding(report, idx) == []
+
+    def test_descriptive_notable_example_without_colon_not_treated_as_entity(self):
+        idx = self._quarterly_source()
+        report = {
+            "breach_landscape": {
+                "incidents_by_type": [
+                    {
+                        "type": "Ransomware",
+                        "notable_example": "Several unnamed healthcare providers reported extended outages",
+                    }
+                ]
+            }
+        }
+        assert verify_report_grounding(report, idx) == []
+
+
+# ---------------------------------------------------------------------------
 # rederive_statistics — internal-consistency re-derivation
 # ---------------------------------------------------------------------------
 

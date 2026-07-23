@@ -353,7 +353,12 @@ def _scan_industry_incidents_quality(report: dict) -> tuple[list[str], list[str]
     return track_a, track_b
 
 
-def _scan_narrative_cohesion(report: dict, gate2_iocs: list, report_type: str = "WEEKLY") -> list[str]:
+def _scan_narrative_cohesion(
+    report: dict,
+    gate2_iocs: list,
+    report_type: str = "WEEKLY",
+    source_index=None,
+) -> list[str]:
     """
     Check for narrative cohesion issues between executive summary and detailed sections.
 
@@ -363,6 +368,11 @@ def _scan_narrative_cohesion(report: dict, gate2_iocs: list, report_type: str = 
 
     NOTE: For weekly tactical reports (threat intelligence focused), we no longer validate
     against "detected in environment" since there is no environment scan data. CVEs are threat intel only.
+
+    For quarterly strategic reports there is no CVE analysis table and ``threat_findings``
+    is empty, so a summary CVE is validated against the deterministic source index
+    (``source_index``) instead: only genuinely ungrounded CVEs are blocked. Comparing
+    against the (always empty) findings table falsely blocked every legitimately-cited CVE.
     """
     violations: list[str] = []
 
@@ -402,18 +412,18 @@ def _scan_narrative_cohesion(report: dict, gate2_iocs: list, report_type: str = 
                     f"If these are industry threats, consider adding them to the analysis or noting they're external."
                 )
     else:
-        # Quarterly report: Use threat_findings
-        finding_cves = set()
-        for finding in report.get("threat_findings", []):
-            value = finding.get("value", "")
-            if isinstance(value, str) and value.startswith("CVE-"):
-                finding_cves.add(value.upper())
-
-        # Check: CVEs in summary should either be in findings or explicitly noted as external threats
-        orphaned_summary_cves = summary_cves - finding_cves
-        if orphaned_summary_cves:
-            for cve in orphaned_summary_cves:
-                violations.append(f"CVE {cve} mentioned in executive summary but missing from threat findings table")
+        # Quarterly report: there is no CVE analysis table and threat_findings is
+        # empty, so validate each summary CVE against the deterministic source index.
+        # A CVE grounded in the collected source is legitimate; only a CVE that
+        # resolves to no source record is a fabrication worth blocking.
+        if source_index is not None:
+            for cve in summary_cves:
+                if not source_index.has_cve(cve):
+                    violations.append(
+                        f"CVE {cve.upper()} cited in the executive summary is not present in any source record"
+                    )
+        # Without a source index we cannot verify quarterly CVEs deterministically;
+        # comparing against the empty findings table would false-block, so skip.
 
     return violations
 
@@ -733,6 +743,15 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
     track_a.extend(_scan_osint_only_citations(report))
     track_a.extend(_scan_uncited_findings(report))
 
+    # A templated fallback (AI failed / returned unparseable output) must never publish
+    # silently as if the model had run. analyze_strategic / analyze_threats set this marker
+    # on the deterministic fallback; block on it. (Q11)
+    if report.get("ai_unavailable"):
+        track_a.append(
+            "AI analysis unavailable: report is the deterministic templated fallback, not model output. "
+            "Do not publish; re-run once the AI service is reachable."
+        )
+
     # Deterministic source grounding (Tier 1 anti-hallucination): verify every
     # concrete claim in the report resolves to a real collected source record, and
     # re-derive the headline statistics from the report's own arrays. Unlike the
@@ -766,8 +785,10 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
                 f"Consider documenting: {'; '.join(gap_omissions[:2])}"
             )
 
-    # NEW: Narrative cohesion checks (Track A - blocking)
-    track_a.extend(_scan_narrative_cohesion(report, gate2_iocs, report_type))
+    # NEW: Narrative cohesion checks (Track A - blocking). Pass the source index so the
+    # quarterly branch grounds summary CVEs against real sources instead of the empty
+    # threat_findings table (which false-blocked every legitimately-cited CVE).
+    track_a.extend(_scan_narrative_cohesion(report, gate2_iocs, report_type, source_index))
 
     # Existing Track B checks
     filler = _scan_filler(draft_text)

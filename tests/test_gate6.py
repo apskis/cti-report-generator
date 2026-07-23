@@ -89,6 +89,47 @@ def test_prior_gate_1f_critical_issue_blocks():
 
 
 # -------------------------------------------------------------------------
+# Quarterly Tier B: templated-fallback marker + narrative cohesion grounding
+# -------------------------------------------------------------------------
+
+
+def _quarterly_input(report: dict, tier1_data: dict) -> GateInput:
+    prior = {"5": GateResult(gate_id="5", status="COMPLETE", payload={"report": report, "draft_text": ""})}
+    return GateInput(
+        report_type="QUARTERLY",
+        period_start="2026-04-01",
+        period_end="2026-06-30",
+        tier1_data=tier1_data,
+        osint_articles=[],
+        prior_results=prior,
+    )
+
+
+def test_ai_unavailable_fallback_blocks():
+    """Q11: a templated fallback (ai_unavailable) must never publish silently."""
+    report = {"ai_unavailable": True, "executive_summary": "[AI ANALYSIS UNAVAILABLE] ..."}
+    result = run(_quarterly_input(report, _source()), StructuralLLMClient(), "QUARTERLY")
+    assert result.status == "BLOCK"
+    assert any("AI analysis unavailable" in f for f in result.payload["track_a"])
+
+
+def test_quarterly_summary_cve_grounded_in_source_passes():
+    """Q10: a summary CVE present in the source is NOT blocked (no threat_findings table)."""
+    report = {"executive_summary": "This quarter saw exploitation of CVE-2024-1234 across the sector."}
+    result = run(_quarterly_input(report, _source()), StructuralLLMClient(), "QUARTERLY")
+    assert result.status == "PASS"
+    assert not any("CVE-2024-1234" in f for f in result.payload["track_a"])
+
+
+def test_quarterly_summary_cve_not_in_source_blocks():
+    """Q10: only a genuinely ungrounded summary CVE is blocked."""
+    report = {"executive_summary": "A critical flaw CVE-2099-0000 dominated the quarter."}
+    result = run(_quarterly_input(report, _source()), StructuralLLMClient(), "QUARTERLY")
+    assert result.status == "BLOCK"
+    assert any("CVE-2099-0000" in f for f in result.payload["track_a"])
+
+
+# -------------------------------------------------------------------------
 # Tier 2 tests: Structured JSON validation, quote-back, multi-sampling
 # -------------------------------------------------------------------------
 

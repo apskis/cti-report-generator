@@ -189,6 +189,103 @@ def verify_report_grounding(report: dict, index: SourceIndex) -> list[str]:
         if org and org.lower() not in {"unknown", "n/a", "undisclosed", "unnamed"} and not index.mentions(org):
             findings.append(f"Ungrounded incident victim: '{org}' is not present in any source record")
 
+    # Quarterly-shape grounding: the strategic report carries named victims inside
+    # ``breach_landscape.incidents_by_type[].notable_example`` and named actors under
+    # ``geopolitical_threats[].name`` — neither of which the weekly keys above touch.
+    findings.extend(_verify_quarterly_grounding(report, index))
+
+    return findings
+
+
+# Victim/actor placeholders that must not be treated as a concrete, groundable name.
+_GENERIC_ENTITY_PHRASES = {
+    "",
+    "n/a",
+    "na",
+    "none",
+    "unknown",
+    "undisclosed",
+    "unnamed",
+    "multiple",
+    "multiple organizations",
+    "multiple organisations",
+    "multiple victims",
+    "multiple companies",
+    "multiple firms",
+    "various",
+    "various organizations",
+    "several",
+    "several organizations",
+    "numerous",
+    "not disclosed",
+    "not specified",
+    "not applicable",
+    "unspecified",
+    "confidential",
+    "anonymous",
+    "redacted",
+}
+
+
+def _extract_victim_name(notable_example: str) -> str:
+    """Extract the named victim from a ``notable_example`` string.
+
+    The strategic schema renders these as ``"<Company>: <what happened>"``; the
+    victim is the segment before the first colon. Returns an empty string when the
+    entry names no specific, groundable company.
+    """
+    text = (notable_example or "").strip()
+    if not text:
+        return ""
+    candidate = text.split(":", 1)[0].strip() if ":" in text else text
+    # Trailing parentheticals like "Acme (a biotech firm)" -> "Acme".
+    candidate = re.sub(r"\s*\(.*?\)\s*$", "", candidate).strip()
+    if candidate.lower() in _GENERIC_ENTITY_PHRASES:
+        return ""
+    # A whole-sentence "notable_example" with no colon and many words is a
+    # description, not a company name — don't try to ground it as an entity.
+    if ":" not in text and len(candidate.split()) > 6:
+        return ""
+    return candidate
+
+
+def _verify_quarterly_grounding(report: dict, index: SourceIndex) -> list[str]:
+    """Ground the quarterly report's named victims and geopolitical actors.
+
+    - Every ``incidents_by_type[].notable_example`` victim (accepted at the top level
+      or nested under ``breach_landscape``) must appear in the source.
+    - Every ``geopolitical_threats[].name`` actor must be grounded in the source.
+    """
+    findings: list[str] = []
+
+    breach = report.get("breach_landscape")
+    breach = breach if isinstance(breach, dict) else {}
+    incidents = breach.get("incidents_by_type") or report.get("incidents_by_type") or []
+    for incident in incidents:
+        if not isinstance(incident, dict):
+            continue
+        victim = _extract_victim_name(str(incident.get("notable_example", "")))
+        if victim and not index.mentions(victim):
+            findings.append(
+                f"Ungrounded breach victim: '{victim}' (in notable_example) is not present in any source record"
+            )
+
+    geo = report.get("geopolitical_threats")
+    if isinstance(geo, list):
+        geo_entries = geo
+    elif isinstance(geo, dict):
+        geo_entries = list(geo.values())
+    else:
+        geo_entries = []
+    for entry in geo_entries:
+        if not isinstance(entry, dict):
+            continue
+        actor = str(entry.get("name") or entry.get("actor") or "").strip()
+        if actor and actor.lower() not in _GENERIC_ENTITY_PHRASES and not index.mentions(actor):
+            findings.append(
+                f"Ungrounded geopolitical actor: '{actor}' is not present in any source record"
+            )
+
     return findings
 
 
