@@ -29,6 +29,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -66,8 +67,13 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def configure_logging(debug_mode: bool = False):
-    """Configure logging based on debug mode."""
+def configure_logging(debug_mode: bool = False, log_file: str = "debug.log"):
+    """Configure logging based on debug mode.
+
+    In debug mode, verbose logs are written to both the console and ``log_file``
+    (overwritten each run) so you can watch the console live and keep the full
+    transcript on disk. Pass ``log_file=None`` to disable the file.
+    """
     if debug_mode:
         # Debug mode: show detailed logs
         logging.basicConfig(level=logging.DEBUG, format="%(levelname)s - %(name)s - %(message)s", force=True)
@@ -80,6 +86,15 @@ def configure_logging(debug_mode: bool = False):
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("semantic_kernel").setLevel(logging.INFO)
         logging.getLogger("azure").setLevel(logging.WARNING)
+
+        # Also tee the full DEBUG stream to a file (overwrite each run) so the
+        # console output is preserved on disk without needing a shell pipe.
+        if log_file:
+            file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+            file_handler.setLevel(logging.DEBUG)
+            file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s"))
+            logging.getLogger().addHandler(file_handler)
+            logger.info(f"Debug logging to file: {os.path.abspath(log_file)}")
     else:
         # Clean mode: only show clean status messages and errors
         logging.basicConfig(level=logging.ERROR, format="%(message)s", force=True)
@@ -1153,11 +1168,17 @@ Examples:
     )
 
     parser.add_argument("--debug", action="store_true", help="Enable debug mode with verbose logging output")
+    parser.add_argument(
+        "--log-file",
+        default="debug.log",
+        help="File to write full debug logs to when --debug is set (default: debug.log). "
+        "Use --log-file '' to disable and log to console only.",
+    )
 
     args = parser.parse_args()
 
-    # Configure logging based on debug flag
-    configure_logging(args.debug)
+    # Configure logging based on debug flag (writes debug.log by default in --debug mode)
+    configure_logging(args.debug, log_file=(args.log_file or None))
 
     # Validate arguments
     if not args.local and not args.azure:
