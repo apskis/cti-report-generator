@@ -149,21 +149,18 @@ def _validate_illumina_context_usage(gate_input: GateInput, report: dict) -> lis
 
 
 def _validate_executive_summary_completeness(report: dict) -> list[str]:
-    """Validate executive summary is 3-4 paragraphs covering all required topics."""
+    """Validate the executive summary is present and covers the required topics.
+
+    The strategic prompt intentionally caps the summary at a concise ~3 sentences in a
+    single paragraph (see the "HARD LIMITS" section), so paragraph count is no longer a
+    completeness signal — we only flag an empty summary here and rely on topic coverage.
+    """
     warnings = []
 
     exec_summary = report.get("executive_summary", "")
     if not exec_summary:
         warnings.append("Executive summary is empty")
         return warnings
-
-    # Count paragraphs (split by double newline)
-    paragraphs = [p.strip() for p in exec_summary.split("\n\n") if p.strip()]
-
-    if len(paragraphs) < 3:
-        warnings.append(
-            f"Executive summary has only {len(paragraphs)} paragraph(s), expected 3-4 for comprehensive coverage"
-        )
 
     # Check if key topics are covered
     required_topics = {

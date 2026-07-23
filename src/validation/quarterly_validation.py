@@ -209,26 +209,24 @@ class QuarterlyReportValidator:
             )
 
     def _check_executive_summary_length(self, analysis_result: dict[str, Any]) -> None:
-        """Check that executive summary is appropriate length."""
+        """Check that the executive summary is present and within the intended length.
+
+        The strategic prompt caps the summary at ~3 sentences in a single paragraph, so a
+        concise summary is correct by design — only an empty or overflowing summary is a
+        problem (paragraph count and "too concise" are no longer failure signals).
+        """
         exec_summary = analysis_result.get("executive_summary", "")
 
         if not exec_summary:
             self.issues.append("Executive summary is empty")
             return
 
-        # Count paragraphs (split by double newline)
-        paragraphs = [p.strip() for p in exec_summary.split("\n\n") if p.strip()]
-
-        if len(paragraphs) < 3:
-            self.warnings.append(f"Executive summary has only {len(paragraphs)} paragraph(s), expected 3-4")
-
-        # Check if it's unreasonably short (might be the concise 3-sentence format)
-        sentences = re.split(r"[.!?]+", exec_summary)
-        sentences = [s.strip() for s in sentences if s.strip()]
-
-        if len(sentences) <= 3 and len(exec_summary) < 500:
+        # Overflow guard: the hard limit is ~3 sentences; flag a summary that materially
+        # exceeds it (which causes the display-overflow the prompt warns about).
+        sentences = [s.strip() for s in re.split(r"[.!?]+", exec_summary) if s.strip()]
+        if len(sentences) > 6:
             self.warnings.append(
-                f"Executive summary appears too concise ({len(sentences)} sentences, {len(exec_summary)} chars) - may not cover all required sections"
+                f"Executive summary has {len(sentences)} sentences; the concise format targets ~3"
             )
 
     def _check_citation_consistency(self, analysis_result: dict[str, Any]) -> None:

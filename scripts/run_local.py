@@ -832,6 +832,10 @@ async def generate_report_local(
             }
             if credentials
             else None,
+            # Reuse the analysis already computed above (with Illumina context) so Gate 5
+            # validates the report we actually render instead of running a second,
+            # disconnected AI analysis that lacks the company context.
+            analysis=analysis,
         )
 
         # Print final gate summary (only in non-interactive or after completion)

@@ -1934,16 +1934,16 @@ Industry Breaches:
 
 Please provide your STRATEGIC analysis in the following JSON format:
 {{
-  "executive_summary": "3-4 paragraph executive summary that serves as a complete standalone brief. If executives read ONLY this section, they should understand:
-  
-  PARAGRAPH 1 — Overall threat landscape: Summarize the quarter's threat environment, mention the number of industry breaches and estimated impact, and note key risk assessment changes (e.g., 'Nation-state espionage remains HIGH with increased activity...')
-  
-  PARAGRAPH 2 — Geopolitical threats: Highlight the top 2-3 geopolitical threats identified this quarter, including which countries/actors and what they're targeting (e.g., 'China-linked actors showed elevated focus on biomanufacturing IP...')
-  
-  PARAGRAPH 3 — Industry breach landscape: Provide specific examples of peer breaches by company name where relevant, common attack vectors, and what incident types dominated. Use absolute numbers, NOT percentages or quarter-over-quarter comparisons (e.g., 'The quarter saw 18 ransomware incidents, with notable disruptions at Covenant Health and LabCorp...')
-  
-  PARAGRAPH 4 (OPTIONAL) — Direct organizational impact: Note whether any direct threats were identified, and briefly mention 1-2 key watch items for next quarter or critical recommendations.
-  
+  "executive_summary": "ONE concise paragraph of at most 3 sentences (see the HARD LIMITS section) that serves as a complete standalone brief. Do NOT write multiple paragraphs. Compress the four content points below into those ~3 sentences; if executives read ONLY this section, they should still understand:
+
+  POINT 1 — Overall threat landscape: the quarter's threat environment, the number of industry breaches and estimated impact, and key risk assessment changes (e.g., 'Nation-state espionage remains HIGH with increased activity...')
+
+  POINT 2 — Geopolitical threats: the top 2-3 geopolitical threats this quarter, including which countries/actors and what they're targeting (e.g., 'China-linked actors showed elevated focus on biomanufacturing IP...')
+
+  POINT 3 — Industry breach landscape: specific peer breaches by company name where relevant, common attack vectors, and dominant incident types. Use absolute numbers, NOT percentages or quarter-over-quarter comparisons (e.g., 'The quarter saw 18 ransomware incidents, with notable disruptions at Covenant Health and LabCorp...')
+
+  POINT 4 (OPTIONAL) — Direct organizational impact: whether any direct threats were identified, plus 1-2 key watch items for next quarter or critical recommendations.
+
   CRITICAL - DO NOT INVENT COMPARISONS: Do NOT use percentage increases/decreases like 'increased 20%' or 'rose 50%' unless the "Prior Quarter Data" section above actually supplies prior numbers. This rule also governs the STRUCTURED fields below: unless prior-quarter data was supplied, every stat_cards.prior_value, stat_cards.change_pct, and incidents_by_type.prior_count MUST be the literal string "N/A". The numeric prior_value/change_pct/prior_count values shown in the JSON example below are ILLUSTRATIVE ONLY — replace them with "N/A" when no prior data is given. Stick to absolute numbers from the current quarter. Say '20 ransomware incidents this quarter' NOT 'ransomware increased 20%'.
   
   CRITICAL - INLINE CITATIONS: If you reference ANY OSINT sources (including {customer_profile.name} articles) in the executive summary, you MUST add inline citations using the citation_number from osint_sources_used. Format: [5], [6], [7], etc. Example: '{customer_profile.name} announced new precision medicine partnerships [5], which may increase...'
@@ -2395,7 +2395,7 @@ Before returning your JSON, verify each item:
 ☐ Every source in osint_sources_used is cited with [N] in executive summary or relevance bullets
 ☐ Every notable_example includes an ACTUAL COMPANY NAME - verify no generic terms like "Pharma manufacturer", "Genomics institute", "Research institute", "Biotech company", "Medical device mfg", or "Lab software vendor"
 ☐ If {customer_profile.name} context was provided above, it's referenced in relevance bullets with inline citations [N]
-☐ Executive summary is 3-4 paragraphs covering: threat landscape, geopolitical threats, breach landscape, organizational impact
+☐ Executive summary is ONE concise paragraph of at most 3 sentences (per the HARD LIMITS) that still touches: threat landscape, geopolitical threats, breach landscape, and organizational impact
 ☐ Citation numbers start from 5 and are sequential (5, 6, 7, ...)
 ☐ Each incident type has current_count, prior_count, and a specific notable_example with NAMED company (check the Industry Breaches data above for actual victim names)
 ☐ Geopolitical relevance bullets mention specific {customer_profile.name} products/platforms/situations when context provided
