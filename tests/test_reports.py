@@ -502,20 +502,20 @@ class TestReportTypesList:
 
 class TestCitationSubscripts:
     def test_split_markers_keeps_brackets(self):
-        from src.reports.weekly_report import _split_citation_markers
+        from src.reports.base import _split_citation_markers
 
         parts = _split_citation_markers("system [3][4]. Done.")
         assert parts == [("system ", False), ("[3][4]", True), (". Done.", False)]
 
     def test_no_citations_returns_single_segment(self):
-        from src.reports.weekly_report import _split_citation_markers
+        from src.reports.base import _split_citation_markers
 
         assert _split_citation_markers("no citations here") == [("no citations here", False)]
 
     def test_paragraph_citations_become_subscript_with_brackets(self):
         from docx import Document
 
-        from src.reports.weekly_report import _subscript_citations_in_paragraph
+        from src.reports.base import _subscript_citations_in_paragraph
 
         doc = Document()
         para = doc.add_paragraph("breach at Stadler Rail [1] this week [2].")

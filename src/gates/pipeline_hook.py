@@ -16,7 +16,7 @@ from .escape_handler import EscapeDetectedError
 from .halt import GateHaltError
 from .llm_adapter import build_gate_llm_client
 from .models import GateResult
-from .orchestrator import GateOrchestrator
+from .orchestrator import GateOrchestrator, _get_gate_sequence
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +74,10 @@ def run_gate_framework_over_collected_data(
         orchestrator.session["analysis"] = analysis
 
     if interactive_mode:
-        # Interactive mode: run gates one by one with manual clearance.
-        # 1A/1C reconcile the drafted report, so they run in the post-Gate-5 band.
-        gate_sequence = ["1", "1B", "2", "3", "4", "5", "1A", "1C", "6"]
+        # Interactive mode: run gates one by one with manual clearance. Derive the
+        # sequence from the report type — hardcoding the weekly sequence made a quarterly
+        # interactive run skip 1F/1E/1D and then crash on a clearance mismatch.
+        gate_sequence = _get_gate_sequence(report_type)
 
         for gate_id in gate_sequence:
             try:

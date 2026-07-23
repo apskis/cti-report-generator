@@ -349,13 +349,16 @@ def _validate_quarterly_statistics(gate_input: GateInput) -> GateResult:
         }
     )
 
-    # Validation 3: Check Gate 4 for geopolitical context (quarterly-specific field)
+    # Validation 3: Check Gate 4 for geopolitical context (quarterly-specific field).
+    # Gate 4 stores its payload under "assembly" (not "structured_assembly"), and when
+    # empty it sets geopolitical_context_signals to a STRING placeholder — so require a
+    # non-empty LIST, otherwise the absence marker reads as "present".
     gate4_result = gate_input.prior_results.get("4")
     has_geopolitical = False
     if gate4_result:
-        assembly = gate4_result.payload.get("structured_assembly", {})
+        assembly = gate4_result.payload.get("assembly", {})
         geopolitical_signals = assembly.get("geopolitical_context_signals", [])
-        has_geopolitical = len(geopolitical_signals) > 0
+        has_geopolitical = isinstance(geopolitical_signals, list) and len(geopolitical_signals) > 0
 
     if not has_geopolitical:
         warnings.append("No geopolitical context signals found. Quarterly strategic analysis may lack depth.")
@@ -371,8 +374,8 @@ def _validate_quarterly_statistics(gate_input: GateInput) -> GateResult:
     gate5_result = gate_input.prior_results.get("5")
     if gate5_result and gate5_result.status == "COMPLETE":
         report = gate5_result.payload.get("report", {})
-        breach_landscape = report.get("breach_landscape", {})
-        stat_cards = breach_landscape.get("stat_cards", [])
+        breach_landscape = report.get("breach_landscape") or {}
+        stat_cards = [c for c in (breach_landscape.get("stat_cards") or []) if isinstance(c, dict)]
 
         # Get actual Intel471 breach alerts
         intel471_data = gate_input.tier1_data.get("Intel471", [])
@@ -383,7 +386,7 @@ def _validate_quarterly_statistics(gate_input: GateInput) -> GateResult:
             (
                 card
                 for card in stat_cards
-                if "Total Incidents" in card.get("label", "") or "Incidents" in card.get("label", "")
+                if "Total Incidents" in str(card.get("label", "")) or "Incidents" in str(card.get("label", ""))
             ),
             None,
         )
@@ -412,12 +415,12 @@ def _validate_quarterly_statistics(gate_input: GateInput) -> GateResult:
     # NEW VALIDATION 5: Quarter-over-quarter changes have proper signs
     if gate5_result and gate5_result.status == "COMPLETE":
         report = gate5_result.payload.get("report", {})
-        breach_landscape = report.get("breach_landscape", {})
-        stat_cards = breach_landscape.get("stat_cards", [])
+        breach_landscape = report.get("breach_landscape") or {}
+        stat_cards = [c for c in (breach_landscape.get("stat_cards") or []) if isinstance(c, dict)]
 
         missing_signs = []
         for card in stat_cards:
-            change_pct = card.get("change_pct", "")
+            change_pct = str(card.get("change_pct", ""))
             label = card.get("label", "")
 
             # Check if change_pct exists and has proper +/- sign

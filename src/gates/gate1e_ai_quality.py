@@ -302,20 +302,32 @@ def _validate_risk_assessment_criteria(report: dict, intel471_data: list, breach
     return issues
 
 
+def _pct_magnitude(change_pct: Any) -> int | None:
+    """Extract the integer magnitude from a change_pct (e.g. '+45%', '-12', 45) or None.
+
+    Robust against non-string, missing-sign, and missing-'%' values so a malformed
+    AI-produced field can never raise ValueError/AttributeError.
+    """
+    if change_pct is None:
+        return None
+    m = re.search(r"-?\d+", str(change_pct))
+    return abs(int(m.group(0))) if m else None
+
+
 def _validate_risk_trends(report: dict) -> list[str]:
     """Validate risk trends (↑/↓) align with breach statistics."""
     warnings = []
 
-    risk_assessment = report.get("risk_assessment", {})
-    breach_landscape = report.get("breach_landscape", {})
-    stat_cards = breach_landscape.get("stat_cards", [])
+    risk_assessment = report.get("risk_assessment") or {}
+    breach_landscape = report.get("breach_landscape") or {}
+    stat_cards = [c for c in (breach_landscape.get("stat_cards") or []) if isinstance(c, dict)]
 
     # Check ransomware trend vs ransomware stat card
     ransomware_trend = risk_assessment.get("ransomware_trend", "")
-    ransomware_card = next((card for card in stat_cards if "Ransomware" in card.get("label", "")), None)
+    ransomware_card = next((card for card in stat_cards if "Ransomware" in str(card.get("label", ""))), None)
 
     if ransomware_card and ransomware_trend:
-        change_pct = ransomware_card.get("change_pct", "")
+        change_pct = str(ransomware_card.get("change_pct", ""))
 
         # If trend is ↑ but change_pct is negative or 0%, that's inconsistent
         if ransomware_trend == "↑" and (change_pct.startswith("-") or change_pct == "0%"):
@@ -324,13 +336,14 @@ def _validate_risk_trends(report: dict) -> list[str]:
             warnings.append(f"Ransomware trend shows ↓ (decreasing) but stat card shows {change_pct} increase")
 
     # Check total incidents trend
-    total_incidents_card = next((card for card in stat_cards if "Total Incidents" in card.get("label", "")), None)
+    total_incidents_card = next((card for card in stat_cards if "Total Incidents" in str(card.get("label", ""))), None)
 
     if total_incidents_card:
-        change_pct = total_incidents_card.get("change_pct", "")
+        change_pct = str(total_incidents_card.get("change_pct", ""))
+        magnitude = _pct_magnitude(change_pct)
 
         # If there's a significant increase but no risk trends showing ↑, warn
-        if change_pct.startswith("+") and int(change_pct[1:-1]) > 30:
+        if change_pct.startswith("+") and magnitude is not None and magnitude > 30:
             increasing_risks = [
                 risk
                 for risk in ["nation_state_trend", "ransomware_trend", "supply_chain_trend"]

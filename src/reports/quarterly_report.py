@@ -89,6 +89,12 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             # Set default font to Arial for the entire document
             self._set_default_font("Arial")
 
+            # Print-style: white page with dark body text so the document displays
+            # correctly in both light and dark mode (parity with the weekly report).
+            self._set_document_background(BrandColors.PAGE_WHITE)
+            normal_style = self.doc.styles["Normal"]
+            normal_style.font.color.rgb = BrandColors.TEXT_DARK
+
             # Configure page settings (margins, header/footer distances, paragraph spacing)
             self._configure_page_settings()
 
@@ -105,6 +111,10 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             self._add_recommendations(analysis_result)
             self._add_sources(analysis_result)
             self._add_footer()
+
+            # Document-wide pass: render every inline citation marker ([1], [3][4]) as a
+            # subscript, wherever it appears (summary, tables, cards, incidents, etc.).
+            self._subscript_all_citations()
 
             logger.info("Quarterly Strategic CTI Report generated successfully")
             return self.doc
@@ -401,8 +411,9 @@ and vulnerabilities observed are consistent with those historically used against
         low_def.font.size = Pt(11)
         low_def.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
 
-        risk_data = analysis_result.get("risk_assessment", {})
-        analysis_result.get("breach_landscape", {})
+        # `or {}` guards a present-but-null value (the AI can emit `"risk_assessment": null`,
+        # which `.get(k, {})` would NOT protect against).
+        risk_data = analysis_result.get("risk_assessment") or {}
 
         # Load historical data to compare with previous quarter
         history = self._load_historical_data()
@@ -411,11 +422,11 @@ and vulnerabilities observed are consistent with those historically used against
         prev_quarter_key = self._get_quarter_key(prev_year, prev_quarter)
         previous_assessment = history.get(prev_quarter_key, {})
 
-        # Get current risk levels
-        current_nation_state = risk_data.get("nation_state", RiskLevel.HIGH).upper()
-        current_ransomware = risk_data.get("ransomware", RiskLevel.HIGH).upper()
-        current_supply_chain = risk_data.get("supply_chain", RiskLevel.MEDIUM).upper()
-        current_insider = risk_data.get("insider", RiskLevel.LOW).upper()
+        # Get current risk levels. `(x or default)` coerces present-but-null values too.
+        current_nation_state = (risk_data.get("nation_state") or RiskLevel.HIGH).upper()
+        current_ransomware = (risk_data.get("ransomware") or RiskLevel.HIGH).upper()
+        current_supply_chain = (risk_data.get("supply_chain") or RiskLevel.MEDIUM).upper()
+        current_insider = (risk_data.get("insider") or RiskLevel.LOW).upper()
 
         # Get AI's trend assessments from analysis
         ai_nation_state_trend = risk_data.get("nation_state_trend", RiskLevel.UNCHANGED)
@@ -602,12 +613,12 @@ and vulnerabilities observed are consistent with those historically used against
             # Check if trend contains percentage
             elif "%" in trend_text:
                 trend_display = f"vs {prev_quarter_short}: {trend_text}"
-            elif trend_text.upper() in ["UNCHANGED", "UNCHANGED"]:
+            elif trend_text.upper() == "UNCHANGED":
                 trend_display = f"vs {prev_quarter_short}: Unchanged"
             elif trend_text in ["↑", "INCREASED", "INCREASE"]:
-                trend_display = f"vs {prev_quarter_short}: Unchanged"
+                trend_display = f"vs {prev_quarter_short}: Increased"
             elif trend_text in ["↓", "DECREASED", "DECREASE"]:
-                trend_display = f"vs {prev_quarter_short}: Unchanged"
+                trend_display = f"vs {prev_quarter_short}: Decreased"
             else:
                 # Try to extract percentage from trend string
                 percentage_match = re.search(r"([+-]?\d+(?:\.\d+)?%)", trend_text)
@@ -642,7 +653,7 @@ and vulnerabilities observed are consistent with those historically used against
         breach_heading.paragraph_format.space_after = Pt(6)
 
         # Get breach landscape data
-        breach_data = analysis_result.get("breach_landscape", {})
+        breach_data = analysis_result.get("breach_landscape") or {}
 
         # If missing, render unavailable message and return
         if not breach_data:
@@ -711,7 +722,7 @@ and vulnerabilities observed are consistent with those historically used against
                 value_para = cell.paragraphs[0]
                 value_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 value_para.paragraph_format.space_after = Pt(2)
-                value_run = value_para.add_run(card.get("value", ""))
+                value_run = value_para.add_run(str(card.get("value", "")))
                 value_run.font.name = "Arial"
                 value_run.font.size = Pt(24)
                 value_run.font.bold = True
@@ -721,7 +732,7 @@ and vulnerabilities observed are consistent with those historically used against
                 label_para = cell.add_paragraph()
                 label_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 label_para.paragraph_format.space_after = Pt(4)
-                label_run = label_para.add_run(card.get("label", ""))
+                label_run = label_para.add_run(str(card.get("label", "")))
                 label_run.font.name = "Arial"
                 label_run.font.size = Pt(10)
                 label_run.font.bold = True
@@ -748,8 +759,9 @@ and vulnerabilities observed are consistent with those historically used against
         spacer = self.doc.add_paragraph()
         spacer.paragraph_format.space_after = Pt(6)
 
-        # COMPONENT 4 — Incidents by type
-        incidents = breach_data.get("incidents_by_type", [])
+        # COMPONENT 4 — Incidents by type. Accept it nested under breach_landscape
+        # (current AI schema) OR at the top level of the analysis (docstring/tests).
+        incidents = breach_data.get("incidents_by_type") or analysis_result.get("incidents_by_type", [])
         current_quarter_label = breach_data.get("current_quarter_label", "Current")
         prior_quarter_label = breach_data.get("prior_quarter_label", "Prior")
 
@@ -828,7 +840,7 @@ and vulnerabilities observed are consistent with those historically used against
 
                 # Col 0 — incident type (bold black)
                 cells[0].paragraphs[0].clear()
-                type_run = cells[0].paragraphs[0].add_run(incident.get("type", ""))
+                type_run = cells[0].paragraphs[0].add_run(str(incident.get("type", "")))
                 type_run.font.name = "Arial"
                 type_run.font.size = Pt(10)
                 type_run.font.bold = True
@@ -837,16 +849,19 @@ and vulnerabilities observed are consistent with those historically used against
 
                 # Col 1 — current_count (large bold black)
                 cells[1].paragraphs[0].clear()
-                current_run = cells[1].paragraphs[0].add_run(incident.get("current_count", "0"))
+                current_run = cells[1].paragraphs[0].add_run(str(incident.get("current_count", "0")))
                 current_run.font.name = "Arial"
                 current_run.font.size = Pt(14)  # Larger size for emphasis
                 current_run.font.bold = True
                 current_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)  # Black
                 cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-                # Col 2 — prior_count (regular black, not bold)
+                # Col 2 — prior_count (regular black, not bold). Schema uses `prev_count`;
+                # accept `prior_count` too for back-compat, and coerce ints to str.
                 cells[2].paragraphs[0].clear()
-                prior_run = cells[2].paragraphs[0].add_run(incident.get("prior_count", "0"))
+                prior_run = cells[2].paragraphs[0].add_run(
+                    str(incident.get("prev_count", incident.get("prior_count", "0")))
+                )
                 prior_run.font.name = "Arial"
                 prior_run.font.size = Pt(10)
                 prior_run.font.bold = False
@@ -855,7 +870,7 @@ and vulnerabilities observed are consistent with those historically used against
 
                 # Col 3 — notable_example (italic gray)
                 cells[3].paragraphs[0].clear()
-                example_run = cells[3].paragraphs[0].add_run(incident.get("notable_example", ""))
+                example_run = cells[3].paragraphs[0].add_run(str(incident.get("notable_example", "")))
                 example_run.font.name = "Arial"
                 example_run.font.size = Pt(9)
                 example_run.font.italic = True
@@ -1185,6 +1200,11 @@ and vulnerabilities observed are consistent with those historically used against
         # Validate and filter geopolitical entries
         valid_entries = []
         for entry in geopolitical_list:
+            # Skip non-dict entries (the AI can emit a bare list of country strings) — this
+            # is the quarterly analogue of the weekly "'IOC' object has no attribute get" crash.
+            if not isinstance(entry, dict):
+                logger.warning(f"Skipping non-dict geopolitical entry: {entry!r}")
+                continue
             # Extract fields for validation (support both 'name' and 'country' fields)
             name = entry.get("name", "").strip() if entry.get("name") else ""
             country = entry.get("country", "").strip() if entry.get("country") else ""
@@ -1288,6 +1308,8 @@ and vulnerabilities observed are consistent with those historically used against
 
         # Populate each country card (column)
         for col_idx, country_data in enumerate(geopolitical_list):
+            if not isinstance(country_data, dict):
+                continue
             # Extract country data (support both 'name' and 'country' fields)
             country_name = country_data.get("name", "")
             if not country_name:
@@ -1303,7 +1325,9 @@ and vulnerabilities observed are consistent with those historically used against
                     display_name = display_name[:17] + "..."
                 logger.debug(f"Geo card name truncated: '{country_name}' -> '{display_name}'")
 
-            threat_level = country_data.get("threat_level", "MEDIUM").upper()
+            # The AI schema emits "level"; older/fallback paths use "threat_level". Accept
+            # both (was always falling through to "MEDIUM" because only threat_level was read).
+            threat_level = str(country_data.get("threat_level") or country_data.get("level") or "MEDIUM").upper()
             primary_vector = country_data.get("vector", "Multiple vectors")
             exposure = country_data.get("exposure", "MEDIUM").upper()
             relevance_bullets = country_data.get("relevance", [])
@@ -1694,8 +1718,8 @@ and vulnerabilities observed are consistent with those historically used against
         """Add looking ahead section for next quarter."""
         logger.info("Adding Looking Ahead section")
 
-        # Get looking ahead data
-        looking_ahead = analysis_result.get("looking_ahead", {})
+        # Get looking ahead data (`or {}` guards a present-but-null value)
+        looking_ahead = analysis_result.get("looking_ahead") or {}
 
         # If missing or watch_items is empty, render unavailable message
         watch_items = looking_ahead.get("watch_items", [])

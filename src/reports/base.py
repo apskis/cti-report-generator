@@ -4,8 +4,10 @@ Base report generator class.
 Provides common functionality for all report types.
 """
 
+import copy
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from datetime import datetime
 from io import BytesIO
@@ -19,6 +21,87 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 from src.core.config import customer_profile
+
+# --- Inline citation rendering (shared by weekly + quarterly report generators) ------
+# One or more inline citation markers like "[1]" or "[3][4]" — brackets kept.
+_CITATION_MARKER_RE = re.compile(r"(?:\[\d+\])+")
+
+
+def _split_citation_markers(text: str) -> list[tuple[str, bool]]:
+    """Split text into ``(segment, is_citation)`` parts, KEEPING the brackets.
+
+    "system [3][4]." -> [("system ", False), ("[3][4]", True), (".", False)].
+    """
+    parts: list[tuple[str, bool]] = []
+    last = 0
+    for m in _CITATION_MARKER_RE.finditer(text):
+        if m.start() > last:
+            parts.append((text[last : m.start()], False))
+        parts.append((m.group(0), True))
+        last = m.end()
+    if last < len(text):
+        parts.append((text[last:], False))
+    return parts
+
+
+def _iter_report_paragraphs(container):
+    """Yield every paragraph in a container (Document or _Cell), descending into tables."""
+    yield from container.paragraphs
+    for table in container.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                yield from _iter_report_paragraphs(cell)
+
+
+def _set_run_text(r_elem, text: str) -> None:
+    for t in r_elem.findall(qn("w:t")):
+        r_elem.remove(t)
+    t = OxmlElement("w:t")
+    t.set(qn("xml:space"), "preserve")
+    t.text = text
+    r_elem.append(t)
+
+
+def _apply_citation_segment(r_elem, seg_text: str, is_citation: bool) -> None:
+    """Set a run element's text and toggle subscript for citation segments."""
+    _set_run_text(r_elem, seg_text)
+    rpr = r_elem.find(qn("w:rPr"))
+    if rpr is not None:
+        for va in rpr.findall(qn("w:vertAlign")):
+            rpr.remove(va)
+    if is_citation:
+        rpr = r_elem.get_or_add_rPr()
+        va = OxmlElement("w:vertAlign")
+        va.set(qn("w:val"), "subscript")
+        rpr.append(va)
+
+
+def _subscript_citations_in_paragraph(paragraph) -> None:
+    """Split runs so citation markers ([1], [3][4]) render as subscript in place.
+
+    Each new sub-run is a deep copy of the original run element, so it inherits the
+    surrounding text's font/color/size/bold; only the citation segments get subscript.
+    """
+    for run in list(paragraph.runs):
+        text = run.text
+        if not text or not _CITATION_MARKER_RE.search(text):
+            continue
+        segments = _split_citation_markers(text)
+        if len(segments) <= 1:
+            continue
+        r = run._r
+        parent = r.getparent()
+        idx = parent.index(r)
+        template = copy.deepcopy(r)  # clean copy of the original formatting
+        tmpl_rpr = template.find(qn("w:rPr"))
+        if tmpl_rpr is not None:
+            for va in tmpl_rpr.findall(qn("w:vertAlign")):
+                tmpl_rpr.remove(va)
+        _apply_citation_segment(r, *segments[0])  # first segment reuses original run
+        for offset, (seg_text, is_cite) in enumerate(segments[1:], start=1):
+            new_r = copy.deepcopy(template)
+            _apply_citation_segment(new_r, seg_text, is_cite)
+            parent.insert(idx + offset, new_r)
 
 logger = logging.getLogger(__name__)
 
@@ -587,6 +670,17 @@ class BaseReportGenerator(ABC):
             v_align = OxmlElement("w:vAlign")
             pg_pr.append(v_align)
         v_align.set(qn("w:val"), "top")
+
+    def _subscript_all_citations(self) -> None:
+        """Render every inline citation marker ([N], [N][M]) as a subscript, document-wide.
+
+        Walks every paragraph and table cell of the finished document. Shared by the
+        weekly and quarterly generators — call as the last step of ``generate()``.
+        """
+        if self.doc is None:
+            return
+        for paragraph in _iter_report_paragraphs(self.doc):
+            _subscript_citations_in_paragraph(paragraph)
 
     def _set_document_background(self, color_hex: str = "1E1E1E") -> None:
         """

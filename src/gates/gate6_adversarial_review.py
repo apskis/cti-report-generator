@@ -489,8 +489,8 @@ def _collect_prior_gate_findings(prior_results: dict) -> tuple[list[str], list[s
     """
     track_a: list[str] = []
     track_b: list[str] = []
-    blocking = (("1E", "issues"), ("1F", "critical_issues"))
-    advisory = (("1C", "issues"),)
+    blocking = (("1E", "issues"), ("1F", "critical_issues"), ("1D", "issues"))
+    advisory = (("1C", "issues"), ("1D", "warnings"))
     for target, spec in ((track_a, blocking), (track_b, advisory)):
         for gate_id, payload_key in spec:
             result = prior_results.get(gate_id)
