@@ -1887,9 +1887,13 @@ NVD records cross-referenced with CISA KEV and EPSS exploitation data."""
 
 {illumina_context}
 
-IMPORTANT: Use the above {customer_profile.name} context to ground your geopolitical_threats "relevance" bullets.
-Reference specific {customer_profile.name} products, platforms, market position, or regulatory situations that are
-directly relevant to why each threat actor poses a risk to {customer_profile.name}. Draw on current, public facts.
+IMPORTANT: Use the above {customer_profile.name} context to ground your geopolitical_threats "relevance" bullets
+AND your risk assessment. The "Strategic Profile" section lists {customer_profile.name}'s durable, threat-relevant
+attributes (market position, cloud/genomic-data assets, geopolitical exposure, supply-chain footprint) — for EACH
+geopolitical actor and breach trend, tie the intelligence to the specific profile attribute it threatens (e.g. a
+China-nexus IP-theft campaign against the genomic-data assets, or a supply-chain intrusion against the instrument/
+reagent vendor footprint). Reference specific {customer_profile.name} products, platforms, market position, or
+regulatory situations. Draw on current, public facts.
 
 CRITICAL: If you reference any {customer_profile.name} articles from the context above in your analysis, you MUST include them in osint_sources_used with proper citation."""
         else:

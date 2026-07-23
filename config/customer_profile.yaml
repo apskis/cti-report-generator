@@ -23,6 +23,19 @@ industry: "genomics, life sciences, and precision manufacturing"
 products: "ICA and BaseSpace"
 flagship_product: "NovaSeq X"
 
+# Durable, threat-relevant attributes of the organization. This is the strategic
+# "hook sheet" that the geopolitical and breach analysis must connect intelligence
+# to, so relevance stays grounded even when live company scraping is thin or fails.
+# Edit these to your organization's real attack surface, market position, and
+# geopolitical exposure. One bullet per line.
+strategic_profile: |
+  - Global leader in DNA sequencing with an estimated ~80% share of the sequencing instrument market; core platforms include NovaSeq X, NextSeq, MiSeq, and iSeq.
+  - Cloud platforms hold sensitive customer genomic and clinical data: Illumina Connected Analytics (ICA) and BaseSpace Sequence Hub, with DRAGEN secondary-analysis pipelines. These are the crown-jewel data assets and primary exfiltration targets.
+  - Custodian of large volumes of human genomic data, making it a high-value target for nation-state IP theft and espionage against biotechnology and precision medicine.
+  - Material China exposure: significant market/revenue ties and prior placement on China's 'unreliable entity list', making China-nexus geopolitical activity directly business-relevant.
+  - Extensive third-party and supply-chain footprint across instruments, reagents, and laboratory software, creating supply-chain compromise exposure.
+  - Operates in an FDA-regulated clinical environment; US/EU genomic-data-privacy and foreign-access legislation directly affects the business.
+
 # The source key that the company-context OSINT collector emits and that gates
 # and reports read from data_by_source.
 osint_source_name: "Illumina-OSINT"

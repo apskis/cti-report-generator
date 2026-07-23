@@ -64,6 +64,16 @@ class IlluminaOSINTCollector(BaseCollector):
 
             context_parts = []
 
+            # SOURCE 0: Durable strategic profile (always present). This is the grounding
+            # the geopolitical/breach analysis connects intelligence to, so relevance holds
+            # even when the live scrapes below are thin or fail.
+            if customer_profile.strategic_profile.strip():
+                context_parts.append(
+                    f"## {customer_profile.name} Strategic Profile "
+                    f"(durable, threat-relevant attributes — use to ground relevance to "
+                    f"{customer_profile.name})\n{customer_profile.strategic_profile.strip()}\n"
+                )
+
             # SOURCE 1: SEC EDGAR submissions
             try:
                 sec_data = await self._fetch_sec_edgar()
@@ -114,15 +124,47 @@ class IlluminaOSINTCollector(BaseCollector):
             logger.error(f"Error in Illumina OSINT collection: {e}", exc_info=True)
             return CollectorResult(success=False, source=self.source_name, data=[], record_count=0, error=str(e))
 
+    # SEC forms that carry strategic / material signal. Everything else (insider-trade
+    # Form 3/4/5, Form 144, ownership SC 13D/G, etc.) is noise for threat intelligence
+    # and must not crowd out the material filings.
+    _MATERIAL_SEC_FORMS = (
+        "10-K",
+        "10-Q",
+        "8-K",
+        "20-F",
+        "6-K",
+        "DEF 14A",
+        "40-F",
+        "S-1",
+        "S-3",
+    )
+
+    # 8-K item codes worth labeling; Item 1.05 (Material Cybersecurity Incidents) is the
+    # single most report-relevant disclosure a public company can make.
+    _EIGHTK_ITEMS = {
+        "1.01": "Material Definitive Agreement",
+        "1.05": "Material Cybersecurity Incident",
+        "2.01": "Completion of Acquisition/Disposition",
+        "2.02": "Results of Operations",
+        "3.01": "Delisting / Listing Standards",
+        "4.02": "Non-Reliance on Prior Financials",
+        "5.02": "Executive/Director Change",
+        "7.01": "Regulation FD Disclosure",
+        "8.01": "Other Events",
+    }
+
+    _SEC_CIK = "1110803"  # Illumina Inc. Central Index Key
+
     async def _fetch_sec_edgar(self) -> str:
         """
-        Fetch recent SEC filings from EDGAR API.
+        Fetch recent MATERIAL SEC filings from EDGAR (10-K/10-Q/8-K/DEF 14A, not
+        insider-trade forms), formatted with human descriptions and citeable URLs.
 
         Returns:
-            Formatted string of recent filing descriptions
+            Formatted string of recent material filing descriptions
         """
-        url = "https://data.sec.gov/submissions/CIK0001110803.json"
-        headers = {"User-Agent": "Illumina-CTI-Pipeline cti@illumina.com"}
+        url = f"https://data.sec.gov/submissions/CIK{int(self._SEC_CIK):010d}.json"
+        headers = {"User-Agent": f"{customer_profile.name}-CTI-Pipeline {customer_profile.security_contact}"}
 
         # Create SSL context with certifi certificates
         ssl_context = ssl.create_default_context(cafile=certifi.where())
@@ -135,22 +177,58 @@ class IlluminaOSINTCollector(BaseCollector):
                     return ""
 
                 data = await response.json()
+                return self._format_sec_filings(data, cik=self._SEC_CIK, max_items=6)
 
-                # Extract recent filings
-                filings = data.get("filings", {}).get("recent", {})
-                forms = filings.get("form", [])
-                descriptions = filings.get("primaryDocument", [])
-                dates = filings.get("filingDate", [])
+    @classmethod
+    def _format_sec_filings(cls, data: dict, cik: str, max_items: int = 6) -> str:
+        """Pure formatter: pick the most recent MATERIAL filings and render them.
 
-                # Get first 5 filings
-                recent_filings = []
-                for i in range(min(5, len(forms))):
-                    filing_form = forms[i]
-                    filing_desc = descriptions[i] if i < len(descriptions) else "N/A"
-                    filing_date = dates[i] if i < len(dates) else "N/A"
-                    recent_filings.append(f"- {filing_date}: {filing_form} - {filing_desc}")
+        Filters out insider-trade / ownership noise, prefers a human-readable
+        description, annotates 8-K item codes (highlighting cyber incidents), and
+        includes a citeable filing-index URL. Kept pure (no network) so it is unit-testable.
+        """
+        recent = (data or {}).get("filings", {}).get("recent", {})
+        forms = recent.get("form", []) or []
+        dates = recent.get("filingDate", []) or []
+        descriptions = recent.get("primaryDocDescription", []) or []
+        accessions = recent.get("accessionNumber", []) or []
+        items = recent.get("items", []) or []
 
-                return "\n".join(recent_filings) if recent_filings else "No recent filings found"
+        material = {f.upper() for f in cls._MATERIAL_SEC_FORMS}
+        lines: list[str] = []
+        for i, form in enumerate(forms):
+            if len(lines) >= max_items:
+                break
+            if (form or "").upper() not in material:
+                continue
+
+            date = dates[i] if i < len(dates) else "N/A"
+            desc = descriptions[i] if i < len(descriptions) else ""
+            # For an 8-K, the item codes carry the actual signal ("why did they file?").
+            annotation = ""
+            if (form or "").upper().startswith("8-K") and i < len(items) and items[i]:
+                labeled = []
+                for code in [c.strip() for c in str(items[i]).split(",") if c.strip()]:
+                    label = cls._EIGHTK_ITEMS.get(code)
+                    labeled.append(f"{code} {label}" if label else code)
+                if labeled:
+                    annotation = f" [Items: {'; '.join(labeled)}]"
+            label = desc.strip() or f"{form} filing"
+
+            # Build a citeable filing-index URL from the accession number.
+            url = ""
+            if i < len(accessions) and accessions[i]:
+                acc_nodash = accessions[i].replace("-", "")
+                url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_nodash}/"
+
+            entry = f"- {date}: {form} - {label}{annotation}"
+            if url:
+                entry += f"\n  URL: {url}"
+            lines.append(entry)
+
+        if not lines:
+            return "No recent material filings (10-K/10-Q/8-K/DEF 14A) found in the lookback window"
+        return "\n".join(lines)
 
     async def _fetch_news_center(self) -> str:
         """

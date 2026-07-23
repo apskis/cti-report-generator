@@ -356,3 +356,52 @@ class TestOSINTFullText:
             aiohttp.ClientTimeout(total=5),
         )
         assert result is None
+
+
+class TestIlluminaSecFilings:
+    """The company scraper must surface MATERIAL filings (10-K/10-Q/8-K), not the
+    insider-trade Form 4/144 noise that dominates the newest-first EDGAR feed."""
+
+    def _data(self):
+        return {
+            "filings": {
+                "recent": {
+                    "form": ["4", "4", "8-K", "144", "10-Q", "SC 13G/A", "10-K"],
+                    "filingDate": [
+                        "2026-07-02",
+                        "2026-07-01",
+                        "2026-06-28",
+                        "2026-06-25",
+                        "2026-06-20",
+                        "2026-05-20",
+                        "2026-02-10",
+                    ],
+                    "primaryDocDescription": ["", "", "Current report", "", "Quarterly report", "", "Annual report"],
+                    "primaryDocument": ["form4.xml", "form4.xml", "d8k.htm", "p.xml", "d10q.htm", "sc.htm", "d10k.htm"],
+                    "accessionNumber": ["a-1", "a-2", "a-3", "a-4", "a-5", "a-6", "a-7"],
+                    "items": ["", "", "1.05,8.01", "", "", "", ""],
+                }
+            }
+        }
+
+    def test_filters_out_insider_and_ownership_noise(self):
+        from src.collectors.illumina_osint_collector import IlluminaOSINTCollector
+
+        out = IlluminaOSINTCollector._format_sec_filings(self._data(), cik="1110803")
+        # Material forms are present...
+        assert "10-Q" in out and "10-K" in out and "8-K" in out
+        # ...and the insider-trade / ownership forms are gone.
+        assert "Form 4" not in out and "144" not in out and "13G" not in out
+
+    def test_flags_cyber_incident_8k_item(self):
+        from src.collectors.illumina_osint_collector import IlluminaOSINTCollector
+
+        out = IlluminaOSINTCollector._format_sec_filings(self._data(), cik="1110803")
+        assert "1.05 Material Cybersecurity Incident" in out
+
+    def test_no_material_filings_returns_message(self):
+        from src.collectors.illumina_osint_collector import IlluminaOSINTCollector
+
+        data = {"filings": {"recent": {"form": ["4", "144"], "filingDate": ["2026-07-02", "2026-07-01"]}}}
+        out = IlluminaOSINTCollector._format_sec_filings(data, cik="1110803")
+        assert "No recent material filings" in out

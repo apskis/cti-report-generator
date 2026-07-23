@@ -258,6 +258,26 @@ class CustomerProfile:
     products: str = "ICA and BaseSpace"
     # A single flagship product example used in prompt guidance.
     flagship_product: str = "NovaSeq X"
+    # Durable, threat-relevant attributes of the organization. This is the strategic
+    # "hook sheet" the geopolitical/breach analysis must connect intelligence to, so
+    # relevance stays grounded even when live scraping is thin or fails. Kept in config
+    # (not buried in the prompt) so it is maintainable and single-sourced.
+    strategic_profile: str = (
+        "- Global leader in DNA sequencing with an estimated ~80% share of the sequencing "
+        "instrument market; core platforms include NovaSeq X, NextSeq, MiSeq, and iSeq.\n"
+        "- Cloud platforms hold sensitive customer genomic and clinical data: Illumina "
+        "Connected Analytics (ICA) and BaseSpace Sequence Hub, with DRAGEN secondary-analysis "
+        "pipelines. These are the crown-jewel data assets and primary exfiltration targets.\n"
+        "- Custodian of large volumes of human genomic data, making it a high-value target for "
+        "nation-state IP theft and espionage against biotechnology and precision medicine.\n"
+        "- Material China exposure: significant market/revenue ties and prior placement on "
+        "China's 'unreliable entity list', making China-nexus geopolitical activity directly "
+        "business-relevant.\n"
+        "- Extensive third-party and supply-chain footprint across instruments, reagents, and "
+        "laboratory software, creating supply-chain compromise exposure.\n"
+        "- Operates in an FDA-regulated clinical environment; US/EU genomic-data-privacy and "
+        "foreign-access legislation directly affects the business."
+    )
     # Lowercase keywords (company name + product/platform names) used to detect
     # company-specific grounding in geopolitical relevance bullets.
     product_keywords: tuple[str, ...] = (
@@ -379,6 +399,7 @@ def _load_customer_profile() -> CustomerProfile:
         industry=cfg.get("industry", defaults.industry),
         products=cfg.get("products", defaults.products),
         flagship_product=cfg.get("flagship_product", defaults.flagship_product),
+        strategic_profile=cfg.get("strategic_profile", defaults.strategic_profile),
         product_keywords=tuple(k.lower() for k in keywords) if keywords else defaults.product_keywords,
     )
 
