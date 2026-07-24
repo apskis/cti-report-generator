@@ -60,8 +60,11 @@ class CollectorConfig:
     # NAICS 2-digit prefixes counted as relevant peers: 31-33 manufacturing, 54 professional/
     # scientific (biotech R&D), 62 health care. Empty tuple = no industry filter.
     vcdb_relevant_naics_prefixes: tuple = ("31", "32", "33", "54", "62")
-    # HHS OCR "Wall of Shame" breach report CSV export (healthcare breaches >=500 individuals).
-    hhs_breach_csv_url: str = "https://ocrportal.hhs.gov/ocr/breach/breach_report.jsf?csv=1"
+    # HHS OCR "Wall of Shame" healthcare breaches (>=500 individuals).
+    # Leave hhs_breach_csv_url empty to auto-export from the JSF portal (hhs_portal_url);
+    # or set it to a direct CSV URL / local file path to bypass the portal scrape.
+    hhs_breach_csv_url: str = ""
+    hhs_portal_url: str = "https://ocrportal.hhs.gov/ocr/breach/breach_report.jsf"
     # Have I Been Pwned public breaches endpoint (keyless; a descriptive User-Agent is required).
     hibp_breaches_url: str = "https://haveibeenpwned.com/api/v3/breaches"
 

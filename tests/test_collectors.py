@@ -670,6 +670,50 @@ class TestHHSParser:
         assert parse_hhs_csv("") == []
 
 
+class TestHHSPortalFetch:
+    """The JSF portal export flow: ViewState/control extraction + CSV sniff (offline)."""
+
+    _HTML = (
+        '<html><body><form id="ristr" action="/ocr/breach/breach_report.jsf" method="post">'
+        '<input type="hidden" name="ristr" value="ristr" />'
+        '<input type="hidden" name="javax.faces.ViewState" value="VS-TOKEN-123" />'
+        '<button id="ristr:csvExport" name="ristr:csvExport" value="CSV">Export CSV</button>'
+        "</form></body></html>"
+    )
+
+    def test_extract_viewstate(self):
+        from src.collectors.hhs_fetch import extract_viewstate
+
+        assert extract_viewstate(self._HTML) == "VS-TOKEN-123"
+        assert extract_viewstate("<html>no jsf here</html>") is None
+
+    def test_extract_hidden_fields(self):
+        from src.collectors.hhs_fetch import extract_hidden_fields
+
+        fields = extract_hidden_fields(self._HTML)
+        assert fields["ristr"] == "ristr"
+        assert fields["javax.faces.ViewState"] == "VS-TOKEN-123"
+
+    def test_extract_form_action_resolves_relative(self):
+        from src.collectors.hhs_fetch import extract_form_action
+
+        action = extract_form_action(self._HTML, "https://ocrportal.hhs.gov/ocr/breach/breach_report.jsf")
+        assert action == "https://ocrportal.hhs.gov/ocr/breach/breach_report.jsf"
+
+    def test_find_export_controls(self):
+        from src.collectors.hhs_fetch import find_export_controls
+
+        assert "ristr:csvExport" in find_export_controls(self._HTML)
+        assert find_export_controls("<button id='save'>Save</button>") == []
+
+    def test_looks_like_hhs_csv(self):
+        from src.collectors.hhs_fetch import looks_like_hhs_csv
+
+        assert looks_like_hhs_csv("Name of Covered Entity,State,Individuals Affected\nAcme,TN,500")
+        assert not looks_like_hhs_csv("<html><body>portal page</body></html>")
+        assert not looks_like_hhs_csv("")
+
+
 class TestHIBPParser:
     def test_parses_breaches(self):
         from src.collectors.hibp_breach_collector import parse_hibp

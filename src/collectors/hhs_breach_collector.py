@@ -19,6 +19,7 @@ from typing import Any
 
 from src.collectors.base import BaseCollector
 from src.collectors.dataset_source import fetch_dataset_text
+from src.collectors.hhs_fetch import fetch_hhs_breach_csv, looks_like_hhs_csv
 from src.core.breach_metrics import filter_records_to_window
 from src.core.config import collector_config
 from src.core.models import CollectorResult
@@ -111,9 +112,19 @@ class HHSBreachCollector(BaseCollector):
         return 120
 
     async def collect(self, report_type: str = "quarterly") -> CollectorResult:
-        url = collector_config.hhs_breach_csv_url
-        text = await fetch_dataset_text(url, headers=_HEADERS)
+        text = None
+        # 1. Explicit direct URL or local file, if configured.
+        direct = collector_config.hhs_breach_csv_url
+        if direct:
+            text = await fetch_dataset_text(direct, headers=_HEADERS)
+            if text is not None and not looks_like_hhs_csv(text):
+                logger.info("HHS: configured source did not return CSV; falling back to portal auto-export")
+                text = None
+        # 2. Automated export from the JSF portal.
         if text is None:
+            text = await fetch_hhs_breach_csv(collector_config.hhs_portal_url, _HEADERS)
+        if text is None or not looks_like_hhs_csv(text):
+            logger.info("HHS: no CSV obtained this run")
             return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
         try:
             records = parse_hhs_csv(text)
