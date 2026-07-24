@@ -28,32 +28,32 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-# IBM "Cost of a Data Breach" per-record figures are the basis for the ESTIMATED impact.
-# The global average is ~$165/record; some industries run materially higher. Kept
-# configurable via CollectorConfig; this is the fallback for records of unknown sector.
-DEFAULT_COST_PER_RECORD_USD = 165.0
+# Est. Total Impact is estimated per INCIDENT, not per record. A per-record multiplier
+# explodes on mega-breaches (a 100M-record dump x $/record yields a nonsense figure,
+# because per-record cost drops sharply at scale). IBM "Cost of a Data Breach" also
+# publishes an average TOTAL cost per breach, which is stable across breach sizes — that
+# is the basis here: sum a per-breach average, weighted by each incident's sector.
+DEFAULT_COST_PER_BREACH_USD = 4_880_000.0  # IBM global average total cost per breach
 
-# Approximate per-record cost by sector (IBM Cost of a Data Breach, recent editions). A
-# healthcare-heavy peer set (which an HHS-sourced life-sciences landscape is) would be
-# understated by the flat global average, so the dollar estimate is weighted per incident
-# using the incident's sector, falling back to the global default when sector is unknown.
-SECTOR_COST_PER_RECORD_USD = {
-    "Healthcare": 408.0,
-    "Financial": 336.0,
-    "Pharmaceuticals": 298.0,
-    "Technology": 292.0,
-    "Professional/Scientific": 288.0,
-    "Energy": 262.0,
-    "Manufacturing": 200.0,
-    "Public": 168.0,
+# Approximate average total cost per breach by sector (IBM, recent editions). Healthcare
+# runs highest; used to weight a healthcare-heavy peer set instead of a flat average.
+SECTOR_COST_PER_BREACH_USD = {
+    "Healthcare": 9_770_000.0,
+    "Financial": 6_080_000.0,
+    "Pharmaceuticals": 5_100_000.0,
+    "Technology": 5_000_000.0,
+    "Professional/Scientific": 5_000_000.0,
+    "Energy": 5_290_000.0,
+    "Manufacturing": 4_730_000.0,
+    "Public": 2_550_000.0,
 }
 
 _RANSOMWARE_MARKERS = ("ransom", "extortion")
 
 
-def cost_for_sector(sector: str, default: float = DEFAULT_COST_PER_RECORD_USD) -> float:
-    """Per-record cost for a sector label, falling back to ``default`` when unknown."""
-    return SECTOR_COST_PER_RECORD_USD.get((sector or "").strip(), default)
+def cost_for_sector(sector: str, default: float = DEFAULT_COST_PER_BREACH_USD) -> float:
+    """Average total cost per breach for a sector label, falling back to ``default``."""
+    return SECTOR_COST_PER_BREACH_USD.get((sector or "").strip(), default)
 
 
 def naics_to_sector(naics: Any) -> str:
@@ -161,31 +161,35 @@ def filter_records_to_window(records: list[dict], window: tuple | None) -> list[
 def compute_breach_metrics(
     records: list[dict],
     *,
-    cost_per_record_usd: float = DEFAULT_COST_PER_RECORD_USD,
+    default_cost_per_breach_usd: float = DEFAULT_COST_PER_BREACH_USD,
 ) -> dict[str, Any]:
-    """Reduce a set of (already period-scoped) breach records to the four stat metrics.
+    """Reduce a set of (already period-scoped) breach records to the stat metrics.
 
-    Returns a dict with ``total_incidents``, ``ransomware_count``, ``records_exposed``,
-    ``records_known`` (whether any record carried a figure), ``est_impact_usd`` and
-    display-ready ``records_exposed_millions`` / ``est_impact_millions`` plus a few
-    ``notable_examples`` (largest by records). The dollar estimate is weighted per
-    incident by the incident's ``sector`` (see ``SECTOR_COST_PER_RECORD_USD``), falling
-    back to ``cost_per_record_usd`` for records of unknown sector — so a healthcare-heavy
-    set isn't understated by a flat global rate. No estimation beyond that multiplier.
+    Est. Total Impact is a PER-INCIDENT estimate: each incident contributes its sector's
+    average total breach cost (``cost_for_sector``), falling back to
+    ``default_cost_per_breach_usd`` for unknown sectors. This is stable across breach sizes
+    — a single mega-breach can't explode the figure the way ``records x $/record`` does.
+    ``avg_cost_per_breach_usd`` is exposed so a caller can rescale the estimate to a
+    displayed count that differs from the dataset count (dataset lag).
+
+    Records exposed remains a raw sum (no cost applied); ``records_known`` flags whether any
+    incident carried a figure. ``notable_examples`` are the largest incidents by records.
     """
     total = len(records)
     ransomware = sum(1 for r in records if _is_ransomware(str(r.get("incident_type", ""))))
+
     records_total = 0
-    est_impact_usd = 0.0
     records_known = False
+    per_breach_costs = []
     for r in records:
+        per_breach_costs.append(cost_for_sector(str(r.get("sector", "")), default_cost_per_breach_usd))
         rec_n = r.get("records_exposed")
-        if not isinstance(rec_n, (int, float)):
-            continue
-        rec_n = int(rec_n)
-        records_total += rec_n
-        est_impact_usd += rec_n * cost_for_sector(str(r.get("sector", "")), cost_per_record_usd)
-        records_known = True
+        if isinstance(rec_n, (int, float)):
+            records_total += int(rec_n)
+            records_known = True
+
+    est_impact_usd = sum(per_breach_costs)
+    avg_cost_per_breach_usd = (est_impact_usd / total) if total else default_cost_per_breach_usd
 
     notable = sorted(
         (r for r in records if isinstance(r.get("records_exposed"), (int, float))),
@@ -207,6 +211,7 @@ def compute_breach_metrics(
         "records_exposed": records_total,
         "records_known": records_known,
         "est_impact_usd": est_impact_usd,
+        "avg_cost_per_breach_usd": avg_cost_per_breach_usd,
         "records_exposed_millions": round(records_total / 1_000_000, 1),
         "est_impact_millions": round(est_impact_usd / 1_000_000),
         "notable_examples": notable_examples,
@@ -218,10 +223,12 @@ def breach_metrics_for_period(
     start: date,
     end: date,
     *,
-    cost_per_record_usd: float = DEFAULT_COST_PER_RECORD_USD,
+    default_cost_per_breach_usd: float = DEFAULT_COST_PER_BREACH_USD,
 ) -> dict[str, Any]:
     """Convenience: dedupe -> bucket to [start, end] -> compute metrics."""
-    return compute_breach_metrics(scope_breaches(records, start, end), cost_per_record_usd=cost_per_record_usd)
+    return compute_breach_metrics(
+        scope_breaches(records, start, end), default_cost_per_breach_usd=default_cost_per_breach_usd
+    )
 
 
 def scope_breaches(records: list[dict], start: date, end: date) -> list[dict]:
@@ -278,16 +285,18 @@ def apply_metrics_to_stat_cards(analysis_result: dict, metrics: dict) -> str:
 
     Returns the grounding mode:
       - ``"none"``   — dataset had no incidents for the period; cards untouched.
-      - ``"full"``   — dataset is at least as complete as the current count, so all
-        cards (counts + records + impact) come from the dataset (authoritative). This
-        is the normal case for historical/backfill quarters.
+      - ``"full"``   — dataset is at least as complete as the current count, so counts,
+        records and impact all come from the dataset (authoritative). Normal case for
+        historical/backfill quarters.
       - ``"enrich"`` — the dataset has FEWER incidents than the live feeds already found
-        (dataset lag), so only the figures the live feeds can't provide (Records Exposed,
-        Est. Total Impact) are filled; the incident/ransomware counts are left as-is so a
-        lagging dataset never shrinks the current quarter's numbers.
+        (dataset lag). Counts are left as-is (a lagging dataset never shrinks the quarter),
+        Est. Total Impact is rescaled to the displayed count using the sector-weighted
+        per-breach average, and Records Exposed is left untouched (the dataset's records
+        would be a partial undercount).
 
-    The ``$``/records cards are only filled when a real records figure exists — never
-    fabricated.
+    Est. Total Impact is always ``displayed incident count x sector-weighted per-breach
+    average`` — stable across breach sizes. Records Exposed is only filled from a complete
+    dataset (full mode) and only when a real figure exists — never fabricated.
     """
     breach = analysis_result.get("breach_landscape")
     if not isinstance(breach, dict) or metrics.get("total_incidents", 0) <= 0:
@@ -304,13 +313,17 @@ def apply_metrics_to_stat_cards(analysis_result: dict, metrics: dict) -> str:
     # Full when the live feeds gave no count, or the dataset is at least as complete.
     full = current_total is None or dataset_total >= current_total
 
-    values_by_label: dict[str, str] = {}
+    # Impact ties to the count actually displayed, so it is always internally consistent
+    # (count x per-breach average) whether the count is the dataset's or the live feed's.
+    displayed_total = dataset_total if full else int(current_total)
+    impact_millions = round(displayed_total * metrics.get("avg_cost_per_breach_usd", 0.0) / 1_000_000)
+
+    values_by_label: dict[str, str] = {"est. total impact": f"${impact_millions}M"}
     if full:
         values_by_label["total incidents"] = str(metrics["total_incidents"])
         values_by_label["ransomware"] = str(metrics["ransomware_count"])
-    if metrics.get("records_known"):
-        values_by_label["records exposed"] = f"{metrics['records_exposed_millions']}M"
-        values_by_label["est. total impact"] = f"${metrics['est_impact_millions']}M"
+        if metrics.get("records_known"):
+            values_by_label["records exposed"] = f"{metrics['records_exposed_millions']}M"
 
     for card in cards:
         label = str(card.get("label", "")).strip().lower()

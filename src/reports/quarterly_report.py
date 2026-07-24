@@ -212,7 +212,9 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         from src.core.config import collector_config
 
         scoped = scope_breaches(records, period.start, period.end)
-        metrics = compute_breach_metrics(scoped, cost_per_record_usd=collector_config.breach_cost_per_record_usd)
+        metrics = compute_breach_metrics(
+            scoped, default_cost_per_breach_usd=collector_config.breach_cost_per_breach_usd
+        )
         mode = apply_metrics_to_stat_cards(analysis_result, metrics)
         if mode == "none":
             return
@@ -227,10 +229,11 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             return
 
         if mode == "enrich":
-            # Dataset lags the live feeds — kept live counts, filled only $/records.
+            # Dataset lags the live feeds — kept live counts; Est. Impact rescaled to the
+            # live count; Records Exposed left as-is (dataset records would undercount).
             logger.info(
                 f"Dataset had fewer incidents ({n}) than the live feeds already found; "
-                "kept live counts and enriched records/impact only (dataset lag)."
+                "kept live counts and rescaled Est. Impact to the live count (dataset lag)."
             )
         else:
             # Authoritative dataset -> ground the named incident examples from it too.
@@ -238,13 +241,12 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             if grounded_types:
                 breach["incidents_by_type"] = grounded_types
 
-        if metrics.get("records_known"):
-            breach["stat_methodology"] = (
-                "Est. Total Impact estimated as records x per-industry cost/record "
-                f"(IBM Cost of a Data Breach; e.g. healthcare ~$408, manufacturing ~$200; "
-                f"${collector_config.breach_cost_per_record_usd:.0f} where sector is unknown). "
-                "Counts and records exposed are from date-stamped breach disclosures (VCDB/HHS/HIBP)."
-            )
+        breach["stat_methodology"] = (
+            "Est. Total Impact estimated per incident as the sector-weighted average total "
+            "cost per breach (IBM Cost of a Data Breach; e.g. healthcare ~$9.8M, "
+            "manufacturing ~$4.7M), summed over the quarter's incidents. Counts and records "
+            "exposed are from date-stamped industry breach disclosures (VCDB/HHS)."
+        )
 
     def _calculate_quarter_info(self) -> None:
         """Establish the reporting period as an EXACT calendar quarter.

@@ -829,6 +829,7 @@ class TestQuarterlyRobustness:
             "breach_landscape": {
                 "stat_cards": [
                     {"label": "Total Incidents", "value": "20", "prior_value": "N/A", "change_pct": "N/A"},
+                    {"label": "Est. Total Impact", "value": "N/A", "prior_value": "N/A", "change_pct": "N/A"},
                     {"label": "Records Exposed", "value": "N/A", "prior_value": "N/A", "change_pct": "N/A"},
                 ],
                 "incidents_by_type": [],
@@ -837,7 +838,9 @@ class TestQuarterlyRobustness:
         generator.generate(analysis)
         cards = {c["label"]: c["value"] for c in analysis["breach_landscape"]["stat_cards"]}
         assert cards["Total Incidents"] == "20"  # not shrunk to 2
-        assert cards["Records Exposed"] == "1.5M"  # enriched from dataset
+        # Records Exposed left N/A in lag mode (an incomplete dataset would undercount);
+        # impact is rescaled to the live count (20 x ~$4.88M default per-breach).
+        assert cards["Est. Total Impact"] == "$98M"
 
     def test_breach_dataset_absent_leaves_values(self, generator):
         from src.core.reporting_period import make_period

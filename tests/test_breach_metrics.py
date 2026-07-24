@@ -58,42 +58,49 @@ class TestBucket:
 
 
 class TestCompute:
-    def test_counts_ransomware_and_records_and_impact(self):
+    def test_counts_and_records(self):
         recs = [
             _rec("A", "2026-04-01", itype="Ransomware", records=1_000_000),
             _rec("B", "2026-04-02", itype="Ransomware & Extortion", records=500_000),
             _rec("C", "2026-04-03", itype="Hacking", records=None),  # records unknown
         ]
-        m = compute_breach_metrics(recs, cost_per_record_usd=100.0)
+        m = compute_breach_metrics(recs)
         assert m["total_incidents"] == 3
         assert m["ransomware_count"] == 2
         assert m["records_exposed"] == 1_500_000
         assert m["records_known"] is True
-        assert m["est_impact_usd"] == 150_000_000
-        assert m["est_impact_millions"] == 150
         assert m["records_exposed_millions"] == 1.5
 
+    def test_impact_is_per_incident_not_per_record(self):
+        # A single mega-breach (100M records) must NOT explode the impact — it contributes
+        # one healthcare per-breach average (~$9.77M), not 100M x $/record.
+        recs = [_rec("Mega", "2026-04-01", records=100_000_000, sector="Healthcare")]
+        m = compute_breach_metrics(recs)
+        assert m["est_impact_usd"] == 9_770_000  # one breach, not 100M x rate
+        assert m["est_impact_millions"] == 10  # ~$10M, not tens of billions
+
     def test_impact_is_weighted_by_sector(self):
-        # 1M healthcare records @ $408 + 1M manufacturing @ $200 = $608M, not a flat rate.
+        # 1 healthcare ($9.77M) + 1 manufacturing ($4.73M) = $14.5M, summed per incident.
         recs = [
-            _rec("Hosp", "2026-04-01", records=1_000_000, sector="Healthcare"),
-            _rec("Factory", "2026-04-02", records=1_000_000, sector="Manufacturing"),
+            _rec("Hosp", "2026-04-01", records=1_000, sector="Healthcare"),
+            _rec("Factory", "2026-04-02", records=1_000, sector="Manufacturing"),
         ]
-        m = compute_breach_metrics(recs)  # default only used for unknown sectors
-        assert m["records_exposed"] == 2_000_000
-        assert m["est_impact_usd"] == 1_000_000 * 408 + 1_000_000 * 200
-        assert m["est_impact_millions"] == 608
+        m = compute_breach_metrics(recs)
+        assert m["est_impact_usd"] == 9_770_000 + 4_730_000
+        assert m["avg_cost_per_breach_usd"] == (9_770_000 + 4_730_000) / 2
 
     def test_unknown_sector_uses_default(self):
-        recs = [_rec("X", "2026-04-01", records=1_000_000, sector="")]
-        m = compute_breach_metrics(recs, cost_per_record_usd=165.0)
-        assert m["est_impact_usd"] == 1_000_000 * 165
+        recs = [_rec("X", "2026-04-01", records=1_000, sector="")]
+        m = compute_breach_metrics(recs, default_cost_per_breach_usd=4_880_000.0)
+        assert m["est_impact_usd"] == 4_880_000
 
     def test_no_known_records_flags_records_known_false(self):
         recs = [_rec("A", "2026-04-01", records=None)]
         m = compute_breach_metrics(recs)
         assert m["records_known"] is False
         assert m["records_exposed"] == 0
+        # Impact is still available (per-incident), independent of records.
+        assert m["est_impact_usd"] > 0
 
     def test_for_period_dedupes_then_buckets(self):
         recs = [
@@ -105,14 +112,14 @@ class TestCompute:
         assert m["total_incidents"] == 1
 
 
-def _metrics(total, ransomware=0, records=0, known=False, rec_m=0.0, imp_m=0):
+def _metrics(total, ransomware=0, records=0, known=False, rec_m=0.0, avg=5_000_000.0):
     return {
         "total_incidents": total,
         "ransomware_count": ransomware,
         "records_exposed": records,
         "records_known": known,
         "records_exposed_millions": rec_m,
-        "est_impact_millions": imp_m,
+        "avg_cost_per_breach_usd": avg,
     }
 
 
@@ -128,20 +135,20 @@ class TestApply:
                 ]
             }
         }
-        metrics = _metrics(12, ransomware=4, records=3_000_000, known=True, rec_m=3.0, imp_m=495)
+        metrics = _metrics(12, ransomware=4, records=3_000_000, known=True, rec_m=3.0, avg=5_000_000.0)
         assert apply_metrics_to_stat_cards(analysis, metrics) == "full"
         cards = {c["label"]: c["value"] for c in analysis["breach_landscape"]["stat_cards"]}
         assert cards["Total Incidents"] == "12"
         assert cards["Ransomware"] == "4"
         assert cards["Records Exposed"] == "3.0M"
-        assert cards["Est. Total Impact"] == "$495M"
+        assert cards["Est. Total Impact"] == "$60M"  # 12 incidents x $5M avg
 
     def test_apply_noop_when_no_incidents(self):
         analysis = {"breach_landscape": {"stat_cards": [{"label": "Total Incidents", "value": "N/A"}]}}
         assert apply_metrics_to_stat_cards(analysis, _metrics(0)) == "none"
         assert analysis["breach_landscape"]["stat_cards"][0]["value"] == "N/A"
 
-    def test_apply_leaves_dollar_cards_when_records_unknown(self):
+    def test_apply_leaves_records_when_unknown(self):
         analysis = {
             "breach_landscape": {
                 "stat_cards": [
@@ -155,10 +162,11 @@ class TestApply:
         assert cards["Total Incidents"] == "5"
         assert cards["Records Exposed"] == "N/A"  # untouched — never fabricated
 
-    # ----- #1: lag-aware grounding -----
+    # ----- #1: lag-aware grounding + impact tied to displayed count -----
 
-    def test_enrich_only_when_dataset_lags_live_count(self):
-        # Live feeds already found 20; dataset only has 3 (lag) -> keep counts, fill $/records.
+    def test_enrich_keeps_live_count_and_rescales_impact(self):
+        # Live feeds found 20; dataset only has 3 (lag) -> keep counts; impact = 20 x avg;
+        # Records Exposed NOT filled (dataset would undercount).
         analysis = {
             "breach_landscape": {
                 "stat_cards": [
@@ -169,13 +177,28 @@ class TestApply:
                 ]
             }
         }
-        metrics = _metrics(3, ransomware=1, records=2_000_000, known=True, rec_m=2.0, imp_m=330)
+        metrics = _metrics(3, ransomware=1, records=2_000_000, known=True, rec_m=2.0, avg=5_000_000.0)
         assert apply_metrics_to_stat_cards(analysis, metrics) == "enrich"
         cards = {c["label"]: c["value"] for c in analysis["breach_landscape"]["stat_cards"]}
         assert cards["Total Incidents"] == "20"  # live count preserved, not shrunk to 3
         assert cards["Ransomware"] == "6"  # preserved
-        assert cards["Records Exposed"] == "2.0M"  # enriched (live feeds lack this)
-        assert cards["Est. Total Impact"] == "$330M"
+        assert cards["Records Exposed"] == "N/A"  # not filled from an incomplete dataset
+        assert cards["Est. Total Impact"] == "$100M"  # 20 x $5M, tied to displayed count
+
+    def test_impact_never_explodes_on_mega_breach(self):
+        # Even with an enormous records figure, impact stays per-incident-sane.
+        analysis = {
+            "breach_landscape": {
+                "stat_cards": [
+                    {"label": "Total Incidents", "value": "N/A"},
+                    {"label": "Est. Total Impact", "value": "N/A"},
+                ]
+            }
+        }
+        metrics = _metrics(2, records=200_000_000, known=True, rec_m=200.0, avg=9_770_000.0)
+        apply_metrics_to_stat_cards(analysis, metrics)
+        cards = {c["label"]: c["value"] for c in analysis["breach_landscape"]["stat_cards"]}
+        assert cards["Est. Total Impact"] == "$20M"  # 2 x ~$9.77M, not tens of billions
 
     def test_full_when_dataset_at_least_as_complete(self):
         analysis = {"breach_landscape": {"stat_cards": [{"label": "Total Incidents", "value": "3"}]}}
@@ -194,10 +217,10 @@ class TestSectorMapping:
         assert naics_to_sector("99") == ""
 
     def test_cost_for_sector_fallback(self):
-        assert cost_for_sector("Healthcare") == 408.0
-        assert cost_for_sector("Manufacturing") == 200.0
-        assert cost_for_sector("", default=165.0) == 165.0
-        assert cost_for_sector("Unknownville", default=165.0) == 165.0
+        assert cost_for_sector("Healthcare") == 9_770_000.0
+        assert cost_for_sector("Manufacturing") == 4_730_000.0
+        assert cost_for_sector("", default=4_880_000.0) == 4_880_000.0
+        assert cost_for_sector("Unknownville", default=4_880_000.0) == 4_880_000.0
 
 
 class TestIncidentsByType:

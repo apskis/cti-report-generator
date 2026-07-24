@@ -83,7 +83,9 @@ class HIBPBreachCollector(BaseCollector):
 
     @property
     def enabled(self) -> bool:
-        return self.report_type == "quarterly"
+        # Off by default: HIBP is a global consumer/credential directory, not an industry
+        # peer source, and its mega-breaches distort the landscape. Opt in via config.
+        return self.report_type == "quarterly" and collector_config.breach_include_hibp
 
     @property
     def lookback_days(self) -> int:

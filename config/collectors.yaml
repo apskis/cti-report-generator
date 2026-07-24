@@ -55,6 +55,6 @@ collectors:
     quarterly_only: true
 
   - name: hibp_breach
-    description: "Have I Been Pwned - public breach directory with account-exposure counts (quarterly only)"
-    enabled: true
+    description: "Have I Been Pwned - global consumer/credential breach directory (opt-in; set breach_include_hibp)"
+    enabled: false  # off by default: not an industry peer source; also gated by breach_include_hibp
     quarterly_only: true

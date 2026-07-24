@@ -44,8 +44,14 @@ class CollectorConfig:
 
     # Breach-dataset collectors (date-stamped incidents that ground the breach stat cards).
     # URLs are overridable so the exact export/mirror can be pinned without a code change.
-    # IBM "Cost of a Data Breach": global avg ~$165/record; healthcare ~$408/record.
-    breach_cost_per_record_usd: float = 165.0
+    # Est. Total Impact is estimated PER INCIDENT (records x $/record explodes on
+    # mega-breaches): IBM "Cost of a Data Breach" avg total cost per breach ~$4.88M global,
+    # weighted by sector. This is the fallback for incidents of unknown sector.
+    breach_cost_per_breach_usd: float = 4_880_000.0
+    # HIBP is a global consumer/credential-dump directory, not an industry peer source, so
+    # it is EXCLUDED from the counted breach landscape by default. Enable to include it
+    # (broader but noisier, and its mega-breaches can dominate the totals).
+    breach_include_hibp: bool = False
     # VCDB: Verizon VERIS Community Database — combined JSON array of VERIS incident objects.
     vcdb_data_url: str = "https://raw.githubusercontent.com/vz-risk/VCDB/master/data/joined/vcdb.json"
     # NAICS 2-digit prefixes counted as relevant peers: 31-33 manufacturing, 54 professional/

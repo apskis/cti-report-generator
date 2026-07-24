@@ -707,3 +707,15 @@ class TestBreachCollectorsRegistered:
 
         assert VCDBCollector(mock_credentials, report_type="quarterly").enabled is True
         assert VCDBCollector(mock_credentials, report_type="weekly").enabled is False
+
+    def test_hibp_off_by_default_on_when_flag_set(self, mock_credentials, monkeypatch):
+        from types import SimpleNamespace
+
+        from src.collectors import hibp_breach_collector as mod
+        from src.collectors.hibp_breach_collector import HIBPBreachCollector
+
+        # Off by default (not an industry peer source; also mega-breaches dominate).
+        assert HIBPBreachCollector(mock_credentials, report_type="quarterly").enabled is False
+        # On when the operator opts in (collector_config is a frozen dataclass, so swap the ref).
+        monkeypatch.setattr(mod, "collector_config", SimpleNamespace(breach_include_hibp=True))
+        assert HIBPBreachCollector(mock_credentials, report_type="quarterly").enabled is True
