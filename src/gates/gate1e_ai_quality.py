@@ -180,6 +180,18 @@ def _validate_executive_summary_completeness(report: dict) -> list[str]:
     return warnings
 
 
+def _actor_matches_country(actor: dict, country_key: str) -> bool:
+    """True if a CrowdStrike actor is attributed to the given country.
+
+    The collector normalizes the raw API "origins" list into a "country" string, so
+    match on "country" and fall back to "origins" for robustness.
+    """
+    if not country_key:
+        return False
+    haystack = f"{actor.get('country', '')} {actor.get('origins', '')}".lower()
+    return country_key in haystack
+
+
 def _validate_geopolitical_threat_levels(report: dict, crowdstrike_data: list) -> list[str]:
     """Validate geopolitical threat levels match stated criteria."""
     issues = []
@@ -190,10 +202,12 @@ def _validate_geopolitical_threat_levels(report: dict, crowdstrike_data: list) -
         country = threat.get("name", "Unknown")
         threat_level = threat.get("level", "")
 
-        # Count actor groups for this country from CrowdStrike data
-        country_actors = [
-            actor for actor in crowdstrike_data if country.lower() in str(actor.get("origins", [])).lower()
-        ]
+        # Count actor groups for this country from CrowdStrike data. The collector
+        # normalizes the raw API "origins" list into a single "country" string, so match
+        # on "country" (falling back to "origins" for safety). Reading only "origins" made
+        # actor_count always 0 and produced false "unsupported HIGH" blocks.
+        country_key = country.lower().strip()
+        country_actors = [actor for actor in crowdstrike_data if _actor_matches_country(actor, country_key)]
 
         actor_count = len(country_actors)
 
