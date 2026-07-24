@@ -170,37 +170,101 @@ def breach_metrics_for_period(
     cost_per_record_usd: float = DEFAULT_COST_PER_RECORD_USD,
 ) -> dict[str, Any]:
     """Convenience: dedupe -> bucket to [start, end] -> compute metrics."""
-    scoped = bucket_to_period(dedupe_breaches(records), start, end)
-    return compute_breach_metrics(scoped, cost_per_record_usd=cost_per_record_usd)
+    return compute_breach_metrics(scope_breaches(records, start, end), cost_per_record_usd=cost_per_record_usd)
 
 
-def apply_metrics_to_stat_cards(analysis_result: dict, metrics: dict) -> bool:
-    """Overwrite the breach stat-card values with grounded dataset metrics.
+def scope_breaches(records: list[dict], start: date, end: date) -> list[dict]:
+    """Dedupe across sources, then keep only incidents within ``[start, end]``."""
+    return bucket_to_period(dedupe_breaches(records), start, end)
 
-    Only overrides when the dataset actually had incidents for the period
-    (``total_incidents > 0``); otherwise the AI's values (or honest N/A) stand. The
-    ``$``/records cards are only filled when at least one record carried a figure — never
-    fabricated. Returns True if the cards were grounded.
+
+def _parse_number(value: Any) -> float | None:
+    """Parse a stat value like ``"20"``, ``"1,000"``, ``"$1.2M"`` to a float, else None."""
+    if value is None:
+        return None
+    s = str(value).strip().upper()
+    if s in ("", "N/A", "NA", "—", "-"):
+        return None
+    s = s.replace(",", "").replace("$", "").rstrip("M").strip()
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def build_incidents_by_type(records: list[dict]) -> list[dict]:
+    """Group scoped incidents into an incidents-by-type table with real named examples.
+
+    Each entry: ``{type, current_count, prior_count, notable_example}``. The notable
+    example is the largest incident (by records) for that type, using the real
+    organization name — never a generic placeholder. ``prior_count`` is left "N/A"
+    (the anti-hallucination rule: prior figures come only from stored history).
+    """
+    groups: dict[str, list[dict]] = {}
+    for r in records:
+        if not isinstance(r, dict):
+            continue
+        itype = str(r.get("incident_type", "")).strip() or "Unknown"
+        groups.setdefault(itype, []).append(r)
+
+    out = []
+    for itype, recs in sorted(groups.items(), key=lambda kv: len(kv[1]), reverse=True):
+        best = max(recs, key=lambda r: r.get("records_exposed") or 0)
+        org = str(best.get("organization", "")).strip() or "Undisclosed entity"
+        rec_n = best.get("records_exposed")
+        if isinstance(rec_n, (int, float)) and rec_n > 0:
+            example = f"{org}: {itype.lower()} affecting {int(rec_n):,} records"
+        else:
+            example = f"{org}: {itype.lower()} incident"
+        out.append(
+            {"type": itype, "current_count": len(recs), "prior_count": "N/A", "notable_example": example}
+        )
+    return out
+
+
+def apply_metrics_to_stat_cards(analysis_result: dict, metrics: dict) -> str:
+    """Ground the breach stat-card values with dataset metrics, lag-aware.
+
+    Returns the grounding mode:
+      - ``"none"``   — dataset had no incidents for the period; cards untouched.
+      - ``"full"``   — dataset is at least as complete as the current count, so all
+        cards (counts + records + impact) come from the dataset (authoritative). This
+        is the normal case for historical/backfill quarters.
+      - ``"enrich"`` — the dataset has FEWER incidents than the live feeds already found
+        (dataset lag), so only the figures the live feeds can't provide (Records Exposed,
+        Est. Total Impact) are filled; the incident/ransomware counts are left as-is so a
+        lagging dataset never shrinks the current quarter's numbers.
+
+    The ``$``/records cards are only filled when a real records figure exists — never
+    fabricated.
     """
     breach = analysis_result.get("breach_landscape")
     if not isinstance(breach, dict) or metrics.get("total_incidents", 0) <= 0:
-        return False
+        return "none"
 
-    records_known = metrics.get("records_known")
-    values_by_label = {
-        "total incidents": str(metrics["total_incidents"]),
-        "ransomware": str(metrics["ransomware_count"]),
-    }
-    if records_known:
+    cards = [c for c in (breach.get("stat_cards") or []) if isinstance(c, dict)]
+    current_total = None
+    for card in cards:
+        if "total incidents" in str(card.get("label", "")).strip().lower():
+            current_total = _parse_number(card.get("value"))
+            break
+
+    dataset_total = metrics["total_incidents"]
+    # Full when the live feeds gave no count, or the dataset is at least as complete.
+    full = current_total is None or dataset_total >= current_total
+
+    values_by_label: dict[str, str] = {}
+    if full:
+        values_by_label["total incidents"] = str(metrics["total_incidents"])
+        values_by_label["ransomware"] = str(metrics["ransomware_count"])
+    if metrics.get("records_known"):
         values_by_label["records exposed"] = f"{metrics['records_exposed_millions']}M"
         values_by_label["est. total impact"] = f"${metrics['est_impact_millions']}M"
 
-    for card in breach.get("stat_cards") or []:
-        if not isinstance(card, dict):
-            continue
+    for card in cards:
         label = str(card.get("label", "")).strip().lower()
         for key, value in values_by_label.items():
             if key in label:
                 card["value"] = value
                 break
-    return True
+    return "full" if full else "enrich"

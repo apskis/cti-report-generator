@@ -203,27 +203,47 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         period = getattr(self, "reporting_period", None)
         if not records or period is None:
             return
-        from src.core.breach_metrics import apply_metrics_to_stat_cards, breach_metrics_for_period
+        from src.core.breach_metrics import (
+            apply_metrics_to_stat_cards,
+            build_incidents_by_type,
+            compute_breach_metrics,
+            scope_breaches,
+        )
         from src.core.config import collector_config
 
-        metrics = breach_metrics_for_period(
-            records, period.start, period.end, cost_per_record_usd=collector_config.breach_cost_per_record_usd
+        scoped = scope_breaches(records, period.start, period.end)
+        metrics = compute_breach_metrics(scoped, cost_per_record_usd=collector_config.breach_cost_per_record_usd)
+        mode = apply_metrics_to_stat_cards(analysis_result, metrics)
+        if mode == "none":
+            return
+
+        n = metrics["total_incidents"]
+        logger.info(
+            f"Grounded breach stat cards ({mode}) from {n} dataset incidents "
+            f"(records: {metrics['records_exposed']:,}, est. impact: ${metrics['est_impact_millions']}M)"
         )
-        grounded = apply_metrics_to_stat_cards(analysis_result, metrics)
-        if grounded:
-            n = metrics["total_incidents"]
+        breach = analysis_result.get("breach_landscape")
+        if not isinstance(breach, dict):
+            return
+
+        if mode == "enrich":
+            # Dataset lags the live feeds — kept live counts, filled only $/records.
             logger.info(
-                f"Grounded breach stat cards from {n} dataset incidents "
-                f"(records: {metrics['records_exposed']:,}, est. impact: ${metrics['est_impact_millions']}M)"
+                f"Dataset had fewer incidents ({n}) than the live feeds already found; "
+                "kept live counts and enriched records/impact only (dataset lag)."
             )
-            if metrics.get("records_known"):
-                breach = analysis_result.get("breach_landscape")
-                if isinstance(breach, dict):
-                    breach["stat_methodology"] = (
-                        f"Est. Total Impact estimated at "
-                        f"${collector_config.breach_cost_per_record_usd:.0f}/record (IBM Cost of a Data Breach); "
-                        "counts and records exposed are from date-stamped breach disclosures (VCDB/HHS/HIBP)."
-                    )
+        else:
+            # Authoritative dataset -> ground the named incident examples from it too.
+            grounded_types = build_incidents_by_type(scoped)
+            if grounded_types:
+                breach["incidents_by_type"] = grounded_types
+
+        if metrics.get("records_known"):
+            breach["stat_methodology"] = (
+                f"Est. Total Impact estimated at "
+                f"${collector_config.breach_cost_per_record_usd:.0f}/record (IBM Cost of a Data Breach); "
+                "counts and records exposed are from date-stamped breach disclosures (VCDB/HHS/HIBP)."
+            )
 
     def _calculate_quarter_info(self) -> None:
         """Establish the reporting period as an EXACT calendar quarter.

@@ -84,8 +84,19 @@ class TestCompute:
         assert m["total_incidents"] == 1
 
 
+def _metrics(total, ransomware=0, records=0, known=False, rec_m=0.0, imp_m=0):
+    return {
+        "total_incidents": total,
+        "ransomware_count": ransomware,
+        "records_exposed": records,
+        "records_known": known,
+        "records_exposed_millions": rec_m,
+        "est_impact_millions": imp_m,
+    }
+
+
 class TestApply:
-    def test_apply_overrides_card_values(self):
+    def test_apply_full_overrides_card_values(self):
         analysis = {
             "breach_landscape": {
                 "stat_cards": [
@@ -96,15 +107,8 @@ class TestApply:
                 ]
             }
         }
-        metrics = {
-            "total_incidents": 12,
-            "ransomware_count": 4,
-            "records_exposed": 3_000_000,
-            "records_known": True,
-            "records_exposed_millions": 3.0,
-            "est_impact_millions": 495,
-        }
-        assert apply_metrics_to_stat_cards(analysis, metrics) is True
+        metrics = _metrics(12, ransomware=4, records=3_000_000, known=True, rec_m=3.0, imp_m=495)
+        assert apply_metrics_to_stat_cards(analysis, metrics) == "full"
         cards = {c["label"]: c["value"] for c in analysis["breach_landscape"]["stat_cards"]}
         assert cards["Total Incidents"] == "12"
         assert cards["Ransomware"] == "4"
@@ -113,7 +117,7 @@ class TestApply:
 
     def test_apply_noop_when_no_incidents(self):
         analysis = {"breach_landscape": {"stat_cards": [{"label": "Total Incidents", "value": "N/A"}]}}
-        assert apply_metrics_to_stat_cards(analysis, {"total_incidents": 0}) is False
+        assert apply_metrics_to_stat_cards(analysis, _metrics(0)) == "none"
         assert analysis["breach_landscape"]["stat_cards"][0]["value"] == "N/A"
 
     def test_apply_leaves_dollar_cards_when_records_unknown(self):
@@ -125,8 +129,54 @@ class TestApply:
                 ]
             }
         }
-        metrics = {"total_incidents": 5, "ransomware_count": 1, "records_known": False}
-        assert apply_metrics_to_stat_cards(analysis, metrics) is True
+        assert apply_metrics_to_stat_cards(analysis, _metrics(5, ransomware=1, known=False)) == "full"
         cards = {c["label"]: c["value"] for c in analysis["breach_landscape"]["stat_cards"]}
         assert cards["Total Incidents"] == "5"
         assert cards["Records Exposed"] == "N/A"  # untouched — never fabricated
+
+    # ----- #1: lag-aware grounding -----
+
+    def test_enrich_only_when_dataset_lags_live_count(self):
+        # Live feeds already found 20; dataset only has 3 (lag) -> keep counts, fill $/records.
+        analysis = {
+            "breach_landscape": {
+                "stat_cards": [
+                    {"label": "Total Incidents", "value": "20"},
+                    {"label": "Ransomware", "value": "6"},
+                    {"label": "Records Exposed", "value": "N/A"},
+                    {"label": "Est. Total Impact", "value": "N/A"},
+                ]
+            }
+        }
+        metrics = _metrics(3, ransomware=1, records=2_000_000, known=True, rec_m=2.0, imp_m=330)
+        assert apply_metrics_to_stat_cards(analysis, metrics) == "enrich"
+        cards = {c["label"]: c["value"] for c in analysis["breach_landscape"]["stat_cards"]}
+        assert cards["Total Incidents"] == "20"  # live count preserved, not shrunk to 3
+        assert cards["Ransomware"] == "6"  # preserved
+        assert cards["Records Exposed"] == "2.0M"  # enriched (live feeds lack this)
+        assert cards["Est. Total Impact"] == "$330M"
+
+    def test_full_when_dataset_at_least_as_complete(self):
+        analysis = {"breach_landscape": {"stat_cards": [{"label": "Total Incidents", "value": "3"}]}}
+        assert apply_metrics_to_stat_cards(analysis, _metrics(9)) == "full"
+        assert analysis["breach_landscape"]["stat_cards"][0]["value"] == "9"
+
+
+class TestIncidentsByType:
+    def test_groups_and_names_real_examples(self):
+        recs = [
+            {"organization": "Covenant Health", "date": "2026-04-01", "incident_type": "Ransomware",
+             "records_exposed": 1_200_000},
+            {"organization": "Mercy", "date": "2026-04-02", "incident_type": "Ransomware", "records_exposed": 50_000},
+            {"organization": "LabCorp", "date": "2026-04-03", "incident_type": "Hacking", "records_exposed": None},
+        ]
+        from src.core.breach_metrics import build_incidents_by_type
+
+        out = build_incidents_by_type(recs)
+        ransom = next(r for r in out if r["type"] == "Ransomware")
+        assert ransom["current_count"] == 2
+        assert ransom["prior_count"] == "N/A"
+        assert "Covenant Health" in ransom["notable_example"]  # largest by records
+        assert "1,200,000" in ransom["notable_example"]
+        hacking = next(r for r in out if r["type"] == "Hacking")
+        assert "LabCorp" in hacking["notable_example"]

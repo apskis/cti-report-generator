@@ -788,6 +788,57 @@ class TestQuarterlyRobustness:
         assert cards["Records Exposed"] == "1.5M"  # 1.0M + 0.5M
         assert cards["Est. Total Impact"] != "N/A"  # records x per-record cost
 
+    def test_breach_dataset_grounds_incidents_by_type_examples(self, generator):
+        from src.core.reporting_period import make_period
+
+        generator.set_reporting_period(make_period(2026, "Q2"))
+        generator.set_breach_dataset(
+            [
+                {"organization": "Covenant Health", "date": "2026-04-10", "incident_type": "Ransomware",
+                 "records_exposed": 1_200_000, "source": "HHS"},
+                {"organization": "LabCorp", "date": "2026-05-02", "incident_type": "Hacking",
+                 "records_exposed": 500_000, "source": "HIBP"},
+            ]
+        )
+        analysis = {
+            "breach_landscape": {
+                "stat_cards": [{"label": "Total Incidents", "value": "N/A", "prior_value": "N/A", "change_pct": "N/A"}],
+                "incidents_by_type": [{"type": "Placeholder", "current_count": 99, "notable_example": "x"}],
+            }
+        }
+        generator.generate(analysis)
+        text = _get_document_text(generator.doc)
+        assert "Covenant Health" in text  # real named example from the dataset
+        types = [row["type"] for row in analysis["breach_landscape"]["incidents_by_type"]]
+        assert "Placeholder" not in types  # AI table replaced by grounded incidents
+
+    def test_breach_dataset_lag_keeps_live_count(self, generator):
+        # Live/AI count is 20; dataset has only 2 in-period incidents -> keep 20, enrich $/records.
+        from src.core.reporting_period import make_period
+
+        generator.set_reporting_period(make_period(2026, "Q2"))
+        generator.set_breach_dataset(
+            [
+                {"organization": "A", "date": "2026-04-10", "incident_type": "Ransomware",
+                 "records_exposed": 1_000_000, "source": "HHS"},
+                {"organization": "B", "date": "2026-05-10", "incident_type": "Hacking",
+                 "records_exposed": 500_000, "source": "HIBP"},
+            ]
+        )
+        analysis = {
+            "breach_landscape": {
+                "stat_cards": [
+                    {"label": "Total Incidents", "value": "20", "prior_value": "N/A", "change_pct": "N/A"},
+                    {"label": "Records Exposed", "value": "N/A", "prior_value": "N/A", "change_pct": "N/A"},
+                ],
+                "incidents_by_type": [],
+            }
+        }
+        generator.generate(analysis)
+        cards = {c["label"]: c["value"] for c in analysis["breach_landscape"]["stat_cards"]}
+        assert cards["Total Incidents"] == "20"  # not shrunk to 2
+        assert cards["Records Exposed"] == "1.5M"  # enriched from dataset
+
     def test_breach_dataset_absent_leaves_values(self, generator):
         from src.core.reporting_period import make_period
 
