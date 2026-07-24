@@ -21,6 +21,19 @@ from .models import GateInput, GateResult
 logger = logging.getLogger(__name__)
 
 
+def _extract_leading_int(value: Any) -> int | None:
+    """Return a clean integer count from a stat value, or ``None`` if it is qualitative.
+
+    Stat-card values are sometimes qualitative (``"N/A"``, ``"0 verified"``,
+    ``"Not reported"``); those carry no clean count to reconcile and must not crash or
+    warn (and a value like "0 verified" must NOT be read as 0 and then flagged against the
+    duplicate-laden raw Intel471 count). Only a purely numeric value (``"20"``,
+    ``"1,234"``) yields an integer.
+    """
+    s = str(value).strip().replace(",", "")
+    return int(s) if s.isdigit() else None
+
+
 def _field(obj: Any, name: str):
     """Read a field from a gate payload item that may be a dataclass or a dict.
 
@@ -458,30 +471,25 @@ def _validate_quarterly_statistics(gate_input: GateInput) -> GateResult:
 
         if total_incidents_card:
             raw_value = str(total_incidents_card.get("value", "0")).strip()
-            if raw_value.upper() in ("", "N/A", "NA", "—", "-"):
-                # "N/A" is a legitimate value (e.g. no prior-quarter baseline); skip
-                # the count check rather than emit an alarming warning.
+            reported_count = _extract_leading_int(raw_value)
+            if reported_count is None:
+                # Qualitative values like "N/A" or "0 verified" carry no clean count to
+                # reconcile; skip the check rather than emit an alarming warning.
                 logger.info(f"Breach count validation skipped: non-numeric value {raw_value!r}")
             else:
-                try:
-                    reported_count = int(raw_value.replace(",", ""))
-                    variance = abs(reported_count - actual_breach_count)
-
-                    if variance > 5:  # Allow small variance for data filtering
-                        warnings.append(
-                            f"Breach count variance: report shows {reported_count} incidents, "
-                            f"Intel471 data contains {actual_breach_count} breach alerts (variance: {variance})"
-                        )
-
-                    validations.append(
-                        {
-                            "check": "breach_count_accuracy",
-                            "passed": variance <= 5,
-                            "details": f"Reported: {reported_count}, Actual: {actual_breach_count}, Variance: {variance}",
-                        }
+                variance = abs(reported_count - actual_breach_count)
+                if variance > 5:  # Allow small variance for data filtering
+                    warnings.append(
+                        f"Breach count variance: report shows {reported_count} incidents, "
+                        f"Intel471 data contains {actual_breach_count} breach alerts (variance: {variance})"
                     )
-                except (ValueError, AttributeError) as e:
-                    logger.warning(f"Could not validate breach count: {e}")
+                validations.append(
+                    {
+                        "check": "breach_count_accuracy",
+                        "passed": variance <= 5,
+                        "details": f"Reported: {reported_count}, Actual: {actual_breach_count}, Variance: {variance}",
+                    }
+                )
 
     # NEW VALIDATION 5: Quarter-over-quarter changes have proper signs
     if gate5_result and gate5_result.status == "COMPLETE":

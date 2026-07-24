@@ -708,6 +708,23 @@ class TestBreachCollectorsRegistered:
         assert VCDBCollector(mock_credentials, report_type="quarterly").enabled is True
         assert VCDBCollector(mock_credentials, report_type="weekly").enabled is False
 
+    @pytest.mark.asyncio
+    async def test_dataset_source_reads_local_file(self, tmp_path):
+        from src.collectors.dataset_source import fetch_dataset_text
+
+        p = tmp_path / "vcdb.json"
+        p.write_text('{"ok": true}', encoding="utf-8")
+        # A local path is read directly (no network) — the reliable way to pin a dataset.
+        assert await fetch_dataset_text(str(p), headers={}) == '{"ok": true}'
+        assert await fetch_dataset_text(f"file://{p}", headers={}) == '{"ok": true}'
+
+    @pytest.mark.asyncio
+    async def test_dataset_source_missing_local_file_returns_none(self, tmp_path):
+        from src.collectors.dataset_source import fetch_dataset_text
+
+        # A non-existent local path is treated as "no data", not a crash.
+        assert await fetch_dataset_text(str(tmp_path / "nope.json"), headers={}) is None
+
     def test_hibp_off_by_default_on_when_flag_set(self, mock_credentials, monkeypatch):
         from types import SimpleNamespace
 

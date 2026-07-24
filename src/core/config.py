@@ -43,7 +43,10 @@ class CollectorConfig:
     )
 
     # Breach-dataset collectors (date-stamped incidents that ground the breach stat cards).
-    # URLs are overridable so the exact export/mirror can be pinned without a code change.
+    # Each source may be a URL *or a local file path* (public dataset endpoints are often
+    # unstable — VCDB has no single stable combined-JSON URL, and the HHS portal is a JSF
+    # app, not a clean CSV API — so downloading the data once and pinning a local path is
+    # the most reliable operation). A local path or file:// URL is read directly from disk.
     # Est. Total Impact is estimated PER INCIDENT (records x $/record explodes on
     # mega-breaches): IBM "Cost of a Data Breach" avg total cost per breach ~$4.88M global,
     # weighted by sector. This is the fallback for incidents of unknown sector.

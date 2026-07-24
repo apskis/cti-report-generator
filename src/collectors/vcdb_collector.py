@@ -16,9 +16,8 @@ import json
 import logging
 from typing import Any
 
-import aiohttp
-
 from src.collectors.base import BaseCollector
+from src.collectors.dataset_source import fetch_dataset_text
 from src.core.breach_metrics import filter_records_to_window, naics_to_sector
 from src.core.config import collector_config
 from src.core.models import CollectorResult
@@ -136,20 +135,15 @@ class VCDBCollector(BaseCollector):
     async def collect(self, report_type: str = "quarterly") -> CollectorResult:
         url = collector_config.vcdb_data_url
         prefixes = collector_config.vcdb_relevant_naics_prefixes
+        text = await fetch_dataset_text(url, headers=_HEADERS)
+        if text is None:
+            return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
         try:
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=45), headers=_HEADERS
-            ) as session:
-                async with session.get(url) as resp:
-                    if resp.status != 200:
-                        logger.warning(f"VCDB: HTTP {resp.status} from {url}; skipping")
-                        return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
-                    text = await resp.text()
             payload = json.loads(text)
             records = parse_vcdb(payload, prefixes)
             records = filter_records_to_window(records, self.collection_window)
             logger.info(f"VCDB: {len(records)} relevant incidents")
             return CollectorResult(source=self.source_name, success=True, data=records, record_count=len(records))
         except Exception as e:
-            logger.warning(f"VCDB collection failed (non-critical): {e}")
+            logger.warning(f"VCDB parse failed (non-critical): {e}")
             return CollectorResult(source=self.source_name, success=False, data=[], error=str(e), record_count=0)

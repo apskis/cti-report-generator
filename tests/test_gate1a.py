@@ -170,6 +170,30 @@ def test_quarterly_na_value_does_not_warn_on_breach_count():
     assert checks["stat_cards_have_signs"]["passed"] is True
 
 
+def test_quarterly_qualitative_incident_value_does_not_crash():
+    # The AI sometimes reports a qualitative count like "0 verified" (when the raw breach
+    # alerts are duplicates of one report). It must skip the count check cleanly — not
+    # raise int() and warn, and not fabricate a variance against the raw alert count.
+    gi = _quarterly_input_with_stat_cards(
+        [{"label": "Total Incidents", "value": "0 verified", "change_pct": "N/A"}]
+    )
+    result = run(gi, llm_client=None, report_type="QUARTERLY")
+    assert result.status == "COMPLETE"
+    checks = {v["check"]: v for v in result.payload["validations"]}
+    assert "breach_count_accuracy" not in checks  # skipped, not failed
+
+
+def test_extract_leading_int():
+    from src.gates.gate1a_statistics import _extract_leading_int
+
+    assert _extract_leading_int("20") == 20
+    assert _extract_leading_int("1,234") == 1234
+    assert _extract_leading_int("0 verified") is None  # qualitative -> skip
+    assert _extract_leading_int("N/A") is None
+    assert _extract_leading_int("Not reported") is None
+    assert _extract_leading_int("$120M") is None
+
+
 def test_quarterly_unsigned_numeric_change_still_flagged():
     # A real numeric delta with no +/- sign is still a defect.
     gi = _quarterly_input_with_stat_cards(

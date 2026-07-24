@@ -21,6 +21,17 @@ from .models import GateInput, GateResult
 
 logger = logging.getLogger(__name__)
 
+
+def _clean_int(value: Any) -> int | None:
+    """Return a clean integer count from a stat value, or ``None`` if it is qualitative.
+
+    Qualitative values ("N/A", "0 verified", "Not reported") carry no count to reconcile
+    and must not crash/warn; only a purely numeric value yields an integer.
+    """
+    s = str(value).strip().replace(",", "")
+    return int(s) if s.isdigit() else None
+
+
 # Forbidden generic terms
 FORBIDDEN_TERMS = [
     "pharma manufacturer",
@@ -216,27 +227,24 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
         # Verify total incidents matches
         if "Total Incidents" in label or "Incidents" in label:
             raw_value = str(value).strip()
-            if raw_value.upper() in ("", "N/A", "NA", "—", "-"):
-                # "N/A" is legitimate (e.g. no prior-quarter baseline); nothing to reconcile.
+            reported = _clean_int(raw_value)
+            if reported is None:
+                # Qualitative values ("N/A", "0 verified", "Not reported") carry no clean
+                # count to reconcile; skip rather than warn.
                 logger.info(f"   Count check skipped: non-numeric value {raw_value!r}")
             else:
-                try:
-                    reported = int(raw_value.replace(",", ""))
-                    variance = abs(reported - actual_breach_count)
+                variance = abs(reported - actual_breach_count)
+                logger.info(f"   Reported: {reported}")
+                logger.info(f"   Actual in data: {actual_breach_count}")
+                logger.info(f"   Variance: {variance}")
 
-                    logger.info(f"   Reported: {reported}")
-                    logger.info(f"   Actual in data: {actual_breach_count}")
-                    logger.info(f"   Variance: {variance}")
-
-                    if variance > 5:
-                        stats_issues.append(
-                            f"⚠️  Total Incidents mismatch: Report shows {reported}, data has {actual_breach_count} (variance: {variance})"
-                        )
-                        logger.warning("   ⚠️  VARIANCE EXCEEDS THRESHOLD (>5)")
-                    else:
-                        logger.info("   ✓ Count matches data")
-                except ValueError:
-                    logger.warning(f"   ⚠️  Could not parse value: {value}")
+                if variance > 5:
+                    stats_issues.append(
+                        f"⚠️  Total Incidents mismatch: Report shows {reported}, data has {actual_breach_count} (variance: {variance})"
+                    )
+                    logger.warning("   ⚠️  VARIANCE EXCEEDS THRESHOLD (>5)")
+                else:
+                    logger.info("   ✓ Count matches data")
 
         # Verify change_pct has proper sign. "N/A" (no prior-quarter baseline) and "0%"
         # legitimately carry no sign, so only flag a real numeric delta.
