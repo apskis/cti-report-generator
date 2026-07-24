@@ -405,6 +405,15 @@ class TestQuarterlyReportGenerator:
         assert filename.startswith("CTI_Quarterly_Strategic_Brief_")
         assert filename.endswith(".docx")
 
+    def test_get_filename_uses_quarter_not_week(self, generator):
+        """A pinned period names the file by quarter (Q2_2026), never by ISO week."""
+        from src.core.reporting_period import make_period
+
+        generator.set_reporting_period(make_period(2026, "Q2"))
+        filename = generator.get_filename()
+        assert filename == "CTI_Quarterly_Strategic_Brief_Q2_2026.docx"
+        assert "Week" not in filename
+
     def test_quarterly_registered(self):
         """QuarterlyReportGenerator should be registered."""
         assert "quarterly" in REPORT_REGISTRY

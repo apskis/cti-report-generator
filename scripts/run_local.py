@@ -1267,7 +1267,7 @@ Examples:
     parser.add_argument("--real", action="store_true", help="Use REAL data from APIs (requires Key Vault access)")
 
     parser.add_argument(
-        "--output", "-o", default=".", help="Output directory for local generation (default: current directory)"
+        "--output", "-o", default="reports", help="Output directory for local generation (default: ./reports)"
     )
 
     parser.add_argument("--debug", action="store_true", help="Enable debug mode with verbose logging output")

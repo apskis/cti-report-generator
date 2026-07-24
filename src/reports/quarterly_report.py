@@ -66,6 +66,20 @@ class QuarterlyReportGenerator(BaseReportGenerator):
     def filename_prefix(self) -> str:
         return "CTI_Quarterly_Strategic_Brief"
 
+    def get_filename(self, report_week_start: datetime = None) -> str:
+        """Name quarterly reports by their calendar quarter, not the ISO week.
+
+        A quarterly brief covers a whole quarter, so ``Week30`` is meaningless in the
+        name. Use the pinned reporting period to produce e.g.
+        ``CTI_Quarterly_Strategic_Brief_Q2_2026.docx``. Falls back to the base
+        week-based name only if no period was resolved (should not happen in practice).
+        """
+        period = getattr(self, "reporting_period", None)
+        if period is None:
+            return super().get_filename(report_week_start=report_week_start)
+        mock_suffix = "_MOCK" if self.use_mock_data else ""
+        return f"{self.filename_prefix}_Q{period.quarter}_{period.year}{mock_suffix}.docx"
+
     def generate(self, analysis_result: dict[str, Any]) -> Document:
         """
         Generate the quarterly strategic report document.
