@@ -19,7 +19,7 @@ from typing import Any
 import aiohttp
 
 from src.collectors.base import BaseCollector
-from src.core.breach_metrics import filter_records_to_window
+from src.core.breach_metrics import filter_records_to_window, naics_to_sector
 from src.core.config import collector_config
 from src.core.models import CollectorResult
 
@@ -90,7 +90,8 @@ def parse_vcdb(payload: Any, naics_prefixes: tuple = ()) -> list[dict[str, Any]]
         if not isinstance(inc, dict):
             continue
         victim = inc.get("victim") or {}
-        if not _relevant_industry(victim.get("industry"), naics_prefixes):
+        industry = victim.get("industry")
+        if not _relevant_industry(industry, naics_prefixes):
             continue
         date_str = _veris_date(inc.get("timeline") or {})
         if not date_str:
@@ -107,6 +108,7 @@ def parse_vcdb(payload: Any, naics_prefixes: tuple = ()) -> list[dict[str, Any]]
                 "date": date_str,
                 "incident_type": _veris_incident_type(inc.get("action") or {}),
                 "records_exposed": records,
+                "sector": naics_to_sector(industry),
                 "source": "VCDB",
                 "summary": str(inc.get("summary", ""))[:300],
                 "url": "",

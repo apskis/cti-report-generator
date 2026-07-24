@@ -65,6 +65,7 @@ def parse_hibp(payload: Any) -> list[dict[str, Any]]:
                 "date": date_str,
                 "incident_type": _hibp_incident_type(b),
                 "records_exposed": records,
+                "sector": "Technology",  # HIBP breaches are overwhelmingly online-service/tech
                 "source": "HIBP",
                 "summary": str(b.get("Description", ""))[:300],
                 "url": f"https://{b.get('Domain')}" if b.get("Domain") else "",

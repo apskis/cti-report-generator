@@ -630,6 +630,7 @@ class TestVCDBParser:
         assert r["date"] == "2026-04-12"
         assert r["incident_type"] == "Ransomware"
         assert r["records_exposed"] == 250000
+        assert r["sector"] == "Healthcare"  # NAICS 622 -> healthcare (weights the $ estimate)
         assert r["source"] == "VCDB"
 
     def test_no_industry_filter_keeps_all(self):
@@ -660,6 +661,7 @@ class TestHHSParser:
         assert out[0]["date"] == "2026-04-15"
         assert out[0]["incident_type"] == "Ransomware"
         assert out[0]["records_exposed"] == 1200000
+        assert out[0]["sector"] == "Healthcare"
         assert out[1]["incident_type"] == "Unauthorized Access"
 
     def test_empty_csv_is_empty(self):
@@ -684,6 +686,7 @@ class TestHIBPParser:
         assert r["date"] == "2026-04-20"
         assert r["records_exposed"] == 800000
         assert r["incident_type"] == "Data Exposure"
+        assert r["sector"] == "Technology"
         assert r["url"] == "https://acme.com"
 
     def test_ransomware_from_description(self):

@@ -87,6 +87,7 @@ def parse_hhs_csv(text: str) -> list[dict[str, Any]]:
                 "date": date_iso,
                 "incident_type": _classify_hhs_type(row.get(_COL_TYPE, "")),
                 "records_exposed": records,
+                "sector": "Healthcare",  # HHS OCR portal is healthcare by definition
                 "source": "HHS",
                 "summary": (row.get(_COL_TYPE, "") or "").strip(),
                 "url": "",

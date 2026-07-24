@@ -29,11 +29,53 @@ from datetime import date, datetime
 from typing import Any
 
 # IBM "Cost of a Data Breach" per-record figures are the basis for the ESTIMATED impact.
-# The global average is ~$165/record; healthcare (most relevant to a life-sciences customer)
-# runs higher (~$400+/record). Kept configurable via CollectorConfig; this is the fallback.
+# The global average is ~$165/record; some industries run materially higher. Kept
+# configurable via CollectorConfig; this is the fallback for records of unknown sector.
 DEFAULT_COST_PER_RECORD_USD = 165.0
 
+# Approximate per-record cost by sector (IBM Cost of a Data Breach, recent editions). A
+# healthcare-heavy peer set (which an HHS-sourced life-sciences landscape is) would be
+# understated by the flat global average, so the dollar estimate is weighted per incident
+# using the incident's sector, falling back to the global default when sector is unknown.
+SECTOR_COST_PER_RECORD_USD = {
+    "Healthcare": 408.0,
+    "Financial": 336.0,
+    "Pharmaceuticals": 298.0,
+    "Technology": 292.0,
+    "Professional/Scientific": 288.0,
+    "Energy": 262.0,
+    "Manufacturing": 200.0,
+    "Public": 168.0,
+}
+
 _RANSOMWARE_MARKERS = ("ransom", "extortion")
+
+
+def cost_for_sector(sector: str, default: float = DEFAULT_COST_PER_RECORD_USD) -> float:
+    """Per-record cost for a sector label, falling back to ``default`` when unknown."""
+    return SECTOR_COST_PER_RECORD_USD.get((sector or "").strip(), default)
+
+
+def naics_to_sector(naics: Any) -> str:
+    """Map a VERIS/NAICS industry code to a coarse sector label (``""`` if unknown)."""
+    code = str(naics or "").strip()
+    if not code:
+        return ""
+    if code.startswith("3254"):  # pharmaceutical & medicine manufacturing
+        return "Pharmaceuticals"
+    two = code[:2]
+    return {
+        "62": "Healthcare",
+        "52": "Financial",
+        "54": "Professional/Scientific",
+        "51": "Technology",
+        "22": "Energy",
+        "21": "Energy",
+        "31": "Manufacturing",
+        "32": "Manufacturing",
+        "33": "Manufacturing",
+        "92": "Public",
+    }.get(two, "")
 
 
 def _parse_date(value: Any) -> date | None:
@@ -126,15 +168,24 @@ def compute_breach_metrics(
     Returns a dict with ``total_incidents``, ``ransomware_count``, ``records_exposed``,
     ``records_known`` (whether any record carried a figure), ``est_impact_usd`` and
     display-ready ``records_exposed_millions`` / ``est_impact_millions`` plus a few
-    ``notable_examples`` (largest by records). All values are grounded — no estimation
-    beyond the explicit per-record dollar multiplier.
+    ``notable_examples`` (largest by records). The dollar estimate is weighted per
+    incident by the incident's ``sector`` (see ``SECTOR_COST_PER_RECORD_USD``), falling
+    back to ``cost_per_record_usd`` for records of unknown sector — so a healthcare-heavy
+    set isn't understated by a flat global rate. No estimation beyond that multiplier.
     """
     total = len(records)
     ransomware = sum(1 for r in records if _is_ransomware(str(r.get("incident_type", ""))))
-    known = [int(r["records_exposed"]) for r in records if isinstance(r.get("records_exposed"), (int, float))]
-    records_total = sum(known)
-    records_known = bool(known)
-    est_impact_usd = records_total * cost_per_record_usd
+    records_total = 0
+    est_impact_usd = 0.0
+    records_known = False
+    for r in records:
+        rec_n = r.get("records_exposed")
+        if not isinstance(rec_n, (int, float)):
+            continue
+        rec_n = int(rec_n)
+        records_total += rec_n
+        est_impact_usd += rec_n * cost_for_sector(str(r.get("sector", "")), cost_per_record_usd)
+        records_known = True
 
     notable = sorted(
         (r for r in records if isinstance(r.get("records_exposed"), (int, float))),

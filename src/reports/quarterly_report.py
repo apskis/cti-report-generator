@@ -240,9 +240,10 @@ class QuarterlyReportGenerator(BaseReportGenerator):
 
         if metrics.get("records_known"):
             breach["stat_methodology"] = (
-                f"Est. Total Impact estimated at "
-                f"${collector_config.breach_cost_per_record_usd:.0f}/record (IBM Cost of a Data Breach); "
-                "counts and records exposed are from date-stamped breach disclosures (VCDB/HHS/HIBP)."
+                "Est. Total Impact estimated as records x per-industry cost/record "
+                f"(IBM Cost of a Data Breach; e.g. healthcare ~$408, manufacturing ~$200; "
+                f"${collector_config.breach_cost_per_record_usd:.0f} where sector is unknown). "
+                "Counts and records exposed are from date-stamped breach disclosures (VCDB/HHS/HIBP)."
             )
 
     def _calculate_quarter_info(self) -> None:

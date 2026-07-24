@@ -9,13 +9,18 @@ from src.core.breach_metrics import (
     breach_metrics_for_period,
     bucket_to_period,
     compute_breach_metrics,
+    cost_for_sector,
     dedupe_breaches,
     filter_records_to_window,
+    naics_to_sector,
 )
 
 
-def _rec(org, d, itype="Hacking", records=None, source="VCDB"):
-    return {"organization": org, "date": d, "incident_type": itype, "records_exposed": records, "source": source}
+def _rec(org, d, itype="Hacking", records=None, source="VCDB", sector=""):
+    return {
+        "organization": org, "date": d, "incident_type": itype,
+        "records_exposed": records, "source": source, "sector": sector,
+    }
 
 
 class TestDedupe:
@@ -67,6 +72,22 @@ class TestCompute:
         assert m["est_impact_usd"] == 150_000_000
         assert m["est_impact_millions"] == 150
         assert m["records_exposed_millions"] == 1.5
+
+    def test_impact_is_weighted_by_sector(self):
+        # 1M healthcare records @ $408 + 1M manufacturing @ $200 = $608M, not a flat rate.
+        recs = [
+            _rec("Hosp", "2026-04-01", records=1_000_000, sector="Healthcare"),
+            _rec("Factory", "2026-04-02", records=1_000_000, sector="Manufacturing"),
+        ]
+        m = compute_breach_metrics(recs)  # default only used for unknown sectors
+        assert m["records_exposed"] == 2_000_000
+        assert m["est_impact_usd"] == 1_000_000 * 408 + 1_000_000 * 200
+        assert m["est_impact_millions"] == 608
+
+    def test_unknown_sector_uses_default(self):
+        recs = [_rec("X", "2026-04-01", records=1_000_000, sector="")]
+        m = compute_breach_metrics(recs, cost_per_record_usd=165.0)
+        assert m["est_impact_usd"] == 1_000_000 * 165
 
     def test_no_known_records_flags_records_known_false(self):
         recs = [_rec("A", "2026-04-01", records=None)]
@@ -160,6 +181,23 @@ class TestApply:
         analysis = {"breach_landscape": {"stat_cards": [{"label": "Total Incidents", "value": "3"}]}}
         assert apply_metrics_to_stat_cards(analysis, _metrics(9)) == "full"
         assert analysis["breach_landscape"]["stat_cards"][0]["value"] == "9"
+
+
+class TestSectorMapping:
+    def test_naics_to_sector(self):
+        assert naics_to_sector("622") == "Healthcare"
+        assert naics_to_sector("3254") == "Pharmaceuticals"  # pharma special-cased over mfg
+        assert naics_to_sector("339") == "Manufacturing"
+        assert naics_to_sector("54171") == "Professional/Scientific"
+        assert naics_to_sector("52") == "Financial"
+        assert naics_to_sector("") == ""
+        assert naics_to_sector("99") == ""
+
+    def test_cost_for_sector_fallback(self):
+        assert cost_for_sector("Healthcare") == 408.0
+        assert cost_for_sector("Manufacturing") == 200.0
+        assert cost_for_sector("", default=165.0) == 165.0
+        assert cost_for_sector("Unknownville", default=165.0) == 165.0
 
 
 class TestIncidentsByType:
