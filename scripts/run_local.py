@@ -31,6 +31,7 @@ import json
 import logging
 import os
 import sys
+from datetime import UTC
 from pathlib import Path
 
 # Allow running this script directly (adds the repo root to sys.path for src/gates imports)
@@ -705,8 +706,75 @@ No direct threats to the organization were identified this quarter; however, the
     }
 
 
+def _extract_record_date(rec: dict):
+    """Best-effort extraction of a record's date (returns a ``date`` or ``None``)."""
+    from datetime import datetime
+
+    for key in ("date", "published_date", "published", "last_activity", "created", "reportDate", "updated"):
+        v = rec.get(key)
+        if v is None or v == "":
+            continue
+        # Epoch seconds or milliseconds.
+        if isinstance(v, (int, float)) or (isinstance(v, str) and v.strip().isdigit()):
+            try:
+                ts = float(v)
+                if ts > 1e12:  # milliseconds
+                    ts /= 1000.0
+                return datetime.fromtimestamp(ts, tz=UTC).date()
+            except (ValueError, OverflowError, OSError):
+                continue
+        if isinstance(v, str):
+            try:
+                return datetime.fromisoformat(v.strip().replace("Z", "+00:00")).date()
+            except ValueError:
+                continue
+    return None
+
+
+def _filter_data_to_period(data_by_source: dict, period) -> dict:
+    """Drop collected records whose date falls outside the reporting period.
+
+    Undated records are kept (we cannot place them, and dropping everything undated
+    would gut sources like CrowdStrike actor profiles). Logs what was dropped so a
+    past-quarter run makes clear how much the live sources still served in-window.
+    """
+    out: dict = {}
+    kept_total = dropped_total = 0
+    for source, records in data_by_source.items():
+        if not isinstance(records, list):
+            out[source] = records
+            continue
+        kept = []
+        dropped = 0
+        for rec in records:
+            if not isinstance(rec, dict):
+                kept.append(rec)
+                continue
+            d = _extract_record_date(rec)
+            if d is None or period.contains(d):
+                kept.append(rec)
+            else:
+                dropped += 1
+        out[source] = kept
+        kept_total += len(kept)
+        dropped_total += dropped
+        if dropped:
+            logger.info(f"Period filter [{period.label}]: {source} kept {len(kept)}, dropped {dropped} out-of-window")
+    print_status(
+        f"Period filter [{period.label}]: kept {kept_total} in-window records, "
+        f"dropped {dropped_total} outside {period.start} to {period.end}",
+        "info",
+    )
+    return out
+
+
 async def generate_report_local(
-    report_type: str, use_mock: bool = False, use_real: bool = False, output_dir: str = ".", use_azure: bool = False
+    report_type: str,
+    use_mock: bool = False,
+    use_real: bool = False,
+    output_dir: str = ".",
+    use_azure: bool = False,
+    reporting_period=None,
 ) -> str:
     """
     Generate a report locally.
@@ -728,6 +796,11 @@ async def generate_report_local(
     if generator is None:
         raise ValueError(f"Unknown report type: {report_type}")
 
+    # Pin the quarterly report to the chosen calendar quarter so every label + the
+    # reporting window derive from one explicit choice.
+    if reporting_period is not None and hasattr(generator, "set_reporting_period"):
+        generator.set_reporting_period(reporting_period)
+
     # Determine data source
     data_by_source = None  # Will hold raw collected data for gate framework
     credentials = None  # Will hold Azure credentials for gate framework
@@ -744,7 +817,9 @@ async def generate_report_local(
         # Mock data: no raw collected data, use empty dicts for gate framework
         data_by_source = {}
     elif use_real or use_azure:
-        analysis, data_by_source = await collect_and_analyze(report_type)
+        # collect_and_analyze trims records to the reporting period (if set) before the AI
+        # analysis, so the returned data_by_source the gates see is already in-window.
+        analysis, data_by_source = await collect_and_analyze(report_type, reporting_period=reporting_period)
 
         # Get credentials for gate framework (Gate 5 needs Azure OpenAI)
         from src.core.config import azure_config
@@ -824,6 +899,9 @@ async def generate_report_local(
             data_by_source=data_by_source or {},
             osint_articles=data_by_source.get("OSINT", []) if data_by_source else [],
             period_days=period_days,
+            # Validate against the exact chosen quarter when one was selected.
+            period_start=reporting_period.start if reporting_period is not None else None,
+            period_end=reporting_period.end if reporting_period is not None else None,
             interactive_mode=interactive_mode,
             interactive_callback=interactive_callback if interactive_mode else None,
             credentials={
@@ -962,8 +1040,11 @@ async def check_openai_connectivity(
         return False
 
 
-async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
+async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[dict, dict]:
     """Collect data and run analysis (requires Azure credentials).
+
+    When ``reporting_period`` is provided (quarterly), collected records are trimmed to
+    that quarter's window BEFORE analysis so the AI only reasons over in-window data.
 
     Returns:
         (analysis, data_by_source) tuple where analysis is the AI analysis result
@@ -1021,6 +1102,11 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
         print_section("Collecting Threat Intelligence")
     collector_results = await collect_all(credentials, report_type=report_type)
     data_by_source = get_data_by_source(collector_results)
+
+    # Trim to the chosen quarter BEFORE enrichment/analysis so the AI only sees
+    # in-window records (the company-context source has no per-record dates and is kept).
+    if reporting_period is not None:
+        data_by_source = _filter_data_to_period(data_by_source, reporting_period)
 
     # Show collection results
     for source, result in collector_results.items():
@@ -1121,9 +1207,47 @@ async def collect_and_analyze(report_type: str) -> tuple[dict, dict]:
             crowdstrike_data=data_by_source.get("CrowdStrike", []),
             breach_data=breach_data if breach_data else None,
             illumina_context=illumina_context,
+            reporting_period=reporting_period,
         )
         print_status("Analysis complete", "success")
         return result, data_by_source
+
+
+def _resolve_reporting_period(quarter_arg, year_arg):
+    """Resolve the quarterly reporting period from CLI args, prompting when needed."""
+    from datetime import date
+
+    from src.core.reporting_period import current_quarter, make_period, parse_quarter
+
+    cy, cq = current_quarter(date.today())
+
+    # Quarter
+    quarter = quarter_arg
+    if quarter is None:
+        raw = input(f"{Fore.CYAN}Which quarter to report on? [Q1-Q4, default Q{cq}]: {Style.RESET_ALL}").strip()
+        quarter = raw or cq
+    try:
+        quarter = parse_quarter(quarter)
+    except ValueError as e:
+        raise SystemExit(f"Invalid quarter: {e}") from e
+
+    # Year
+    year = year_arg
+    if year is None:
+        raw = input(f"{Fore.CYAN}Which year? [default {cy}]: {Style.RESET_ALL}").strip()
+        year = int(raw) if raw else cy
+    if not (2000 <= int(year) <= 2100):
+        raise SystemExit(f"Invalid year: {year}")
+
+    period = make_period(int(year), quarter)
+    # Warn when reporting on a not-yet-complete or future quarter (live APIs won't have data).
+    if period.end >= date.today():
+        print_status(
+            f"{period.label} is not yet complete ({period.start} to {period.end}); "
+            "live sources will only have partial data for this window.",
+            "warning",
+        )
+    return period
 
 
 def main():
@@ -1178,6 +1302,18 @@ Examples:
         help="File to write full debug logs to when --debug is set (default: debug.log). "
         "Use --log-file '' to disable and log to console only.",
     )
+    parser.add_argument(
+        "--quarter",
+        default=None,
+        help="Quarterly reports only: which calendar quarter to cover (Q1-Q4 or 1-4). "
+        "If omitted for a quarterly run, you will be prompted.",
+    )
+    parser.add_argument(
+        "--year",
+        type=int,
+        default=None,
+        help="Quarterly reports only: which year to cover (e.g. 2026). Prompted if omitted.",
+    )
 
     args = parser.parse_args()
 
@@ -1201,11 +1337,22 @@ Examples:
     else:
         data_source = "REAL (API feeds + AI analysis)"
 
+    # Quarterly reports are pinned to a specific calendar quarter. Resolve it from
+    # --quarter/--year, prompting interactively when either is omitted.
+    reporting_period = None
+    if args.report_type == "quarterly":
+        reporting_period = _resolve_reporting_period(args.quarter, args.year)
+
     # Run the generation
     try:
         print_header(f"CTI Report Generator - {args.report_type.upper()}")
         print(f"{Fore.WHITE}Data Source: {data_source}")
         print(f"Output: {'Azure Blob Storage' if args.azure else f'Local ({args.output})'}")
+        if reporting_period is not None:
+            print(
+                f"Reporting Period: {reporting_period.label} "
+                f"({reporting_period.start.isoformat()} to {reporting_period.end.isoformat()})"
+            )
         if args.debug:
             print(f"Debug Mode: {Fore.YELLOW}ENABLED (verbose logging){Style.RESET_ALL}")
         print(f"{Style.RESET_ALL}\n")
@@ -1217,6 +1364,7 @@ Examples:
                 use_real=use_real,
                 output_dir=args.output,
                 use_azure=args.azure,
+                reporting_period=reporting_period,
             )
         )
 

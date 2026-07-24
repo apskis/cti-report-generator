@@ -30,6 +30,8 @@ def run_gate_framework_over_collected_data(
     interactive_callback=None,
     credentials: dict = None,  # Pass credentials for Gate 5
     analysis: dict = None,  # Pre-computed analysis to reuse in Gate 5 (avoids a 2nd AI run)
+    period_start=None,  # Explicit reporting-window start (date/ISO str); overrides period_days
+    period_end=None,  # Explicit reporting-window end (date/ISO str)
 ) -> tuple[bool, dict, dict[str, GateResult]]:
     """Run the gate framework over collected data.
 
@@ -49,8 +51,17 @@ def run_gate_framework_over_collected_data(
         - info: Dictionary with diagnostic details on block/halt/escape
         - session: Orchestrator's session dict (gate_id -> GateResult) for printing summary
     """
-    period_end = date.today()
-    period_start = period_end - timedelta(days=period_days)
+    # Prefer an explicit reporting window (e.g. an exact calendar quarter) over the
+    # rolling period_days span, so the gates validate against the report's real period.
+    def _as_date(value):
+        if value is None:
+            return None
+        if isinstance(value, date):
+            return value
+        return date.fromisoformat(str(value)[:10])
+
+    period_end = _as_date(period_end) or date.today()
+    period_start = _as_date(period_start) or (period_end - timedelta(days=period_days))
 
     tier1_data = {
         "NVD": data_by_source.get("NVD", []),

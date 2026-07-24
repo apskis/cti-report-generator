@@ -7,7 +7,7 @@ Generates quarterly strategic threat intelligence briefs for leadership.
 import json
 import logging
 import re
-from datetime import timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +19,7 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 from src.core.config import customer_profile
+from src.core.reporting_period import ReportingPeriod, current_quarter, make_period
 from src.reports.base import BaseReportGenerator, BrandColors, FontSizes
 from src.reports.registry import register_report_generator
 
@@ -101,6 +102,10 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             # Calculate quarter info
             self._calculate_quarter_info()
 
+            # Make the reporting period authoritative over any quarter labels the AI
+            # guessed, so the cards/table never disagree with the chosen quarter.
+            self._apply_reporting_period_labels(analysis_result)
+
             # Add sections in order
             self._add_header()
             self._add_executive_summary(analysis_result)
@@ -148,26 +153,59 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         left_border.set(qn("w:space"), "0")
         left_border.set(qn("w:color"), color_hex)
 
+    def set_reporting_period(self, period: ReportingPeriod) -> None:
+        """Pin the report to a specific calendar quarter (year + quarter).
+
+        When set, every quarter/year label, the reporting window, and the historical
+        key derive from this single choice instead of being guessed from today's date.
+        """
+        self.reporting_period = period
+
     def _calculate_quarter_info(self) -> None:
-        """Calculate the reporting period based on actual quarterly lookback window."""
-        from src.core.config import collector_config
+        """Establish the reporting period as an EXACT calendar quarter.
 
-        today = self.created_at
-        month = today.month
+        Uses the explicitly pinned period (``set_reporting_period``) when present;
+        otherwise defaults to the calendar quarter that contains the report date. The
+        window is the quarter's real start/end dates, not a rolling 90-day span, so the
+        label and the covered data always agree.
+        """
+        period = getattr(self, "reporting_period", None)
+        if period is None:
+            year, quarter = current_quarter(self.created_at.date())
+            period = make_period(year, quarter)
+            self.reporting_period = period
 
-        lookback_days = collector_config.intel471_quarterly_lookback_days
-        self.period_end = today
-        self.period_start = today - timedelta(days=lookback_days)
-        self.lookback_days = lookback_days
+        self.quarter = period.quarter
+        self.period_start = datetime.combine(period.start, datetime.min.time())
+        self.period_end = datetime.combine(period.end, datetime.min.time())
+        self.lookback_days = (period.end - period.start).days
 
-        if month <= 3:
-            self.quarter = 1
-        elif month <= 6:
-            self.quarter = 2
-        elif month <= 9:
-            self.quarter = 3
-        else:
-            self.quarter = 4
+    def _get_year(self) -> int:
+        """Year of the pinned reporting period (falls back to the report date's year)."""
+        period = getattr(self, "reporting_period", None)
+        return period.year if period is not None else super()._get_year()
+
+    def _apply_reporting_period_labels(self, analysis_result: dict[str, Any]) -> None:
+        """Overwrite AI-guessed quarter labels with the authoritative reporting period.
+
+        The model often labels the breach cards/table with a quarter it inferred from the
+        data (which drifts from the chosen quarter). Force the current/prior-quarter labels
+        everywhere they render so the report is internally consistent with the period the
+        user selected.
+        """
+        period = getattr(self, "reporting_period", None)
+        if period is None:
+            return
+        current_label = period.label
+        prior_label = period.prior.label
+
+        breach = analysis_result.get("breach_landscape")
+        if isinstance(breach, dict):
+            breach["current_quarter_label"] = current_label
+            breach["prior_quarter_label"] = prior_label
+            for card in breach.get("stat_cards") or []:
+                if isinstance(card, dict):
+                    card["prior_label"] = prior_label
 
     def _get_historical_file_path(self) -> Path:
         """Get the path to the historical data JSON file.

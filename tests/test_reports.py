@@ -589,6 +589,40 @@ class TestQuarterlyRobustness:
         assert "[1]" in subscript_runs
         assert "[2]" in subscript_runs
 
+    # ----- Explicit reporting period pins the quarter and overrides AI labels -----
+
+    def test_explicit_period_sets_exact_window(self, generator):
+        from src.core.reporting_period import make_period
+
+        generator.set_reporting_period(make_period(2026, "Q2"))
+        generator.generate({"executive_summary": "x"})
+        assert generator.quarter == 2
+        assert generator._get_year() == 2026
+        assert generator.period_start.date().isoformat() == "2026-04-01"
+        assert generator.period_end.date().isoformat() == "2026-06-30"
+
+    def test_explicit_period_overrides_ai_quarter_labels(self, generator):
+        from src.core.reporting_period import make_period
+
+        generator.set_reporting_period(make_period(2026, "Q2"))
+        analysis = {
+            "executive_summary": "x",
+            "breach_landscape": {
+                "current_quarter_label": "Q3 2026",  # AI guessed wrong
+                "prior_quarter_label": "Q2 2026",
+                "stat_cards": [
+                    {"value": "20", "label": "Total Incidents", "prior_label": "Q4 2025",
+                     "prior_value": "N/A", "change_pct": "N/A"}
+                ],
+                "incidents_by_type": [],
+            },
+        }
+        generator.generate(analysis)
+        bl = analysis["breach_landscape"]
+        assert bl["current_quarter_label"] == "Q2 2026"
+        assert bl["prior_quarter_label"] == "Q1 2026"
+        assert bl["stat_cards"][0]["prior_label"] == "Q1 2026"
+
 
 class TestReportTypesList:
     """Tests for list_report_types functionality."""

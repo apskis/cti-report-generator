@@ -1287,6 +1287,7 @@ NVD records cross-referenced with CISA KEV and EPSS exploitation data."""
         illumina_context: str = "",
         previous_context: dict[str, Any] | list[dict[str, Any]] | None = None,
         osint_data: list[dict] | None = None,
+        reporting_period=None,
     ) -> dict[str, Any]:
         """
         Analyze threat intelligence data for quarterly strategic reports.
@@ -1322,6 +1323,7 @@ NVD records cross-referenced with CISA KEV and EPSS exploitation data."""
                 illumina_context,
                 previous_context=previous_context,
                 osint_data=osint_data,
+                reporting_period=reporting_period,
             )
 
             # Create chat history with strategic system prompt
@@ -1844,10 +1846,26 @@ NVD records cross-referenced with CISA KEV and EPSS exploitation data."""
         illumina_context: str = "",
         previous_context: dict[str, Any] | list[dict[str, Any]] | None = None,
         osint_data: list[dict] | None = None,
+        reporting_period=None,
     ) -> str:
         """Build the strategic analysis prompt for quarterly reports."""
         breach_data = breach_data or []
         osint_data = osint_data or []
+
+        # Authoritative reporting period: tell the model exactly which quarter this brief
+        # covers so its scope_note and prose never label the report with a quarter it
+        # inferred from the data. The report generator also enforces the labels downstream.
+        if reporting_period is not None:
+            period_section = (
+                f"## Reporting Period (AUTHORITATIVE)\n"
+                f"This brief covers {reporting_period.label} only "
+                f"({reporting_period.start.isoformat()} to {reporting_period.end.isoformat()}). "
+                f"The prior quarter is {reporting_period.prior.label}. Use {reporting_period.label} as the "
+                f"current quarter in the scope_note, quarter labels, and all prose. Do NOT infer a different "
+                f"quarter from the data dates."
+            )
+        else:
+            period_section = ""
 
         # Group APT data by country/region
         china_actors = [a for a in crowdstrike_data if self._is_china_related(a)]
@@ -1906,10 +1924,12 @@ when writing "relevance" bullets, and note this limitation."""
 
         return f"""Analyze this threat intelligence data and provide a QUARTERLY STRATEGIC BRIEF for executive leadership.
 
-IMPORTANT: 
+IMPORTANT:
 - ALL breach reports (BREACH ALERT) should be included regardless of industry - they are critical for the breach landscape analysis.
 - Filter other Intel471 reports (SPOT REPORT, SITUATION REPORT, MALWARE REPORT) by relevance to these industries/sectors: {target_industries}
 - Focus on reports that mention or target these sectors: {target_industries}
+
+{period_section}
 
 {illumina_context_section}
 
