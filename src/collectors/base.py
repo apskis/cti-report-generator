@@ -29,7 +29,7 @@ class BaseCollector(ABC):
 
     def __init__(
         self,
-        credentials: dict[str, str],
+        credentials: dict[str, str] | None = None,
         report_type: str = "weekly",
         collection_window: tuple[datetime, datetime] | None = None,
     ):
@@ -37,7 +37,8 @@ class BaseCollector(ABC):
         Initialize collector with credentials.
 
         Args:
-            credentials: Dictionary containing API credentials
+            credentials: Dictionary containing API credentials. Optional — key-free sources
+                (RSS OSINT, the GDELT news search) construct with none.
             report_type: Type of report being generated ("weekly" or "quarterly")
             collection_window: Optional explicit ``(start, end)`` datetime window. When set,
                 ``get_date_range`` returns it verbatim instead of the trailing
@@ -45,7 +46,7 @@ class BaseCollector(ABC):
                 date (Intel471 ``from/until``, NVD ``pubStartDate/pubEndDate``) fetch a
                 specific historical quarter. Used for prior-quarter baseline backfill.
         """
-        self.credentials = credentials
+        self.credentials = credentials or {}
         self.report_type = report_type
         self.collection_window = collection_window
         self.logger = logging.getLogger(f"{__name__}.{self.source_name}")
