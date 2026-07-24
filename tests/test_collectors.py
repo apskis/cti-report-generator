@@ -250,6 +250,62 @@ class TestCrowdStrikeCollector:
         assert "Espionage" in parsed["motivations"]
         assert "Healthcare" in parsed["target_industries"]
 
+    @pytest.mark.asyncio
+    async def test_detections_fql_is_bounded_both_ends_with_window(self, mock_credentials):
+        """A collection window bounds the detections FQL on BOTH ends (not just 'since')."""
+
+        class _CapturingClient:
+            def __init__(self):
+                self.params = None
+
+            async def get_raw_response(self, url, headers=None, params=None):
+                self.params = params
+
+                class _R:
+                    status = 200
+
+                    async def json(self):
+                        return {"resources": []}  # empty -> short-circuit, no details call
+
+                return _R()
+
+        window = (datetime(2026, 1, 1), datetime(2026, 3, 31))
+        collector = CrowdStrikeCollector(mock_credentials, collection_window=window)
+        client = _CapturingClient()
+        await collector._fetch_detections(client, "https://api.crowdstrike.com", "tok")
+
+        fql = client.params["filter"]
+        assert "created_timestamp:>='2026-01-01T00:00:00Z'" in fql
+        assert "created_timestamp:<='2026-03-31T23:59:59Z'" in fql  # end bound present
+
+    @pytest.mark.asyncio
+    async def test_spotlight_fql_is_bounded_both_ends_with_window(self, mock_credentials):
+        """A collection window bounds the Spotlight FQL on both ends too."""
+
+        class _CapturingClient:
+            def __init__(self):
+                self.params = None
+
+            async def get_raw_response(self, url, headers=None, params=None):
+                self.params = params
+
+                class _R:
+                    status = 200
+
+                    async def json(self):
+                        return {"resources": []}
+
+                return _R()
+
+        window = (datetime(2026, 1, 1), datetime(2026, 3, 31))
+        collector = CrowdStrikeCollector(mock_credentials, collection_window=window)
+        client = _CapturingClient()
+        await collector._fetch_spotlight_vulnerabilities(client, "https://api.crowdstrike.com", "tok")
+
+        fql = client.params["filter"]
+        assert "updated_timestamp:>=" in fql
+        assert "updated_timestamp:<='2026-03-31T23:59:59Z'" in fql
+
 
 # =============================================================================
 # Registry Tests

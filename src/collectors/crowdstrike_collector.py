@@ -249,12 +249,18 @@ class CrowdStrikeCollector(BaseCollector):
         detections_url = f"{base_url}/detects/queries/detects/v1"
         headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
 
-        # Get detections from the last N days
-        start_date, _ = self.get_date_range()
+        # Bound detections to the collection window on BOTH ends. For normal runs the end
+        # is "now" (no practical effect); for a historical backfill window it keeps the
+        # query inside the requested quarter instead of "since quarter-start -> now".
+        start_date, end_date = self.get_date_range()
         filter_date = start_date.strftime("%Y-%m-%dT00:00:00Z")
+        end_filter_date = end_date.strftime("%Y-%m-%dT23:59:59Z")
 
-        # FQL filter: get recent detections, exclude false positives
-        fql_filter = f"created_timestamp:>='{filter_date}'+status:!'false_positive'"
+        # FQL filter: detections within the window, exclude false positives
+        fql_filter = (
+            f"created_timestamp:>='{filter_date}'+created_timestamp:<='{end_filter_date}'"
+            "+status:!'false_positive'"
+        )
 
         params = {"filter": fql_filter, "limit": 100, "sort": "created_timestamp.desc"}
 
@@ -321,10 +327,12 @@ class CrowdStrikeCollector(BaseCollector):
 
         spotlight_url = f"{base_url}/spotlight/combined/vulnerabilities/v1"
         headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
-        start_date, _ = self.get_date_range()
+        start_date, end_date = self.get_date_range()
         filter_date = (start_date - timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z")
-        # FQL: filter required (updated_timestamp)
-        fql_filter = f"updated_timestamp:>='{filter_date}'"
+        end_filter_date = end_date.strftime("%Y-%m-%dT23:59:59Z")
+        # FQL: filter required (updated_timestamp) — bound both ends so a historical
+        # backfill window stays inside the requested quarter.
+        fql_filter = f"updated_timestamp:>='{filter_date}'+updated_timestamp:<='{end_filter_date}'"
         params = {
             "filter": fql_filter,
             "limit": collector_config.crowdstrike_spotlight_limit,
