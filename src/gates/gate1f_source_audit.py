@@ -164,7 +164,9 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
     company_data = input.tier1_data.get(customer_profile.osint_source_name, [])
 
     if not company_data:
-        logger.warning(f"   ⚠️  No {customer_profile.osint_source_name} data collected")
+        # Company OSINT is folded into the strategic analysis upstream rather than routed
+        # as a discrete tier1 source, so its absence here is informational, not a defect.
+        logger.info(f"   No discrete {customer_profile.osint_source_name} tier1 records to audit")
     else:
         logger.info(f"   {customer_profile.osint_source_name} records collected: {len(company_data)}")
 
@@ -213,28 +215,35 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
 
         # Verify total incidents matches
         if "Total Incidents" in label or "Incidents" in label:
-            try:
-                reported = int(str(value).replace(",", ""))
-                variance = abs(reported - actual_breach_count)
+            raw_value = str(value).strip()
+            if raw_value.upper() in ("", "N/A", "NA", "—", "-"):
+                # "N/A" is legitimate (e.g. no prior-quarter baseline); nothing to reconcile.
+                logger.info(f"   Count check skipped: non-numeric value {raw_value!r}")
+            else:
+                try:
+                    reported = int(raw_value.replace(",", ""))
+                    variance = abs(reported - actual_breach_count)
 
-                logger.info(f"   Reported: {reported}")
-                logger.info(f"   Actual in data: {actual_breach_count}")
-                logger.info(f"   Variance: {variance}")
+                    logger.info(f"   Reported: {reported}")
+                    logger.info(f"   Actual in data: {actual_breach_count}")
+                    logger.info(f"   Variance: {variance}")
 
-                if variance > 5:
-                    stats_issues.append(
-                        f"⚠️  Total Incidents mismatch: Report shows {reported}, data has {actual_breach_count} (variance: {variance})"
-                    )
-                    logger.warning("   ⚠️  VARIANCE EXCEEDS THRESHOLD (>5)")
-                else:
-                    logger.info("   ✓ Count matches data")
-            except ValueError:
-                logger.warning(f"   ⚠️  Could not parse value: {value}")
+                    if variance > 5:
+                        stats_issues.append(
+                            f"⚠️  Total Incidents mismatch: Report shows {reported}, data has {actual_breach_count} (variance: {variance})"
+                        )
+                        logger.warning("   ⚠️  VARIANCE EXCEEDS THRESHOLD (>5)")
+                    else:
+                        logger.info("   ✓ Count matches data")
+                except ValueError:
+                    logger.warning(f"   ⚠️  Could not parse value: {value}")
 
-        # Verify change_pct has proper sign
-        if change_pct and change_pct != "0%":
-            if not (change_pct.startswith("+") or change_pct.startswith("-")):
-                stats_issues.append(f"⚠️  {label}: Missing +/- sign in change_pct '{change_pct}'")
+        # Verify change_pct has proper sign. "N/A" (no prior-quarter baseline) and "0%"
+        # legitimately carry no sign, so only flag a real numeric delta.
+        change_pct_str = str(change_pct).strip()
+        if change_pct_str and change_pct_str != "0%" and change_pct_str.upper() not in ("N/A", "NA"):
+            if not (change_pct_str.startswith("+") or change_pct_str.startswith("-")):
+                stats_issues.append(f"⚠️  {label}: Missing +/- sign in change_pct '{change_pct_str}'")
                 logger.warning("   ⚠️  MISSING +/- SIGN")
             else:
                 logger.info("   ✓ Change percentage properly signed")

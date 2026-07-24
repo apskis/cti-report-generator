@@ -457,25 +457,31 @@ def _validate_quarterly_statistics(gate_input: GateInput) -> GateResult:
         )
 
         if total_incidents_card:
-            try:
-                reported_count = int(str(total_incidents_card.get("value", "0")).replace(",", ""))
-                variance = abs(reported_count - actual_breach_count)
+            raw_value = str(total_incidents_card.get("value", "0")).strip()
+            if raw_value.upper() in ("", "N/A", "NA", "—", "-"):
+                # "N/A" is a legitimate value (e.g. no prior-quarter baseline); skip
+                # the count check rather than emit an alarming warning.
+                logger.info(f"Breach count validation skipped: non-numeric value {raw_value!r}")
+            else:
+                try:
+                    reported_count = int(raw_value.replace(",", ""))
+                    variance = abs(reported_count - actual_breach_count)
 
-                if variance > 5:  # Allow small variance for data filtering
-                    warnings.append(
-                        f"Breach count variance: report shows {reported_count} incidents, "
-                        f"Intel471 data contains {actual_breach_count} breach alerts (variance: {variance})"
+                    if variance > 5:  # Allow small variance for data filtering
+                        warnings.append(
+                            f"Breach count variance: report shows {reported_count} incidents, "
+                            f"Intel471 data contains {actual_breach_count} breach alerts (variance: {variance})"
+                        )
+
+                    validations.append(
+                        {
+                            "check": "breach_count_accuracy",
+                            "passed": variance <= 5,
+                            "details": f"Reported: {reported_count}, Actual: {actual_breach_count}, Variance: {variance}",
+                        }
                     )
-
-                validations.append(
-                    {
-                        "check": "breach_count_accuracy",
-                        "passed": variance <= 5,
-                        "details": f"Reported: {reported_count}, Actual: {actual_breach_count}, Variance: {variance}",
-                    }
-                )
-            except (ValueError, AttributeError) as e:
-                logger.warning(f"Could not validate breach count: {e}")
+                except (ValueError, AttributeError) as e:
+                    logger.warning(f"Could not validate breach count: {e}")
 
     # NEW VALIDATION 5: Quarter-over-quarter changes have proper signs
     if gate5_result and gate5_result.status == "COMPLETE":
@@ -485,11 +491,17 @@ def _validate_quarterly_statistics(gate_input: GateInput) -> GateResult:
 
         missing_signs = []
         for card in stat_cards:
-            change_pct = str(card.get("change_pct", ""))
+            change_pct = str(card.get("change_pct", "")).strip()
             label = card.get("label", "")
 
-            # Check if change_pct exists and has proper +/- sign
-            if change_pct and change_pct != "0%" and not (change_pct.startswith("+") or change_pct.startswith("-")):
+            # "N/A" / "0%" are legitimate (no prior-quarter baseline, or no change) and
+            # carry no sign; only flag a real numeric delta that is missing its +/- sign.
+            if (
+                change_pct
+                and change_pct != "0%"
+                and change_pct.upper() not in ("N/A", "NA")
+                and not (change_pct.startswith("+") or change_pct.startswith("-"))
+            ):
                 missing_signs.append(f"{label}: '{change_pct}'")
 
         if missing_signs:

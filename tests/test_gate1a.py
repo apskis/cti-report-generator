@@ -114,3 +114,67 @@ def test_unknown_report_type_is_noop_complete():
     result = run(gi, llm_client=None, report_type="MONTHLY")
     assert result.status == "COMPLETE"
     assert result.payload["validations_run"] == []
+
+
+def _quarterly_input_with_stat_cards(stat_cards) -> GateInput:
+    gate1 = GateResult(
+        gate_id="1",
+        status="COMPLETE",
+        payload={
+            "tier1_sources": [
+                SourceRecord(
+                    source_name="Intel471",
+                    tier=1,
+                    records_returned=3,
+                    period_start="2026-04-01",
+                    period_end="2026-06-30",
+                    status="OK",
+                ),
+                SourceRecord(
+                    source_name="CrowdStrike",
+                    tier=1,
+                    records_returned=4,
+                    period_start="2026-04-01",
+                    period_end="2026-06-30",
+                    status="OK",
+                ),
+            ]
+        },
+    )
+    gate5 = GateResult(
+        gate_id="5",
+        status="COMPLETE",
+        payload={"report": {"breach_landscape": {"stat_cards": stat_cards}}},
+    )
+    return GateInput(
+        report_type="QUARTERLY",
+        period_start="2026-04-01",
+        period_end="2026-06-30",
+        tier1_data={"Intel471": [], "CrowdStrike": []},
+        prior_results={"1": gate1, "5": gate5},
+    )
+
+
+def test_quarterly_na_value_does_not_warn_on_breach_count():
+    # "N/A" is a legitimate value (no prior-quarter baseline) and must not trip the
+    # "Could not validate breach count" path or the missing-sign check.
+    gi = _quarterly_input_with_stat_cards(
+        [{"label": "Total Incidents", "value": "N/A", "change_pct": "N/A"}]
+    )
+    result = run(gi, llm_client=None, report_type="QUARTERLY")
+    assert result.status == "COMPLETE"
+    checks = {v["check"]: v for v in result.payload["validations"]}
+    # No numeric baseline -> the accuracy check is skipped entirely, not failed.
+    assert "breach_count_accuracy" not in checks
+    # N/A change_pct is not counted as a missing sign.
+    assert checks["stat_cards_have_signs"]["passed"] is True
+
+
+def test_quarterly_unsigned_numeric_change_still_flagged():
+    # A real numeric delta with no +/- sign is still a defect.
+    gi = _quarterly_input_with_stat_cards(
+        [{"label": "Total Incidents", "value": "7", "change_pct": "25%"}]
+    )
+    result = run(gi, llm_client=None, report_type="QUARTERLY")
+    checks = {v["check"]: v for v in result.payload["validations"]}
+    assert checks["stat_cards_have_signs"]["passed"] is False
