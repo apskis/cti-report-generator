@@ -11,11 +11,14 @@ from typing import Any
 
 from src.collectors.base import BaseCollector
 from src.collectors.crowdstrike_collector import CrowdStrikeCollector
+from src.collectors.hhs_breach_collector import HHSBreachCollector
+from src.collectors.hibp_breach_collector import HIBPBreachCollector
 from src.collectors.illumina_osint_collector import IlluminaOSINTCollector
 from src.collectors.intel471_collector import Intel471Collector
 from src.collectors.news_search_collector import NewsSearchCollector
 from src.collectors.nvd_collector import NVDCollector
 from src.collectors.osint_collector import OSINTCollector
+from src.collectors.vcdb_collector import VCDBCollector
 from src.core.config import get_enabled_collectors
 from src.core.models import CollectorResult
 
@@ -30,6 +33,9 @@ COLLECTOR_REGISTRY: dict[str, type[BaseCollector]] = {
     "osint": OSINTCollector,
     "illumina_osint": IlluminaOSINTCollector,
     "news_search": NewsSearchCollector,
+    "vcdb": VCDBCollector,
+    "hhs_breach": HHSBreachCollector,
+    "hibp_breach": HIBPBreachCollector,
 }
 
 

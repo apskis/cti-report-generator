@@ -711,6 +711,17 @@ No direct threats to the organization were identified this quarter; however, the
 # and halts the pipeline, so they are left as collected.
 _PERIOD_FILTERED_SOURCES = {"Intel471", "OSINT"}
 
+# Date-stamped breach datasets that ground the quarterly breach stat cards.
+_BREACH_DATASET_SOURCES = ("VCDB", "HHS", "HIBP")
+
+
+def _merge_breach_dataset(data_by_source: dict) -> list[dict]:
+    """Combine the breach-dataset collectors' records into one list for grounding."""
+    merged: list[dict] = []
+    for source in _BREACH_DATASET_SOURCES:
+        merged.extend(data_by_source.get(source, []) or [])
+    return merged
+
 
 def _filter_data_to_period(data_by_source: dict, period) -> dict:
     """Scope the event/news sources (Intel471, OSINT) to the reporting quarter.
@@ -798,6 +809,10 @@ async def generate_report_local(
         # collect_and_analyze trims records to the reporting period (if set) before the AI
         # analysis, so the returned data_by_source the gates see is already in-window.
         analysis, data_by_source = await collect_and_analyze(report_type, reporting_period=reporting_period)
+
+        # Ground the breach stat cards in real, date-stamped incidents (VCDB/HHS/HIBP).
+        if report_type == "quarterly" and hasattr(generator, "set_breach_dataset"):
+            generator.set_breach_dataset(_merge_breach_dataset(data_by_source))
 
         # Get credentials for gate framework (Gate 5 needs Azure OpenAI)
         from src.core.config import azure_config
@@ -1243,8 +1258,10 @@ async def _backfill_prior_quarter(reporting_period, credentials) -> None:
 
     window = (datetime.combine(prior.start, time.min), datetime.combine(prior.end, time.max))
     # Sources that can serve a specific historical window (RSS OSINT can't, so it's excluded
-    # in favor of the GDELT news archive).
-    collector_names = ["intel471", "nvd", "crowdstrike", "illumina_osint", "news_search"]
+    # in favor of the GDELT news archive + date-stamped breach datasets).
+    collector_names = [
+        "intel471", "nvd", "crowdstrike", "illumina_osint", "news_search", "vcdb", "hhs_breach", "hibp_breach"
+    ]
 
     results = await collect_all(
         credentials, report_type="quarterly", collection_window=window, collector_names=collector_names
@@ -1271,11 +1288,14 @@ async def _backfill_prior_quarter(reporting_period, credentials) -> None:
         reporting_period=prior,
     )
 
+    generator.set_breach_dataset(_merge_breach_dataset(data_by_source))
     generator.persist_baseline_from_analysis(analysis, prior)
     intel_n = len(intel471_all)
     osint_n = len(data_by_source.get("OSINT", []))
+    breach_n = len(_merge_breach_dataset(data_by_source))
     print_status(
-        f"Backfilled {prior.label} baseline (Intel471: {intel_n}, news: {osint_n}) into history", "success"
+        f"Backfilled {prior.label} baseline (Intel471: {intel_n}, news: {osint_n}, breaches: {breach_n}) into history",
+        "success",
     )
 
 

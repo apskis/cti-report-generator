@@ -42,6 +42,20 @@ class CollectorConfig:
         "(cyberattack OR cyberattacks OR breach OR ransomware OR hackers OR malware OR databreach OR espionage)"
     )
 
+    # Breach-dataset collectors (date-stamped incidents that ground the breach stat cards).
+    # URLs are overridable so the exact export/mirror can be pinned without a code change.
+    # IBM "Cost of a Data Breach": global avg ~$165/record; healthcare ~$408/record.
+    breach_cost_per_record_usd: float = 165.0
+    # VCDB: Verizon VERIS Community Database — combined JSON array of VERIS incident objects.
+    vcdb_data_url: str = "https://raw.githubusercontent.com/vz-risk/VCDB/master/data/joined/vcdb.json"
+    # NAICS 2-digit prefixes counted as relevant peers: 31-33 manufacturing, 54 professional/
+    # scientific (biotech R&D), 62 health care. Empty tuple = no industry filter.
+    vcdb_relevant_naics_prefixes: tuple = ("31", "32", "33", "54", "62")
+    # HHS OCR "Wall of Shame" breach report CSV export (healthcare breaches >=500 individuals).
+    hhs_breach_csv_url: str = "https://ocrportal.hhs.gov/ocr/breach/breach_report.jsf?csv=1"
+    # Have I Been Pwned public breaches endpoint (keyless; a descriptive User-Agent is required).
+    hibp_breaches_url: str = "https://haveibeenpwned.com/api/v3/breaches"
+
     # Retry settings
     max_retries: int = 3
     retry_base_delay_seconds: float = 1.0

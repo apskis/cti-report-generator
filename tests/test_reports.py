@@ -754,6 +754,53 @@ class TestQuarterlyRobustness:
         assert card["prior_value"] == "0"
         assert card["change_pct"] == "New"
 
+    # ----- Breach-dataset grounding drives the stat cards from real incidents -----
+
+    def test_breach_dataset_grounds_stat_cards(self, generator):
+        from src.core.reporting_period import make_period
+
+        generator.set_reporting_period(make_period(2026, "Q2"))
+        generator.set_breach_dataset(
+            [
+                {"organization": "Covenant Health", "date": "2026-04-10", "incident_type": "Ransomware",
+                 "records_exposed": 1_000_000, "source": "HHS"},
+                {"organization": "LabCorp", "date": "2026-05-02", "incident_type": "Hacking",
+                 "records_exposed": 500_000, "source": "HIBP"},
+                {"organization": "OutOfPeriod", "date": "2026-01-01", "incident_type": "Ransomware",
+                 "records_exposed": 9_000_000, "source": "VCDB"},  # Q1 -> excluded
+            ]
+        )
+        analysis = {
+            "breach_landscape": {
+                "stat_cards": [
+                    {"label": "Total Incidents", "value": "N/A", "prior_value": "N/A", "change_pct": "N/A"},
+                    {"label": "Est. Total Impact", "value": "N/A", "prior_value": "N/A", "change_pct": "N/A"},
+                    {"label": "Ransomware", "value": "N/A", "prior_value": "N/A", "change_pct": "N/A"},
+                    {"label": "Records Exposed", "value": "N/A", "prior_value": "N/A", "change_pct": "N/A"},
+                ],
+                "incidents_by_type": [],
+            }
+        }
+        generator.generate(analysis)
+        cards = {c["label"]: c["value"] for c in analysis["breach_landscape"]["stat_cards"]}
+        assert cards["Total Incidents"] == "2"  # only Q2 incidents
+        assert cards["Ransomware"] == "1"
+        assert cards["Records Exposed"] == "1.5M"  # 1.0M + 0.5M
+        assert cards["Est. Total Impact"] != "N/A"  # records x per-record cost
+
+    def test_breach_dataset_absent_leaves_values(self, generator):
+        from src.core.reporting_period import make_period
+
+        generator.set_reporting_period(make_period(2026, "Q2"))  # no dataset supplied
+        analysis = {
+            "breach_landscape": {
+                "stat_cards": [{"label": "Total Incidents", "value": "20", "prior_value": "N/A", "change_pct": "N/A"}],
+                "incidents_by_type": [],
+            }
+        }
+        generator.generate(analysis)
+        assert analysis["breach_landscape"]["stat_cards"][0]["value"] == "20"
+
     def test_prior_quarter_stats_stay_na_when_no_baseline(self, generator):
         from src.core.reporting_period import make_period
 

@@ -120,8 +120,12 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             # guessed, so the cards/table never disagree with the chosen quarter.
             self._apply_reporting_period_labels(analysis_result)
 
-            # Ground the Ransomware stat card in the observed incident-type count (so it is
-            # a real number, not N/A) BEFORE computing prior-quarter percentages.
+            # Ground the four breach stat cards in real, date-stamped incidents (VCDB/HHS/
+            # HIBP) for this quarter when a dataset was supplied.
+            self._apply_breach_dataset_grounding(analysis_result)
+
+            # Fallback: if the Ransomware card is still N/A, fill it from the observed
+            # incident-type count BEFORE computing prior-quarter percentages.
             self._derive_ransomware_count(analysis_result)
 
             # If a real prior-quarter baseline exists in history, use its stat values for
@@ -183,6 +187,44 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         """
         self.reporting_period = period
 
+    def set_breach_dataset(self, records: list[dict[str, Any]]) -> None:
+        """Provide date-stamped breach incidents (VCDB/HHS/HIBP) used to ground the stat cards."""
+        self.breach_dataset = records or []
+
+    def _apply_breach_dataset_grounding(self, analysis_result: dict[str, Any]) -> None:
+        """Ground the breach stat cards in real, date-stamped incidents for the period.
+
+        Counts and records-exposed come straight from the deduplicated dataset incidents
+        that fall inside the reporting quarter; the dollar figure is an explicit estimate
+        (records x IBM per-record cost). Only overrides when the dataset actually has
+        incidents for this quarter — otherwise the AI's values (or honest N/A) stand.
+        """
+        records = getattr(self, "breach_dataset", None)
+        period = getattr(self, "reporting_period", None)
+        if not records or period is None:
+            return
+        from src.core.breach_metrics import apply_metrics_to_stat_cards, breach_metrics_for_period
+        from src.core.config import collector_config
+
+        metrics = breach_metrics_for_period(
+            records, period.start, period.end, cost_per_record_usd=collector_config.breach_cost_per_record_usd
+        )
+        grounded = apply_metrics_to_stat_cards(analysis_result, metrics)
+        if grounded:
+            n = metrics["total_incidents"]
+            logger.info(
+                f"Grounded breach stat cards from {n} dataset incidents "
+                f"(records: {metrics['records_exposed']:,}, est. impact: ${metrics['est_impact_millions']}M)"
+            )
+            if metrics.get("records_known"):
+                breach = analysis_result.get("breach_landscape")
+                if isinstance(breach, dict):
+                    breach["stat_methodology"] = (
+                        f"Est. Total Impact estimated at "
+                        f"${collector_config.breach_cost_per_record_usd:.0f}/record (IBM Cost of a Data Breach); "
+                        "counts and records exposed are from date-stamped breach disclosures (VCDB/HHS/HIBP)."
+                    )
+
     def _calculate_quarter_info(self) -> None:
         """Establish the reporting period as an EXACT calendar quarter.
 
@@ -238,8 +280,9 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         """
         self.set_reporting_period(period)
         self._calculate_quarter_info()
-        # Ground the ransomware count the same way the rendered report does, so the stored
+        # Ground the stat cards the same way the rendered report does, so the stored
         # baseline matches what the next quarter compares against.
+        self._apply_breach_dataset_grounding(analysis_result)
         self._derive_ransomware_count(analysis_result)
         risk = analysis_result.get("risk_assessment") or {}
         self._save_current_risk_assessment(
@@ -444,7 +487,9 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             return
         for card in breach.get("stat_cards") or []:
             if isinstance(card, dict) and "ransomware" in str(card.get("label", "")).lower():
-                card["value"] = str(total)
+                # Fallback only — don't override a value already grounded from the dataset.
+                if QuarterlyReportGenerator._parse_stat_number(card.get("value", "")) is None:
+                    card["value"] = str(total)
                 return
 
     def _compare_with_previous_quarter(self, current_risk: str, previous_risk: str) -> str:

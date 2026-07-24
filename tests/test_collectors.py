@@ -598,3 +598,109 @@ class TestNewsSearchCollector:
 
     def test_news_search_registered(self):
         assert "news_search" in list_available_collectors()
+
+
+# =============================================================================
+# Breach-dataset collectors (VCDB / HHS / HIBP) — parsers
+# =============================================================================
+
+
+class TestVCDBParser:
+    def test_parses_veris_incident_and_filters_industry(self):
+        from src.collectors.vcdb_collector import parse_vcdb
+
+        payload = [
+            {
+                "victim": {"victim_id": "Acme Health", "industry": "622"},  # health care -> kept
+                "timeline": {"incident": {"year": 2026, "month": 4, "day": 12}},
+                "attribute": {"confidentiality": {"data_total": 250000}},
+                "action": {"malware": {"variety": ["Ransomware"]}},
+                "summary": "Ransomware at Acme Health",
+            },
+            {
+                "victim": {"victim_id": "Retailer", "industry": "44"},  # retail -> filtered out
+                "timeline": {"incident": {"year": 2026, "month": 5}},
+                "action": {"hacking": {"variety": ["SQLi"]}},
+            },
+        ]
+        out = parse_vcdb(payload, naics_prefixes=("31", "32", "33", "54", "62"))
+        assert len(out) == 1
+        r = out[0]
+        assert r["organization"] == "Acme Health"
+        assert r["date"] == "2026-04-12"
+        assert r["incident_type"] == "Ransomware"
+        assert r["records_exposed"] == 250000
+        assert r["source"] == "VCDB"
+
+    def test_no_industry_filter_keeps_all(self):
+        from src.collectors.vcdb_collector import parse_vcdb
+
+        payload = [
+            {"victim": {"victim_id": "X", "industry": "44"}, "timeline": {"incident": {"year": 2026, "month": 6}},
+             "action": {"error": {}}}
+        ]
+        out = parse_vcdb(payload, naics_prefixes=())
+        assert len(out) == 1
+        assert out[0]["incident_type"] == "Data Exposure"
+
+
+class TestHHSParser:
+    def test_parses_csv_rows(self):
+        from src.collectors.hhs_breach_collector import parse_hhs_csv
+
+        csv_text = (
+            "Name of Covered Entity,State,Covered Entity Type,Individuals Affected,"
+            "Breach Submission Date,Type of Breach\n"
+            "Covenant Health,TN,Healthcare Provider,\"1,200,000\",04/15/2026,Hacking/IT Incident - Ransomware\n"
+            "Mercy Clinic,MO,Healthcare Provider,45000,05/03/2026,Unauthorized Access/Disclosure\n"
+        )
+        out = parse_hhs_csv(csv_text)
+        assert len(out) == 2
+        assert out[0]["organization"] == "Covenant Health"
+        assert out[0]["date"] == "2026-04-15"
+        assert out[0]["incident_type"] == "Ransomware"
+        assert out[0]["records_exposed"] == 1200000
+        assert out[1]["incident_type"] == "Unauthorized Access"
+
+    def test_empty_csv_is_empty(self):
+        from src.collectors.hhs_breach_collector import parse_hhs_csv
+
+        assert parse_hhs_csv("") == []
+
+
+class TestHIBPParser:
+    def test_parses_breaches(self):
+        from src.collectors.hibp_breach_collector import parse_hibp
+
+        payload = [
+            {"Name": "Acme", "Title": "Acme", "Domain": "acme.com", "BreachDate": "2026-04-20",
+             "PwnCount": 800000, "DataClasses": ["Email addresses", "Passwords"], "Description": "creds leaked"},
+            {"Name": "NoDate", "BreachDate": "", "PwnCount": 1},  # dropped: no date
+        ]
+        out = parse_hibp(payload)
+        assert len(out) == 1
+        r = out[0]
+        assert r["organization"] == "Acme"
+        assert r["date"] == "2026-04-20"
+        assert r["records_exposed"] == 800000
+        assert r["incident_type"] == "Data Exposure"
+        assert r["url"] == "https://acme.com"
+
+    def test_ransomware_from_description(self):
+        from src.collectors.hibp_breach_collector import parse_hibp
+
+        out = parse_hibp([{"Name": "X", "BreachDate": "2026-04-01", "PwnCount": 10,
+                           "Description": "data leaked following a ransom demand"}])
+        assert out[0]["incident_type"] == "Ransomware"
+
+
+class TestBreachCollectorsRegistered:
+    def test_registered(self):
+        names = list_available_collectors()
+        assert {"vcdb", "hhs_breach", "hibp_breach"} <= set(names)
+
+    def test_enabled_only_for_quarterly(self, mock_credentials):
+        from src.collectors.vcdb_collector import VCDBCollector
+
+        assert VCDBCollector(mock_credentials, report_type="quarterly").enabled is True
+        assert VCDBCollector(mock_credentials, report_type="weekly").enabled is False

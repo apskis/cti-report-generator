@@ -41,3 +41,20 @@ collectors:
     description: "Illumina company OSINT - public disclosures, news, and filings (quarterly only)"
     enabled: true
     quarterly_only: true  # Only runs for quarterly strategic reports
+
+  # ── Breach Datasets (date-stamped incidents that ground the breach stat cards) ──
+
+  - name: vcdb
+    description: "Verizon VERIS Community Database - open, date-stamped peer breach incidents (quarterly only)"
+    enabled: true
+    quarterly_only: true
+
+  - name: hhs_breach
+    description: "HHS OCR breach portal - U.S. healthcare breaches with records-affected counts (quarterly only)"
+    enabled: true
+    quarterly_only: true
+
+  - name: hibp_breach
+    description: "Have I Been Pwned - public breach directory with account-exposure counts (quarterly only)"
+    enabled: true
+    quarterly_only: true
