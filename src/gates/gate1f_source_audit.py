@@ -241,7 +241,7 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
         # Verify change_pct has proper sign. "N/A" (no prior-quarter baseline) and "0%"
         # legitimately carry no sign, so only flag a real numeric delta.
         change_pct_str = str(change_pct).strip()
-        if change_pct_str and change_pct_str != "0%" and change_pct_str.upper() not in ("N/A", "NA"):
+        if change_pct_str and change_pct_str != "0%" and change_pct_str.upper() not in ("N/A", "NA", "NEW"):
             if not (change_pct_str.startswith("+") or change_pct_str.startswith("-")):
                 stats_issues.append(f"⚠️  {label}: Missing +/- sign in change_pct '{change_pct_str}'")
                 logger.warning("   ⚠️  MISSING +/- SIGN")

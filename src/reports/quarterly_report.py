@@ -120,6 +120,10 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             # guessed, so the cards/table never disagree with the chosen quarter.
             self._apply_reporting_period_labels(analysis_result)
 
+            # Ground the Ransomware stat card in the observed incident-type count (so it is
+            # a real number, not N/A) BEFORE computing prior-quarter percentages.
+            self._derive_ransomware_count(analysis_result)
+
             # If a real prior-quarter baseline exists in history, use its stat values for
             # the cards' "prior" column and quarter-over-quarter percentages.
             self._apply_prior_quarter_stats(analysis_result)
@@ -234,6 +238,9 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         """
         self.set_reporting_period(period)
         self._calculate_quarter_info()
+        # Ground the ransomware count the same way the rendered report does, so the stored
+        # baseline matches what the next quarter compares against.
+        self._derive_ransomware_count(analysis_result)
         risk = analysis_result.get("risk_assessment") or {}
         self._save_current_risk_assessment(
             {
@@ -385,14 +392,60 @@ class QuarterlyReportGenerator(BaseReportGenerator):
                 continue
             prior_value = prior_stats[label]
             card["prior_value"] = prior_value
-            curr_n = self._parse_stat_number(card.get("value", ""))
-            prev_n = self._parse_stat_number(prior_value)
-            if curr_n is not None and prev_n not in (None, 0):
-                change = ((curr_n - prev_n) / prev_n) * 100
-                card["change_pct"] = f"+{int(change)}%" if change >= 0 else f"{int(change)}%"
-            else:
-                card["change_pct"] = "N/A"
+            card["change_pct"] = self._compute_change_pct(card.get("value", ""), prior_value)
         logger.info(f"Applied prior-quarter ({prev_key}) breach stats to stat cards")
+
+    @classmethod
+    def _compute_change_pct(cls, current: str, prior: str) -> str:
+        """Honest quarter-over-quarter change label from a current + prior stat value.
+
+        - current is non-numeric (N/A) -> "N/A" (can't compute)
+        - prior is non-numeric (no baseline) -> "N/A"
+        - both zero -> "0%"
+        - prior zero, current > 0 -> "New" (a percentage from zero is undefined/misleading)
+        - otherwise -> signed percentage, e.g. "+150%" / "-40%"
+        """
+        curr_n = cls._parse_stat_number(current)
+        prev_n = cls._parse_stat_number(prior)
+        if curr_n is None or prev_n is None:
+            return "N/A"
+        if prev_n == 0:
+            return "0%" if curr_n == 0 else "New"
+        change = ((curr_n - prev_n) / prev_n) * 100
+        if int(change) == 0:
+            return "0%"
+        return f"+{int(change)}%" if change > 0 else f"{int(change)}%"
+
+    @staticmethod
+    def _derive_ransomware_count(analysis_result: dict[str, Any]) -> None:
+        """Fill the Ransomware stat card from the observed incident-type counts.
+
+        The model sometimes leaves the Ransomware stat card as N/A even though it broke
+        out a "Ransomware" row in incidents_by_type. That row is a real count grounded in
+        the breach data, so use it as the card's value — turning an N/A into a genuine
+        number (and enabling a real quarter-over-quarter percentage). This does not
+        fabricate: it reuses the analysis's own observed count. If no ransomware incident
+        type was observed, the card is left untouched.
+        """
+        breach = analysis_result.get("breach_landscape")
+        if not isinstance(breach, dict):
+            return
+        incidents = breach.get("incidents_by_type") or analysis_result.get("incidents_by_type") or []
+        total = 0
+        found = False
+        for row in incidents:
+            if isinstance(row, dict) and "ransom" in str(row.get("type", "")).lower():
+                try:
+                    total += int(row.get("current_count", 0) or 0)
+                    found = True
+                except (ValueError, TypeError):
+                    continue
+        if not found:
+            return
+        for card in breach.get("stat_cards") or []:
+            if isinstance(card, dict) and "ransomware" in str(card.get("label", "")).lower():
+                card["value"] = str(total)
+                return
 
     def _compare_with_previous_quarter(self, current_risk: str, previous_risk: str) -> str:
         """Compare current risk level with previous quarter and return trend indicator."""

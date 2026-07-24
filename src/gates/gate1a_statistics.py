@@ -499,7 +499,7 @@ def _validate_quarterly_statistics(gate_input: GateInput) -> GateResult:
             if (
                 change_pct
                 and change_pct != "0%"
-                and change_pct.upper() not in ("N/A", "NA")
+                and change_pct.upper() not in ("N/A", "NA", "NEW")
                 and not (change_pct.startswith("+") or change_pct.startswith("-"))
             ):
                 missing_signs.append(f"{label}: '{change_pct}'")

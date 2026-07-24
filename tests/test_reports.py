@@ -691,6 +691,69 @@ class TestQuarterlyRobustness:
         assert card["prior_value"] == "10"  # real prior, not N/A
         assert card["change_pct"] == "+100%"  # 10 -> 20
 
+    # ----- #1: Ransomware card is grounded in the observed incident-type count -----
+
+    def test_ransomware_card_derived_from_incident_types(self, generator):
+        analysis = {
+            "breach_landscape": {
+                "stat_cards": [{"value": "N/A", "label": "Ransomware", "prior_value": "N/A", "change_pct": "N/A"}],
+                "incidents_by_type": [
+                    {"type": "Ransomware", "current_count": 5, "notable_example": "Acme: hit"},
+                    {"type": "Ransomware & Extortion", "current_count": 2, "notable_example": "B: hit"},
+                    {"type": "Data Exposure", "current_count": 3, "notable_example": "C: leak"},
+                ],
+            }
+        }
+        generator.generate(analysis)
+        card = analysis["breach_landscape"]["stat_cards"][0]
+        assert card["value"] == "7"  # 5 + 2 ransomware incidents, not N/A
+
+    def test_ransomware_card_untouched_when_no_ransomware_type(self, generator):
+        analysis = {
+            "breach_landscape": {
+                "stat_cards": [{"value": "N/A", "label": "Ransomware"}],
+                "incidents_by_type": [{"type": "Data Exposure", "current_count": 3, "notable_example": "C: leak"}],
+            }
+        }
+        generator.generate(analysis)
+        assert analysis["breach_landscape"]["stat_cards"][0]["value"] == "N/A"
+
+    # ----- #2: honest zero-prior change labels -----
+
+    @pytest.mark.parametrize(
+        "current,prior,expected",
+        [
+            ("20", "10", "+100%"),
+            ("6", "10", "-40%"),
+            ("10", "10", "0%"),
+            ("0", "0", "0%"),
+            ("5", "0", "New"),   # prior zero, current nonzero -> New, not a bogus percent
+            ("N/A", "10", "N/A"),  # current absent -> N/A
+            ("5", "N/A", "N/A"),   # no baseline -> N/A
+        ],
+    )
+    def test_compute_change_pct(self, generator, current, prior, expected):
+        assert generator._compute_change_pct(current, prior) == expected
+
+    def test_new_label_when_prior_zero(self, generator):
+        from src.core.reporting_period import make_period
+
+        generator.persist_baseline_from_analysis(
+            {"breach_landscape": {"stat_cards": [{"value": "0", "label": "Ransomware"}]}},
+            make_period(2026, "Q1"),
+        )
+        generator.set_reporting_period(make_period(2026, "Q2"))
+        analysis = {
+            "breach_landscape": {
+                "stat_cards": [{"value": "3", "label": "Ransomware", "prior_value": "N/A", "change_pct": "N/A"}],
+                "incidents_by_type": [],
+            }
+        }
+        generator.generate(analysis)
+        card = analysis["breach_landscape"]["stat_cards"][0]
+        assert card["prior_value"] == "0"
+        assert card["change_pct"] == "New"
+
     def test_prior_quarter_stats_stay_na_when_no_baseline(self, generator):
         from src.core.reporting_period import make_period
 
