@@ -14,10 +14,14 @@ from __future__ import annotations
 
 import calendar
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 # First month of each quarter.
 _QUARTER_START_MONTH = {1: 1, 2: 4, 3: 7, 4: 10}
+
+# Breach reviews are published shortly AFTER the quarter they cover (a "June 2026"
+# review lands in mid/late July), so scope the event sources with a trailing grace.
+DEFAULT_GRACE_DAYS = 45
 
 
 def current_quarter(today: date) -> tuple[int, int]:
@@ -104,3 +108,80 @@ def resolve_period(year: int | None, quarter: int | str | None, today: date) -> 
     y = int(year) if year else cy
     q = parse_quarter(quarter) if quarter not in (None, "") else cq
     return make_period(y, q)
+
+
+_RECORD_DATE_KEYS = ("date", "published_date", "published", "last_activity", "created", "reportDate", "updated")
+
+
+def record_date(rec: dict) -> date | None:
+    """Best-effort extraction of a record's date (returns a ``date`` or ``None``)."""
+    if not isinstance(rec, dict):
+        return None
+    for key in _RECORD_DATE_KEYS:
+        v = rec.get(key)
+        if v is None or v == "":
+            continue
+        # Epoch seconds or milliseconds (as number or numeric string).
+        if isinstance(v, (int, float)) or (isinstance(v, str) and v.strip().isdigit()):
+            try:
+                ts = float(v)
+                if ts > 1e12:  # milliseconds
+                    ts /= 1000.0
+                return datetime.fromtimestamp(ts, tz=UTC).date()
+            except (ValueError, OverflowError, OSError):
+                continue
+        if isinstance(v, str):
+            try:
+                return datetime.fromisoformat(v.strip().replace("Z", "+00:00")).date()
+            except ValueError:
+                continue
+    return None
+
+
+def filter_sources_to_period(
+    data_by_source: dict,
+    period: ReportingPeriod,
+    *,
+    filtered_sources: set[str],
+    grace_days: int = DEFAULT_GRACE_DAYS,
+) -> tuple[dict, dict]:
+    """Scope only ``filtered_sources`` (event/news) to the period; pass others through.
+
+    Pure (no I/O). Returns ``(out, stats)`` where ``stats[source]`` is
+    ``{"kept": int, "dropped": int, "out_of_window": bool}``. ``out_of_window`` means the
+    source had records but none fell in-window, so it was kept intact (never emptied) to
+    avoid gutting the pipeline — the caller should surface this as a warning.
+
+    Reference/IOC sources (e.g. NVD, CrowdStrike) are deliberately NOT filtered: they are
+    the "current threat landscape" and always timestamp "now", so quarter-filtering them
+    would empty the IOC feed. Undated records are kept. A trailing ``grace_days`` window
+    keeps breach reviews published shortly after quarter-end.
+    """
+    effective_end = period.end + timedelta(days=grace_days)
+    out: dict = {}
+    stats: dict = {}
+    for source, records in data_by_source.items():
+        if source not in filtered_sources or not isinstance(records, list):
+            out[source] = records
+            continue
+
+        kept = []
+        dropped = 0
+        for rec in records:
+            if not isinstance(rec, dict):
+                kept.append(rec)
+                continue
+            d = record_date(rec)
+            if d is None or (period.start <= d <= effective_end):
+                kept.append(rec)
+            else:
+                dropped += 1
+
+        if records and not kept:
+            out[source] = records  # never empty a source that had data
+            stats[source] = {"kept": len(records), "dropped": 0, "out_of_window": True}
+            continue
+
+        out[source] = kept
+        stats[source] = {"kept": len(kept), "dropped": dropped, "out_of_window": False}
+    return out, stats

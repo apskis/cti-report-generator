@@ -31,7 +31,6 @@ import json
 import logging
 import os
 import sys
-from datetime import UTC
 from pathlib import Path
 
 # Allow running this script directly (adds the repo root to sys.path for src/gates imports)
@@ -706,65 +705,40 @@ No direct threats to the organization were identified this quarter; however, the
     }
 
 
-def _extract_record_date(rec: dict):
-    """Best-effort extraction of a record's date (returns a ``date`` or ``None``)."""
-    from datetime import datetime
-
-    for key in ("date", "published_date", "published", "last_activity", "created", "reportDate", "updated"):
-        v = rec.get(key)
-        if v is None or v == "":
-            continue
-        # Epoch seconds or milliseconds.
-        if isinstance(v, (int, float)) or (isinstance(v, str) and v.strip().isdigit()):
-            try:
-                ts = float(v)
-                if ts > 1e12:  # milliseconds
-                    ts /= 1000.0
-                return datetime.fromtimestamp(ts, tz=UTC).date()
-            except (ValueError, OverflowError, OSError):
-                continue
-        if isinstance(v, str):
-            try:
-                return datetime.fromisoformat(v.strip().replace("Z", "+00:00")).date()
-            except ValueError:
-                continue
-    return None
+# Only the event/news sources are scoped to the reporting quarter. NVD (CVE catalog)
+# and CrowdStrike (threat-actor profiles) are "current threat landscape" reference data
+# that always timestamp "now" — filtering them by a past quarter empties the IOC feed
+# and halts the pipeline, so they are left as collected.
+_PERIOD_FILTERED_SOURCES = {"Intel471", "OSINT"}
 
 
 def _filter_data_to_period(data_by_source: dict, period) -> dict:
-    """Drop collected records whose date falls outside the reporting period.
+    """Scope the event/news sources (Intel471, OSINT) to the reporting quarter.
 
-    Undated records are kept (we cannot place them, and dropping everything undated
-    would gut sources like CrowdStrike actor profiles). Logs what was dropped so a
-    past-quarter run makes clear how much the live sources still served in-window.
+    Delegates the pure filtering to reporting_period.filter_sources_to_period and adds
+    the console/log reporting. Reference/IOC sources pass through untouched.
     """
-    out: dict = {}
-    kept_total = dropped_total = 0
-    for source, records in data_by_source.items():
-        if not isinstance(records, list):
-            out[source] = records
-            continue
-        kept = []
-        dropped = 0
-        for rec in records:
-            if not isinstance(rec, dict):
-                kept.append(rec)
-                continue
-            d = _extract_record_date(rec)
-            if d is None or period.contains(d):
-                kept.append(rec)
-            else:
-                dropped += 1
-        out[source] = kept
-        kept_total += len(kept)
-        dropped_total += dropped
-        if dropped:
-            logger.info(f"Period filter [{period.label}]: {source} kept {len(kept)}, dropped {dropped} out-of-window")
-    print_status(
-        f"Period filter [{period.label}]: kept {kept_total} in-window records, "
-        f"dropped {dropped_total} outside {period.start} to {period.end}",
-        "info",
+    from src.core.reporting_period import filter_sources_to_period
+
+    out, stats = filter_sources_to_period(
+        data_by_source, period, filtered_sources=_PERIOD_FILTERED_SOURCES
     )
+    for source, s in stats.items():
+        if s["out_of_window"]:
+            print_status(
+                f"Period filter [{period.label}]: {source} had no records within the window; keeping all "
+                f"{s['kept']} and flagging as out-of-window (the chosen quarter likely predates what the live "
+                f"source still serves).",
+                "warning",
+            )
+        elif s["dropped"]:
+            logger.info(
+                f"Period filter [{period.label}]: {source} kept {s['kept']}, dropped {s['dropped']} out-of-window"
+            )
+            print_status(
+                f"Period filter [{period.label}]: {source} kept {s['kept']}, dropped {s['dropped']} outside window",
+                "info",
+            )
     return out
 
 
@@ -1103,8 +1077,9 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
     collector_results = await collect_all(credentials, report_type=report_type)
     data_by_source = get_data_by_source(collector_results)
 
-    # Trim to the chosen quarter BEFORE enrichment/analysis so the AI only sees
-    # in-window records (the company-context source has no per-record dates and is kept).
+    # Scope the event/news sources (Intel471, OSINT) to the chosen quarter BEFORE
+    # analysis. Reference/IOC sources (NVD, CrowdStrike) stay current so IOC extraction
+    # still has data; the company-context source has no per-record dates and is kept.
     if reporting_period is not None:
         data_by_source = _filter_data_to_period(data_by_source, reporting_period)
 
