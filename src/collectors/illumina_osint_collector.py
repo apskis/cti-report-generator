@@ -46,8 +46,8 @@ class IlluminaOSINTCollector(BaseCollector):
     NOTE: This collector only runs for quarterly reports.
     """
 
-    def __init__(self, credentials: dict[str, str] = None, report_type: str = "weekly"):
-        super().__init__(credentials or {}, report_type)
+    def __init__(self, credentials: dict[str, str] = None, report_type: str = "weekly", collection_window=None):
+        super().__init__(credentials or {}, report_type, collection_window=collection_window)
 
     @property
     def source_name(self) -> str:

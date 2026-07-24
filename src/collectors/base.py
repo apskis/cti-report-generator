@@ -27,16 +27,27 @@ class BaseCollector(ABC):
     - collect(): Main data collection method
     """
 
-    def __init__(self, credentials: dict[str, str], report_type: str = "weekly"):
+    def __init__(
+        self,
+        credentials: dict[str, str],
+        report_type: str = "weekly",
+        collection_window: tuple[datetime, datetime] | None = None,
+    ):
         """
         Initialize collector with credentials.
 
         Args:
             credentials: Dictionary containing API credentials
             report_type: Type of report being generated ("weekly" or "quarterly")
+            collection_window: Optional explicit ``(start, end)`` datetime window. When set,
+                ``get_date_range`` returns it verbatim instead of the trailing
+                ``now - lookback -> now`` span, so collectors that already query the API by
+                date (Intel471 ``from/until``, NVD ``pubStartDate/pubEndDate``) fetch a
+                specific historical quarter. Used for prior-quarter baseline backfill.
         """
         self.credentials = credentials
         self.report_type = report_type
+        self.collection_window = collection_window
         self.logger = logging.getLogger(f"{__name__}.{self.source_name}")
 
     @property
@@ -64,7 +75,12 @@ class BaseCollector(ABC):
 
         Returns:
             Tuple of (start_date, end_date) as datetime objects
+
+        When an explicit ``collection_window`` was supplied to the collector, it wins over
+        the trailing-``days`` calculation so historical backfill queries a fixed quarter.
         """
+        if self.collection_window is not None:
+            return self.collection_window
         days = days or self.lookback_days
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days)

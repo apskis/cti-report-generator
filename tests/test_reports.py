@@ -632,6 +632,83 @@ class TestQuarterlyRobustness:
         assert bl["prior_quarter_label"] == "Q1 2026"
         assert bl["stat_cards"][0]["prior_label"] == "Q1 2026"
 
+    # ----- Prior-quarter baseline: history stores + drives stat-card prior column -----
+
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("20", 20.0),
+            ("1,000", 1000.0),
+            ("$1.2M", 1.2),
+            ("5.0M", 5.0),
+            ("N/A", None),
+            ("", None),
+            ("—", None),
+            ("high", None),
+        ],
+    )
+    def test_parse_stat_number(self, generator, value, expected):
+        assert generator._parse_stat_number(value) == expected
+
+    def test_persist_baseline_writes_risk_and_breach_stats(self, generator):
+        from src.core.reporting_period import make_period
+
+        analysis = {
+            "risk_assessment": {"nation_state": "high", "ransomware": "medium"},
+            "breach_landscape": {
+                "stat_cards": [
+                    {"value": "10", "label": "Total Incidents"},
+                    {"value": "3", "label": "Ransomware"},
+                ]
+            },
+        }
+        generator.persist_baseline_from_analysis(analysis, make_period(2026, "Q1"))
+        history = generator._load_historical_data()
+        assert "2026-Q1" in history
+        assert history["2026-Q1"]["nation_state"] == "HIGH"
+        assert history["2026-Q1"]["breach_stats"]["Total Incidents"] == "10"
+
+    def test_prior_quarter_stats_fill_card_and_compute_pct(self, generator):
+        from src.core.reporting_period import make_period
+
+        # Seed Q1 2026 with a real baseline of 10 Total Incidents.
+        generator.persist_baseline_from_analysis(
+            {"breach_landscape": {"stat_cards": [{"value": "10", "label": "Total Incidents"}]}},
+            make_period(2026, "Q1"),
+        )
+        # Now render Q2 2026 with 20 incidents — the prior column and % should come from Q1.
+        generator.set_reporting_period(make_period(2026, "Q2"))
+        analysis = {
+            "breach_landscape": {
+                "stat_cards": [
+                    {"value": "20", "label": "Total Incidents", "prior_value": "N/A", "change_pct": "N/A"}
+                ],
+                "incidents_by_type": [],
+            }
+        }
+        generator.generate(analysis)
+        card = analysis["breach_landscape"]["stat_cards"][0]
+        assert card["prior_value"] == "10"  # real prior, not N/A
+        assert card["change_pct"] == "+100%"  # 10 -> 20
+
+    def test_prior_quarter_stats_stay_na_when_no_baseline(self, generator):
+        from src.core.reporting_period import make_period
+
+        generator.set_reporting_period(make_period(2026, "Q2"))
+        analysis = {
+            "breach_landscape": {
+                "stat_cards": [
+                    {"value": "20", "label": "Total Incidents", "prior_value": "N/A", "change_pct": "N/A"}
+                ],
+                "incidents_by_type": [],
+            }
+        }
+        generator.generate(analysis)
+        card = analysis["breach_landscape"]["stat_cards"][0]
+        # No Q1 history -> honest N/A, no fabricated prior or percent.
+        assert card["prior_value"] == "N/A"
+        assert card["change_pct"] == "N/A"
+
 
 class TestReportTypesList:
     """Tests for list_report_types functionality."""

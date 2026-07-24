@@ -465,3 +465,80 @@ class TestIlluminaIRFeed:
         out = IlluminaOSINTCollector._format_feed_entries(rss, self._CUTOFF)
         assert "Q2 2026 Financial Results" in out
         assert "Stale item" not in out
+
+
+# =============================================================================
+# Explicit collection window (historical backfill plumbing)
+# =============================================================================
+
+
+class TestCollectionWindow:
+    """An explicit collection_window overrides the trailing now-lookback range so
+    Intel471/NVD can query a specific past quarter for prior-quarter backfill."""
+
+    def test_window_overrides_trailing_range(self, mock_credentials):
+        window = (datetime(2026, 1, 1), datetime(2026, 3, 31))
+        collector = get_collector("nvd", mock_credentials, collection_window=window)
+        assert collector.get_date_range() == window
+
+    def test_no_window_uses_trailing_range(self, mock_credentials):
+        collector = get_collector("nvd", mock_credentials)
+        start, end = collector.get_date_range()
+        assert start < end  # trailing now-lookback -> now
+
+    def test_registry_threads_window_to_all_collectors(self, mock_credentials):
+        window = (datetime(2026, 1, 1), datetime(2026, 3, 31))
+        for name in ("nvd", "intel471", "crowdstrike", "news_search"):
+            c = get_collector(name, mock_credentials, report_type="quarterly", collection_window=window)
+            assert c.collection_window == window
+
+
+# =============================================================================
+# GDELT news-search collector (date-bounded archive for backfill)
+# =============================================================================
+
+
+class TestNewsSearchCollector:
+    def test_build_params_formats_datetimes(self):
+        from src.collectors.news_search_collector import build_gdelt_params
+
+        params = build_gdelt_params("biotech breach", datetime(2026, 1, 1, 0, 0, 0), datetime(2026, 3, 31, 23, 59, 59), 40)
+        assert params["startdatetime"] == "20260101000000"
+        assert params["enddatetime"] == "20260331235959"
+        assert params["maxrecords"] == "40"
+        assert params["mode"] == "ArtList"
+        assert params["format"] == "json"
+
+    def test_parse_response_maps_to_osint_schema(self):
+        from src.collectors.news_search_collector import parse_gdelt_response
+
+        payload = {
+            "articles": [
+                {"title": "Genomics firm hit by ransomware CVE-2026-1234", "url": "https://n/1",
+                 "seendate": "20260115T120000Z", "domain": "example.com"},
+                {"title": "", "url": "https://n/bad"},  # no title -> dropped
+                {"url": "https://n/notitle", "seendate": "20260201T000000Z"},  # dropped
+            ]
+        }
+        out = parse_gdelt_response(payload)
+        assert len(out) == 1
+        art = out[0]
+        assert art["url"] == "https://n/1"
+        assert art["type"] == "osint_article"
+        assert art["published_date"].startswith("2026-01-15")
+        assert "CVE-2026-1234" in art["cves_mentioned"]
+
+    def test_parse_response_handles_empty(self):
+        from src.collectors.news_search_collector import parse_gdelt_response
+
+        assert parse_gdelt_response({}) == []
+        assert parse_gdelt_response({"articles": []}) == []
+
+    def test_loads_tolerates_non_json(self):
+        from src.collectors.news_search_collector import NewsSearchCollector
+
+        assert NewsSearchCollector._loads("") == {"articles": []}
+        assert NewsSearchCollector._loads("<html>error</html>") == {"articles": []}
+
+    def test_news_search_registered(self):
+        assert "news_search" in list_available_collectors()

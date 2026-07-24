@@ -749,6 +749,7 @@ async def generate_report_local(
     output_dir: str = ".",
     use_azure: bool = False,
     reporting_period=None,
+    backfill_prior: bool = True,
 ) -> str:
     """
     Generate a report locally.
@@ -759,6 +760,9 @@ async def generate_report_local(
         use_real: Use real API data (requires Key Vault access)
         output_dir: Directory to save the report
         use_azure: Upload to Azure Blob Storage (implies use_real)
+        reporting_period: Explicit quarterly period (quarterly only)
+        backfill_prior: When True (quarterly + real data), seed the prior-quarter baseline
+            in history if missing so the report shows genuine quarter-over-quarter data.
 
     Returns:
         Path to generated report or Azure URL
@@ -801,6 +805,20 @@ async def generate_report_local(
 
         vault_url = azure_config.get_key_vault_url()
         credentials = get_all_api_keys(vault_url)
+
+        # Quarterly: ensure the prior quarter has a stored baseline so the report can show
+        # real quarter-over-quarter trends/deltas instead of N/A. Best-effort — a backfill
+        # failure must never block the current report.
+        if backfill_prior and report_type == "quarterly" and reporting_period is not None:
+            try:
+                print_section("🕓 Prior-Quarter Baseline")
+            except UnicodeEncodeError:
+                print_section("Prior-Quarter Baseline")
+            try:
+                await _backfill_prior_quarter(reporting_period, credentials)
+            except Exception as e:
+                logger.warning(f"Prior-quarter backfill failed (non-fatal): {e}")
+                print_status(f"Backfill skipped: {e}", "warning")
     else:
         try:
             print_section("📋 Using Mock Data (default)")
@@ -1188,6 +1206,79 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
         return result, data_by_source
 
 
+async def _backfill_prior_quarter(reporting_period, credentials) -> None:
+    """Seed the prior quarter's baseline in history if it is missing.
+
+    A quarterly report compares against the previous quarter's stored assessment. If that
+    quarter was never generated, everything reads N/A / Unchanged. This pulls the prior
+    quarter directly from the sources that can serve a specific historical window —
+    Intel471 (``from/until``), NVD (``pubStartDate/pubEndDate``), and the GDELT news
+    archive — scoped to the prior quarter's exact dates, runs the strategic analysis, and
+    persists the resulting risk levels + breach stats so the current report has a real
+    baseline to compare against.
+
+    CrowdStrike actor profiles are current-state (not a historical snapshot) and RSS OSINT
+    can't serve old windows, so those portions of a backfilled quarter reflect present data
+    — an honest, logged limitation.
+    """
+    if reporting_period is None:
+        return
+
+    from datetime import datetime, time
+
+    from src.agents.threat_analyst import ThreatAnalystAgent
+    from src.collectors import collect_all, get_data_by_source
+    from src.core.config import analysis_config
+    from src.reports import get_report_generator
+
+    prior = reporting_period.prior
+    generator = get_report_generator("quarterly", use_mock_data=False)
+
+    existing = (generator._load_historical_data().get(prior.key)) or {}
+    if existing.get("breach_stats"):
+        print_status(f"Prior-quarter baseline {prior.label} already in history", "success")
+        return
+
+    print_status(f"No {prior.label} baseline found — backfilling from historical archives...", "progress")
+
+    window = (datetime.combine(prior.start, time.min), datetime.combine(prior.end, time.max))
+    # Sources that can serve a specific historical window (RSS OSINT can't, so it's excluded
+    # in favor of the GDELT news archive).
+    collector_names = ["intel471", "nvd", "crowdstrike", "illumina_osint", "news_search"]
+
+    results = await collect_all(
+        credentials, report_type="quarterly", collection_window=window, collector_names=collector_names
+    )
+    data_by_source = get_data_by_source(results)
+    data_by_source = _filter_data_to_period(data_by_source, prior)
+
+    agent = ThreatAnalystAgent(
+        credentials["openai_endpoint"], credentials["openai_key"], deployment_name=analysis_config.deployment_name
+    )
+    intel471_all = data_by_source.get("Intel471", [])
+    breach_data = [i for i in intel471_all if i.get("threat_type", "").upper() == "BREACH ALERT"]
+    intel471_data = [i for i in intel471_all if i.get("threat_type", "").upper() != "BREACH ALERT"]
+    illumina_osint = data_by_source.get("Illumina-OSINT", [])
+    illumina_context = ""
+    if illumina_osint and "illumina_context" in illumina_osint[0]:
+        illumina_context = illumina_osint[0]["illumina_context"]
+
+    analysis = await agent.analyze_strategic(
+        intel471_data=intel471_data,
+        crowdstrike_data=data_by_source.get("CrowdStrike", []),
+        breach_data=breach_data if breach_data else None,
+        illumina_context=illumina_context,
+        reporting_period=prior,
+    )
+
+    generator.persist_baseline_from_analysis(analysis, prior)
+    intel_n = len(intel471_all)
+    osint_n = len(data_by_source.get("OSINT", []))
+    print_status(
+        f"Backfilled {prior.label} baseline (Intel471: {intel_n}, news: {osint_n}) into history", "success"
+    )
+
+
 def _resolve_reporting_period(quarter_arg, year_arg):
     """Resolve the quarterly reporting period from CLI args, prompting when needed."""
     from datetime import date
@@ -1289,6 +1380,12 @@ Examples:
         default=None,
         help="Quarterly reports only: which year to cover (e.g. 2026). Prompted if omitted.",
     )
+    parser.add_argument(
+        "--no-backfill",
+        action="store_true",
+        help="Quarterly reports only: skip auto-seeding the prior-quarter baseline from "
+        "historical archives (Intel471/NVD/news). Prior comparison stays N/A if absent.",
+    )
 
     args = parser.parse_args()
 
@@ -1340,6 +1437,7 @@ Examples:
                 output_dir=args.output,
                 use_azure=args.azure,
                 reporting_period=reporting_period,
+                backfill_prior=not args.no_backfill,
             )
         )
 

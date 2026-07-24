@@ -34,6 +34,14 @@ class CollectorConfig:
     crowdstrike_indicators_limit: int = 50
     crowdstrike_spotlight_limit: int = 200  # Max vulnerabilities from Spotlight for exposure counts
 
+    # News-search (GDELT) collector — used mainly for historical/prior-quarter backfill,
+    # where RSS feeds can no longer serve articles from a past window.
+    news_search_max_records: int = 40
+    news_search_query: str = (
+        '(biotech OR biotechnology OR genomics OR "life sciences" OR pharmaceutical OR healthcare) '
+        "(cyberattack OR cyberattacks OR breach OR ransomware OR hackers OR malware OR databreach OR espionage)"
+    )
+
     # Retry settings
     max_retries: int = 3
     retry_base_delay_seconds: float = 1.0

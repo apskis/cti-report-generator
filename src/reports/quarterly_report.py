@@ -120,6 +120,10 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             # guessed, so the cards/table never disagree with the chosen quarter.
             self._apply_reporting_period_labels(analysis_result)
 
+            # If a real prior-quarter baseline exists in history, use its stat values for
+            # the cards' "prior" column and quarter-over-quarter percentages.
+            self._apply_prior_quarter_stats(analysis_result)
+
             # Add sections in order
             self._add_header()
             self._add_executive_summary(analysis_result)
@@ -221,6 +225,26 @@ class QuarterlyReportGenerator(BaseReportGenerator):
                 if isinstance(card, dict):
                     card["prior_label"] = prior_label
 
+    def persist_baseline_from_analysis(self, analysis_result: dict[str, Any], period: ReportingPeriod) -> None:
+        """Persist a quarter's risk levels + breach stats to history WITHOUT rendering a doc.
+
+        Used by prior-quarter backfill: it seeds ``history[period.key]`` from a scoped
+        analysis so a later report for the following quarter finds a real baseline to
+        compare against (trend arrows + stat-card prior column) instead of showing N/A.
+        """
+        self.set_reporting_period(period)
+        self._calculate_quarter_info()
+        risk = analysis_result.get("risk_assessment") or {}
+        self._save_current_risk_assessment(
+            {
+                "nation_state": str(risk.get("nation_state") or "MEDIUM").upper(),
+                "ransomware": str(risk.get("ransomware") or "MEDIUM").upper(),
+                "supply_chain": str(risk.get("supply_chain") or "MEDIUM").upper(),
+                "insider": str(risk.get("insider") or "LOW").upper(),
+            },
+            breach_stats=self._extract_breach_stats(analysis_result),
+        )
+
     def _get_historical_file_path(self) -> Path:
         """Get the path to the historical data JSON file.
 
@@ -268,15 +292,23 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         else:
             return (year, quarter - 1)
 
-    def _save_current_risk_assessment(self, risk_data: dict[str, Any]) -> None:
-        """Save the current quarter's risk assessment to history."""
+    def _save_current_risk_assessment(
+        self, risk_data: dict[str, Any], breach_stats: dict[str, str] | None = None
+    ) -> None:
+        """Save the current quarter's risk assessment (and breach stats) to history.
+
+        The 4 risk levels feed next quarter's threat-level trend arrows; ``breach_stats``
+        (the stat-card values keyed by label) feed next quarter's stat-card "prior" column
+        and quarter-over-quarter percentages, so the comparison is grounded in a real prior
+        quarter instead of showing N/A.
+        """
         history = self._load_historical_data()
 
         year = self._get_year()
         quarter_key = self._get_quarter_key(year, self.quarter)
 
         # Store the risk assessment for this quarter
-        history[quarter_key] = {
+        entry = {
             "timestamp": self.created_at.isoformat(),
             "year": year,
             "quarter": self.quarter,
@@ -285,9 +317,82 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             "supply_chain": risk_data.get("supply_chain", "MEDIUM"),
             "insider": risk_data.get("insider", "LOW"),
         }
+        if breach_stats:
+            entry["breach_stats"] = breach_stats
+        history[quarter_key] = entry
 
         self._save_historical_data(history)
         logger.info(f"Saved risk assessment for {quarter_key}")
+
+    @staticmethod
+    def _extract_breach_stats(analysis_result: dict[str, Any]) -> dict[str, str]:
+        """Pull the breach stat-card current values, keyed by label, for history storage."""
+        breach = analysis_result.get("breach_landscape") or {}
+        stats: dict[str, str] = {}
+        for card in breach.get("stat_cards") or []:
+            if isinstance(card, dict):
+                label = str(card.get("label", "")).strip()
+                if label:
+                    stats[label] = str(card.get("value", "")).strip()
+        return stats
+
+    @staticmethod
+    def _parse_stat_number(value: str) -> float | None:
+        """Parse a stat value like ``"20"``, ``"1,000"``, ``"$1.2M"``, ``"5.0M"`` to a float.
+
+        Returns ``None`` for non-numeric values (e.g. ``"N/A"``) so callers can skip a
+        percentage they cannot compute honestly.
+        """
+        if value is None:
+            return None
+        s = str(value).strip().upper()
+        if s in ("", "N/A", "NA", "—", "-"):
+            return None
+        s = s.replace(",", "").replace("$", "").strip()
+        multiplier = 1.0
+        if s.endswith("M"):
+            multiplier, s = 1.0, s[:-1]  # keep the magnitude as-is (both sides in "M")
+        elif s.endswith("B"):
+            multiplier, s = 1000.0, s[:-1]
+        try:
+            return float(s) * multiplier
+        except ValueError:
+            return None
+
+    def _apply_prior_quarter_stats(self, analysis_result: dict[str, Any]) -> None:
+        """Overwrite stat-card prior values/percentages from the stored prior quarter.
+
+        When a real prior-quarter baseline exists in history, its stat values become the
+        cards' ``prior_value`` and drive ``change_pct`` — so "Q1 2026: N/A" becomes a
+        genuine number and the delta is computed, not guessed. Cards whose prior value is
+        missing or non-numeric keep an honest ``N/A`` with no fabricated sign.
+        """
+        breach = analysis_result.get("breach_landscape")
+        if not isinstance(breach, dict):
+            return
+        year = self._get_year()
+        prev_year, prev_quarter = self._calculate_previous_quarter(year, self.quarter)
+        prev_key = self._get_quarter_key(prev_year, prev_quarter)
+        prior_stats = (self._load_historical_data().get(prev_key) or {}).get("breach_stats") or {}
+        if not prior_stats:
+            return
+
+        for card in breach.get("stat_cards") or []:
+            if not isinstance(card, dict):
+                continue
+            label = str(card.get("label", "")).strip()
+            if label not in prior_stats:
+                continue
+            prior_value = prior_stats[label]
+            card["prior_value"] = prior_value
+            curr_n = self._parse_stat_number(card.get("value", ""))
+            prev_n = self._parse_stat_number(prior_value)
+            if curr_n is not None and prev_n not in (None, 0):
+                change = ((curr_n - prev_n) / prev_n) * 100
+                card["change_pct"] = f"+{int(change)}%" if change >= 0 else f"{int(change)}%"
+            else:
+                card["change_pct"] = "N/A"
+        logger.info(f"Applied prior-quarter ({prev_key}) breach stats to stat cards")
 
     def _compare_with_previous_quarter(self, current_risk: str, previous_risk: str) -> str:
         """Compare current risk level with previous quarter and return trend indicator."""
@@ -525,14 +630,16 @@ and vulnerabilities observed are consistent with those historically used against
             insider_trend = ai_insider_trend
             logger.info("Using AI's trend assessment based on breach statistics and threat intelligence")
 
-        # Save current assessment for future comparisons
+        # Save current assessment for future comparisons (risk levels + breach stats so
+        # next quarter's prior column and QoQ percentages are grounded in a real baseline).
         self._save_current_risk_assessment(
             {
                 "nation_state": current_nation_state,
                 "ransomware": current_ransomware,
                 "supply_chain": current_supply_chain,
                 "insider": current_insider,
-            }
+            },
+            breach_stats=self._extract_breach_stats(analysis_result),
         )
 
         risks = [

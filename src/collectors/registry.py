@@ -13,6 +13,7 @@ from src.collectors.base import BaseCollector
 from src.collectors.crowdstrike_collector import CrowdStrikeCollector
 from src.collectors.illumina_osint_collector import IlluminaOSINTCollector
 from src.collectors.intel471_collector import Intel471Collector
+from src.collectors.news_search_collector import NewsSearchCollector
 from src.collectors.nvd_collector import NVDCollector
 from src.collectors.osint_collector import OSINTCollector
 from src.core.config import get_enabled_collectors
@@ -28,28 +29,41 @@ COLLECTOR_REGISTRY: dict[str, type[BaseCollector]] = {
     "crowdstrike": CrowdStrikeCollector,
     "osint": OSINTCollector,
     "illumina_osint": IlluminaOSINTCollector,
+    "news_search": NewsSearchCollector,
 }
 
 
-def get_collector(name: str, credentials: dict[str, str], report_type: str = "weekly") -> BaseCollector | None:
+def get_collector(
+    name: str,
+    credentials: dict[str, str],
+    report_type: str = "weekly",
+    collection_window: tuple | None = None,
+) -> BaseCollector | None:
     """
     Get a collector instance by name.
 
     Args:
         name: Collector name (lowercase)
         credentials: API credentials dictionary
+        report_type: Report type ("weekly"/"quarterly")
+        collection_window: Optional explicit ``(start, end)`` window for historical backfill.
 
     Returns:
         Collector instance or None if not found
     """
     collector_class = COLLECTOR_REGISTRY.get(name.lower())
     if collector_class:
-        return collector_class(credentials, report_type=report_type)
+        return collector_class(credentials, report_type=report_type, collection_window=collection_window)
     logger.warning(f"Unknown collector: {name}")
     return None
 
 
-def get_enabled_collector_instances(credentials: dict[str, str], report_type: str = "weekly") -> list[BaseCollector]:
+def get_enabled_collector_instances(
+    credentials: dict[str, str],
+    report_type: str = "weekly",
+    collection_window: tuple | None = None,
+    collector_names: list[str] | None = None,
+) -> list[BaseCollector]:
     """
     Get instances of only enabled collectors.
 
@@ -58,15 +72,19 @@ def get_enabled_collector_instances(credentials: dict[str, str], report_type: st
 
     Args:
         credentials: API credentials dictionary
+        report_type: Report type ("weekly"/"quarterly")
+        collection_window: Optional explicit ``(start, end)`` window for historical backfill.
+        collector_names: Explicit collector name list, overriding the configured enabled set
+            (used by prior-quarter backfill to force in the ``news_search`` archive source).
 
     Returns:
         List of enabled collector instances
     """
-    enabled_names = get_enabled_collectors()
+    enabled_names = collector_names if collector_names is not None else get_enabled_collectors()
     collectors = []
 
     for name in enabled_names:
-        collector = get_collector(name, credentials, report_type=report_type)
+        collector = get_collector(name, credentials, report_type=report_type, collection_window=collection_window)
         if collector and collector.enabled:
             collectors.append(collector)
         elif collector and not collector.enabled:
@@ -76,7 +94,11 @@ def get_enabled_collector_instances(credentials: dict[str, str], report_type: st
 
 
 async def collect_all(
-    credentials: dict[str, str], parallel: bool = True, report_type: str = "weekly"
+    credentials: dict[str, str],
+    parallel: bool = True,
+    report_type: str = "weekly",
+    collection_window: tuple | None = None,
+    collector_names: list[str] | None = None,
 ) -> dict[str, CollectorResult]:
     """
     Run all enabled collectors and return results.
@@ -84,11 +106,16 @@ async def collect_all(
     Args:
         credentials: API credentials dictionary
         parallel: Whether to run collectors in parallel (default: True)
+        report_type: Report type ("weekly"/"quarterly")
+        collection_window: Optional explicit ``(start, end)`` window for historical backfill.
+        collector_names: Explicit collector name list, overriding the configured enabled set.
 
     Returns:
         Dictionary mapping source name to CollectorResult
     """
-    collectors = get_enabled_collector_instances(credentials, report_type=report_type)
+    collectors = get_enabled_collector_instances(
+        credentials, report_type=report_type, collection_window=collection_window, collector_names=collector_names
+    )
     logger.info(
         f"Running {len(collectors)} collectors: {[c.source_name for c in collectors]} (report_type: {report_type})"
     )
