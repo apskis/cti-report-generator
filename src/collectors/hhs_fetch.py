@@ -22,9 +22,18 @@ import aiohttp
 
 logger = logging.getLogger(__name__)
 
-# A row of the HHS export always carries this column — used to confirm we got CSV, not the
-# HTML page (the silent failure mode: HTML parsed as CSV yields zero rows, no error).
-_CSV_HINT = "name of covered entity"
+# The HHS export header carries these columns — used to confirm we got CSV, not the HTML
+# page (the silent failure mode: HTML parsed as CSV yields zero rows, no error). We accept a
+# match on ANY of these tokens so a slightly reworded header (the portal has varied the exact
+# wording over time) still passes, while the HTML portal page — which contains none of them
+# in its first rows — is still rejected.
+_CSV_HINTS = (
+    "name of covered entity",
+    "covered entity",
+    "individuals affected",
+    "breach submission date",
+    "type of breach",
+)
 
 _INPUT_RE = re.compile(r"<input\b[^>]*>", re.I)
 _FORM_RE = re.compile(r"<form\b[^>]*>", re.I)
@@ -37,9 +46,18 @@ def _attr(tag: str, name: str) -> str | None:
 
 
 def looks_like_hhs_csv(text: str) -> bool:
-    """True if the text looks like the HHS breach CSV (not the HTML portal page)."""
-    head = (text or "")[:2000].lower()
-    return _CSV_HINT in head
+    """True if the text looks like the HHS breach CSV (not the HTML portal page).
+
+    Lenient by design: a match on any known header token counts, and a leading BOM /
+    surrounding whitespace is ignored — the header line varies but the HTML page contains
+    none of these tokens near the top, so false positives are not a concern.
+    """
+    head = (text or "").lstrip("﻿")[:2000].lower()
+    # A real HTML page would contain these tags; the CSV never does. Guard against an HTML
+    # error/interstitial that happens to mention one of the column words in body copy.
+    if "<html" in head or "<!doctype" in head:
+        return False
+    return any(hint in head for hint in _CSV_HINTS)
 
 
 def extract_viewstate(html: str) -> str | None:

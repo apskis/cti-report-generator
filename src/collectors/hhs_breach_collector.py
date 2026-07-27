@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import re
 from typing import Any
 
 from src.collectors.base import BaseCollector
@@ -66,30 +67,64 @@ def _to_iso_date(value: str) -> str:
     return ""
 
 
+def _norm_header(name: str) -> str:
+    """Normalize a CSV header for tolerant matching (case/space/BOM-insensitive)."""
+    return re.sub(r"\s+", " ", (name or "").lstrip("﻿").strip()).lower()
+
+
+def _resolve_columns(fieldnames: list[str] | None) -> dict[str, str]:
+    """Map each logical column to the actual header present, tolerating wording drift."""
+    lookup = {_norm_header(fn): fn for fn in (fieldnames or []) if fn}
+    resolved: dict[str, str] = {}
+    for key, wanted in (
+        ("entity", _COL_ENTITY),
+        ("individuals", _COL_INDIVIDUALS),
+        ("date", _COL_DATE),
+        ("type", _COL_TYPE),
+    ):
+        norm = _norm_header(wanted)
+        if norm in lookup:
+            resolved[key] = lookup[norm]
+            continue
+        # Fall back to a substring match so a reworded header still resolves.
+        token = {"entity": "covered entity", "individuals": "individuals affected",
+                 "date": "submission date", "type": "type of breach"}[key]
+        for actual_norm, actual in lookup.items():
+            if token in actual_norm:
+                resolved[key] = actual
+                break
+    return resolved
+
+
 def parse_hhs_csv(text: str) -> list[dict[str, Any]]:
     """Parse the HHS OCR breach-report CSV into common breach records."""
     out: list[dict[str, Any]] = []
     if not text or not text.strip():
         return out
     reader = csv.DictReader(io.StringIO(text))
+    cols = _resolve_columns(reader.fieldnames)
+    c_entity = cols.get("entity", _COL_ENTITY)
+    c_individuals = cols.get("individuals", _COL_INDIVIDUALS)
+    c_date = cols.get("date", _COL_DATE)
+    c_type = cols.get("type", _COL_TYPE)
     for row in reader:
-        date_iso = _to_iso_date(row.get(_COL_DATE, ""))
+        date_iso = _to_iso_date(row.get(c_date, ""))
         if not date_iso:
             continue
-        raw_records = (row.get(_COL_INDIVIDUALS, "") or "").replace(",", "").strip()
+        raw_records = (row.get(c_individuals, "") or "").replace(",", "").strip()
         try:
             records = int(raw_records) if raw_records else None
         except ValueError:
             records = None
         out.append(
             {
-                "organization": (row.get(_COL_ENTITY, "") or "").strip() or "Undisclosed entity",
+                "organization": (row.get(c_entity, "") or "").strip() or "Undisclosed entity",
                 "date": date_iso,
-                "incident_type": _classify_hhs_type(row.get(_COL_TYPE, "")),
+                "incident_type": _classify_hhs_type(row.get(c_type, "")),
                 "records_exposed": records,
                 "sector": "Healthcare",  # HHS OCR portal is healthcare by definition
                 "source": "HHS",
-                "summary": (row.get(_COL_TYPE, "") or "").strip(),
+                "summary": (row.get(c_type, "") or "").strip(),
                 "url": "",
             }
         )

@@ -23,6 +23,27 @@ from src.collectors.hhs_fetch import looks_like_hhs_csv
 logger = logging.getLogger(__name__)
 
 
+def decode_csv_bytes(data: bytes) -> str:
+    """Decode a downloaded CSV, honoring a BOM and falling back across common encodings.
+
+    The HHS export has been served as UTF-8, UTF-8-with-BOM, UTF-16 (Excel-friendly), and
+    cp1252 at different times. Forcing utf-8 mangles the header on the non-utf-8 variants, so
+    the CSV sniff then rejects a perfectly good file. Try the BOM-aware/ wide encodings first,
+    then narrow ones, and only fall back to lossy replacement as a last resort.
+    """
+    if data.startswith(b"\xff\xfe") or data.startswith(b"\xfe\xff"):
+        try:
+            return data.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
 async def _open_report_grid(page) -> bool:
     """Click through to the HIPAA breach reports grid (breach_report_hip.jsf)."""
     for label, getter in (
@@ -70,11 +91,14 @@ async def _click_export_and_capture(page, timeout_ms: int) -> str | None:
             path = await download.path()
             if not path:
                 continue
-            text = Path(path).read_text(encoding="utf-8", errors="replace")
+            text = decode_csv_bytes(Path(path).read_bytes())
             if looks_like_hhs_csv(text):
                 logger.info(f"HHS browser: CSV captured via {label} ({len(text)} bytes)")
                 return text
-            logger.info(f"HHS browser: {label} downloaded a non-CSV file; trying next")
+            logger.info(
+                f"HHS browser: {label} downloaded a non-CSV file "
+                f"(head={text[:80]!r}); trying next"
+            )
         except Exception as e:
             logger.info(f"HHS browser: export via {label} failed: {e}")
     return None

@@ -43,13 +43,16 @@ def _veris_incident_type(action: dict) -> str:
     variety = [str(v).lower() for v in (malware.get("variety") or [])]
     if any("ransom" in v for v in variety):
         return "Ransomware"
-    if action.get("hacking"):
+    # Test for the presence of the action *family* (key), not its truthiness: VERIS often
+    # records a known family with an empty detail dict ({"error": {}}), which is falsy — a
+    # `.get()` truthiness check would misclassify it via the generic capitalized-key fallback.
+    if "hacking" in action:
         return "Hacking"
-    if action.get("error"):
+    if "error" in action:
         return "Data Exposure"
-    if action.get("misuse"):
+    if "misuse" in action:
         return "Insider Threat"
-    if action.get("social"):
+    if "social" in action:
         return "Social Engineering"
     if malware:
         return "Malware"

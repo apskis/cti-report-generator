@@ -669,6 +669,59 @@ class TestHHSParser:
 
         assert parse_hhs_csv("") == []
 
+    def test_parses_bom_prefixed_header(self):
+        # An Excel-friendly export prefixes a UTF-8 BOM; the header column must still resolve.
+        from src.collectors.hhs_breach_collector import parse_hhs_csv
+
+        csv_text = (
+            "﻿Name of Covered Entity,State,Individuals Affected,"
+            "Breach Submission Date,Type of Breach\n"
+            "Acme Health,CA,12345,01/15/2026,Hacking/IT Incident\n"
+        )
+        out = parse_hhs_csv(csv_text)
+        assert len(out) == 1
+        assert out[0]["organization"] == "Acme Health"
+        assert out[0]["records_exposed"] == 12345
+
+    def test_parses_reworded_header_case_and_spacing(self):
+        # The portal has varied header casing/spacing; a substring/normalized match must hold.
+        from src.collectors.hhs_breach_collector import parse_hhs_csv
+
+        csv_text = (
+            "NAME OF COVERED ENTITY ,State, Individuals  Affected ,"
+            " Breach Submission Date ,Type of Breach\n"
+            "Beta Labs,NY,7,02/03/2026,Ransomware\n"
+        )
+        out = parse_hhs_csv(csv_text)
+        assert len(out) == 1
+        assert out[0]["organization"] == "Beta Labs"
+        assert out[0]["incident_type"] == "Ransomware"
+        assert out[0]["records_exposed"] == 7
+
+
+class TestHHSDownloadDecode:
+    """The browser download may arrive as UTF-8/UTF-8-BOM/UTF-16/cp1252 — all must decode
+    to text the CSV sniff accepts (the prior utf-8-only read mangled the non-utf-8 variants)."""
+
+    _CSV = (
+        "Name of Covered Entity,State,Individuals Affected,Breach Submission Date,Type of Breach\n"
+        "Acme Health,CA,12345,01/15/2026,Hacking/IT Incident\n"
+    )
+
+    @pytest.mark.parametrize("enc", ["utf-8", "utf-8-sig", "utf-16", "cp1252", "latin-1"])
+    def test_decodes_and_sniffs(self, enc):
+        from src.collectors.hhs_fetch import looks_like_hhs_csv
+        from src.collectors.hhs_playwright import decode_csv_bytes
+
+        text = decode_csv_bytes(self._CSV.encode(enc))
+        assert looks_like_hhs_csv(text), f"{enc} decode failed the sniff: {text[:80]!r}"
+
+    def test_decode_never_raises_on_garbage(self):
+        from src.collectors.hhs_playwright import decode_csv_bytes
+
+        # Invalid-in-every-strict-encoding bytes must still return a str (lossy fallback).
+        assert isinstance(decode_csv_bytes(b"\xff\xfe\x00\x80\x81\xffabc"), str)
+
 
 class TestHHSBrowserFetch:
     @pytest.mark.asyncio

@@ -180,6 +180,37 @@ async def browser_explore(portal: str) -> None:
             # Parse the rendered HTML in Python (avoids Playwright's in-browser eval bugs).
             _scan_grid(html)
             print("\nPaste the 'Export-ish controls' list above (attach hhs_grid.html if it's empty).")
+
+            # Click the CSV export in THIS session and dump the raw download so its true
+            # encoding/header is visible even if the automated sniff still rejected it.
+            print("\n" + "-" * 70)
+            print("Attempting CSV export in this session and dumping the raw file...")
+            for label, getter in (
+                ("title=Export as CSV", lambda: page.get_by_title("Export as CSV")),
+                ("alt=CSV", lambda: page.get_by_alt_text("CSV", exact=True)),
+            ):
+                try:
+                    async with page.expect_download(timeout=60000) as dl_info:
+                        await getter().first.click(timeout=10000)
+                    download = await dl_info.value
+                    dpath = await download.path()
+                    data = Path(dpath).read_bytes() if dpath else b""
+                    print(f"[{label}] downloaded {len(data)} bytes; first 60 bytes: {data[:60]!r}")
+                    for enc in ("utf-8-sig", "utf-16", "cp1252", "latin-1"):
+                        try:
+                            decoded = data.decode(enc)
+                        except (UnicodeDecodeError, LookupError):
+                            continue
+                        first_line = decoded.splitlines()[0] if decoded.splitlines() else ""
+                        print(f"    decode({enc}) OK -> HEADER: {first_line[:200]!r}")
+                        print(f"    first 300 chars: {decoded[:300]!r}")
+                        break
+                    export_path = Path(__file__).resolve().parent.parent / "hhs_export.csv"
+                    export_path.write_bytes(data)
+                    print(f"    saved raw download -> {export_path}")
+                    break
+                except Exception as e:
+                    print(f"    [{label}] export attempt failed: {e}")
         finally:
             await browser.close()
 
