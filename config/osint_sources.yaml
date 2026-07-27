@@ -100,8 +100,14 @@ sources:
     category: "Vulnerability Research"
     enabled: false
 
-# Lookback in days - only include articles published within this window
+# Lookback in days for WEEKLY reports - only include articles published within this window
 lookback_days: 7
+
+# Lookback in days for QUARTERLY reports. A quarter spans ~90 days, so the weekly 7-day
+# window would silently zero out feeds that don't publish daily. The CLI quarterly path
+# pins the exact calendar quarter instead; this default applies to any quarterly run that
+# does not supply an explicit collection window.
+quarterly_lookback_days: 100
 
 # Maximum articles per source (increased to capture more breach news)
 max_articles_per_source: 10

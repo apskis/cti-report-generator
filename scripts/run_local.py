@@ -1057,9 +1057,12 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
         (analysis, data_by_source) tuple where analysis is the AI analysis result
         and data_by_source is the raw collected data dict
     """
+    from datetime import datetime as _dt
+    from datetime import time as _time
+
     from src.agents.threat_analyst import ThreatAnalystAgent
     from src.collectors import collect_all, get_data_by_source
-    from src.core.config import analysis_config, azure_config
+    from src.core.config import analysis_config, azure_config, get_enabled_collectors
     from src.core.keyvault import get_all_api_keys
 
     # Get credentials
@@ -1107,7 +1110,32 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
         print_section("📊 Collecting Threat Intelligence")
     except UnicodeEncodeError:
         print_section("Collecting Threat Intelligence")
-    collector_results = await collect_all(credentials, report_type=report_type)
+    if reporting_period is not None:
+        # OSINT RSS feeds only expose their most-recent entries, and the collector's
+        # default window is trailing-from-now. For a quarter that has since ended, that
+        # window doesn't overlap the quarter, so every feed read "0 articles". Collect
+        # OSINT scoped to the quarter's exact bounds (feeds that don't retain that far back
+        # still legitimately report a coverage gap), while every other source is collected
+        # as configured — NVD/CrowdStrike deliberately stay current for IOC extraction.
+        enabled = get_enabled_collectors()
+        non_osint = [n for n in enabled if n != "osint"]
+        collector_results = await collect_all(
+            credentials, report_type=report_type, collector_names=non_osint
+        )
+        if "osint" in enabled:
+            window = (
+                _dt.combine(reporting_period.start, _time.min),
+                _dt.combine(reporting_period.end, _time.max),
+            )
+            osint_results = await collect_all(
+                credentials,
+                report_type=report_type,
+                collection_window=window,
+                collector_names=["osint"],
+            )
+            collector_results.update(osint_results)
+    else:
+        collector_results = await collect_all(credentials, report_type=report_type)
     data_by_source = get_data_by_source(collector_results)
 
     # Scope the event/news sources (Intel471, OSINT) to the chosen quarter BEFORE

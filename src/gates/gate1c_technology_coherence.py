@@ -261,6 +261,18 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
 
     source_blob = build_source_index(input.tier1_data, input.osint_articles).text_blob
 
+    # The customer's OWN products and company name are grounded by the customer profile —
+    # a threat brief written FOR the organization naturally names its platforms as the
+    # assets/targets under discussion, so they are legitimate context, not fabricated CVE
+    # claims. Build a distinctive-token allowlist from the configured product keywords +
+    # company name (dropping generic words like "platform" that would over-suppress).
+    from src.core.config import customer_profile
+
+    customer_tokens: set[str] = set()
+    for term in (*customer_profile.product_keywords, customer_profile.name):
+        customer_tokens |= _mention_tokens(term)
+    customer_tokens -= {"platform"}
+
     # Extract technology mentions from the full narrative
     mentioned_products = _extract_product_mentions(narrative_text)
 
@@ -287,6 +299,9 @@ def run(input: GateInput, llm_client, report_type: str) -> GateResult:
             continue
         # Skip mentions that are purely common action-verbs / generic report words.
         if product_tokens <= _COMMON_NON_TECH_WORDS:
+            continue
+        # Skip the customer's own products / company name — grounded by the customer profile.
+        if product_tokens & customer_tokens:
             continue
 
         found_in_detected = bool(product_tokens & detected_technologies)

@@ -65,3 +65,28 @@ def test_qualifying_language_suppresses_flag():
         "cve_analysis": [{"affected_product": "WordPress"}],
     }
     assert _run(report) == []
+
+
+def test_customer_own_products_are_not_flagged():
+    # A brief written FOR the org names its own platforms as the assets/targets under
+    # discussion; those are grounded by the customer profile, not fabricated CVE claims.
+    report = {
+        "executive_summary": (
+            "Illumina's NovaSeq X, DRAGEN pipelines, and BaseSpace Sequence Hub remain the "
+            "crown-jewel sequencing assets and primary exfiltration targets."
+        ),
+        "cve_analysis": [{"affected_product": "WordPress"}],  # unrelated detection
+    }
+    assert _run(report) == []
+
+
+def test_customer_products_do_not_mask_fabricated_terms():
+    # Suppressing the customer's own products must not suppress a genuinely fabricated one
+    # mentioned alongside them (the generic word "platform" is NOT a customer token).
+    report = {
+        "executive_summary": "Illumina uses the FooBaz9000 platform, deployed across NovaSeq fleets.",
+        "cve_analysis": [{"affected_product": "WordPress"}],
+    }
+    issues = _run(report)
+    assert len(issues) == 1
+    assert "Foobaz9000" in issues[0]

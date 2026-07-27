@@ -415,6 +415,71 @@ class TestOSINTFullText:
         assert result is None
 
 
+class TestOSINTWindow:
+    """The OSINT collector must bound articles by BOTH ends of the collection window.
+
+    Quarterly runs pass an explicit (start, end) for a quarter that has since ended; the
+    per-source article cap must fill with IN-quarter articles, not too-new ones a later
+    period filter would discard (the bug that made every feed read "0 articles").
+    """
+
+    @pytest.mark.asyncio
+    async def test_fetch_rss_excludes_out_of_window_entries(self):
+        from datetime import UTC, datetime
+        from types import SimpleNamespace
+
+        from src.collectors.osint_collector import OSINTCollector
+
+        entries = [
+            {"title": "too-new", "link": "u1", "summary": "s", "published": "Sun, 20 Jul 2026 12:00:00 +0000"},
+            {"title": "in-window", "link": "u2", "summary": "s", "published": "Fri, 15 May 2026 12:00:00 +0000"},
+            {"title": "too-old", "link": "u3", "summary": "s", "published": "Thu, 15 Jan 2026 12:00:00 +0000"},
+        ]
+        cutoff = datetime(2026, 4, 1, tzinfo=UTC)
+        window_end = datetime(2026, 6, 30, 23, 59, 59, tzinfo=UTC)
+
+        collector = OSINTCollector()
+        with patch("src.collectors.osint_collector.feedparser.parse") as fp:
+            fp.return_value = SimpleNamespace(bozo=False, bozo_exception=None, entries=entries)
+            out = await collector._fetch_rss(
+                _FakeSession("<rss/>"), "Feed", "https://x/feed", "News", cutoff, 10, window_end
+            )
+        titles = [a["title"] for a in out]
+        assert titles == ["in-window"]  # both the too-new and too-old entries excluded
+
+    def test_quarterly_lookback_default_spans_a_quarter(self):
+        # Quarterly runs without an explicit window must look back ~a quarter, not 7 days.
+        from src.collectors.osint_collector import _load_osint_config
+
+        cfg = _load_osint_config()
+        assert cfg["quarterly_lookback_days"] >= 90
+        assert cfg["lookback_days"] <= cfg["quarterly_lookback_days"]
+
+    @pytest.mark.asyncio
+    async def test_cap_fills_with_in_window_when_feed_leads_with_too_new(self):
+        # A newest-first feed whose head is out-of-window must not exhaust the cap on
+        # discarded entries — in-window articles below the head still surface.
+        from datetime import UTC, datetime
+        from types import SimpleNamespace
+
+        from src.collectors.osint_collector import OSINTCollector
+
+        entries = [{"title": f"jul-{d}", "link": f"n{d}", "summary": "s",
+                    "published": f"{d:02d} Jul 2026 12:00:00 +0000"} for d in range(1, 6)]
+        entries.append({"title": "in-window", "link": "w", "summary": "s",
+                        "published": "15 May 2026 12:00:00 +0000"})
+        cutoff = datetime(2026, 4, 1, tzinfo=UTC)
+        window_end = datetime(2026, 6, 30, 23, 59, 59, tzinfo=UTC)
+
+        collector = OSINTCollector()
+        with patch("src.collectors.osint_collector.feedparser.parse") as fp:
+            fp.return_value = SimpleNamespace(bozo=False, bozo_exception=None, entries=entries)
+            out = await collector._fetch_rss(
+                _FakeSession("<rss/>"), "Feed", "https://x/feed", "News", cutoff, 2, window_end
+            )
+        assert [a["title"] for a in out] == ["in-window"]
+
+
 class TestIlluminaSecFilings:
     """The company scraper must surface MATERIAL filings (10-K/10-Q/8-K), not the
     insider-trade Form 4/144 noise that dominates the newest-first EDGAR feed."""

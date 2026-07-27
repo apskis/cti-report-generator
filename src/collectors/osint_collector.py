@@ -45,7 +45,13 @@ def _load_osint_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
     """Load and validate the OSINT sources configuration file."""
     if not path.exists():
         logger.warning(f"OSINT config not found at {path}, no sources will be collected")
-        return {"sources": [], "lookback_days": 7, "max_articles_per_source": 5, "max_total_articles": 30}
+        return {
+            "sources": [],
+            "lookback_days": 7,
+            "quarterly_lookback_days": 100,
+            "max_articles_per_source": 5,
+            "max_total_articles": 30,
+        }
 
     with open(path, encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
@@ -53,6 +59,10 @@ def _load_osint_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
     return {
         "sources": config.get("sources", []),
         "lookback_days": config.get("lookback_days", 7),
+        # Quarterly reports span ~90 days; a 7-day (weekly) lookback silently zeroes out
+        # feeds that don't publish daily. Used only when no explicit collection_window is
+        # supplied (the CLI quarterly path pins the exact quarter instead).
+        "quarterly_lookback_days": config.get("quarterly_lookback_days", 100),
         "max_articles_per_source": config.get("max_articles_per_source", 5),
         "max_total_articles": config.get("max_total_articles", 30),
     }
@@ -113,12 +123,24 @@ class OSINTCollector(BaseCollector):
 
         max_per_source = config["max_articles_per_source"]
         max_total = config["max_total_articles"]
-        lookback = config["lookback_days"]
+        # A quarterly report covers ~90 days; the weekly 7-day lookback would zero out
+        # feeds that don't post daily. When the caller supplies an explicit
+        # collection_window (CLI quarterly path) it overrides this via get_date_range.
+        lookback = config["quarterly_lookback_days"] if report_type == "quarterly" else config["lookback_days"]
 
-        start_date, _ = self.get_date_range(days=lookback)
+        start_date, end_date = self.get_date_range(days=lookback)
         cutoff = start_date.replace(tzinfo=UTC)
+        # Upper bound of the collection window. For a trailing weekly run this is "now"
+        # (harmless — nothing is future-dated); for a quarterly run with an explicit
+        # collection_window it is the quarter's end, so the per-source article cap fills
+        # with IN-quarter articles instead of too-new ones that a later period filter would
+        # discard (which previously left every feed reading "0 articles in lookback window").
+        window_end = end_date.replace(tzinfo=UTC)
 
-        logger.info(f"Collecting OSINT from {len(sources)} enabled sources (lookback: {lookback} days)")
+        logger.info(
+            f"Collecting OSINT from {len(sources)} enabled sources "
+            f"(window: {cutoff.date()} to {window_end.date()})"
+        )
 
         all_articles: list[dict[str, Any]] = []
 
@@ -136,7 +158,9 @@ class OSINTCollector(BaseCollector):
                     continue
 
                 try:
-                    articles = await self._fetch_rss(session, name, url, category, cutoff, max_per_source)
+                    articles = await self._fetch_rss(
+                        session, name, url, category, cutoff, max_per_source, window_end
+                    )
                     all_articles.extend(articles)
                     if articles:
                         logger.info(f"  {name}: {len(articles)} articles")
@@ -231,8 +255,9 @@ class OSINTCollector(BaseCollector):
         category: str,
         cutoff: datetime,
         max_articles: int,
+        window_end: datetime | None = None,
     ) -> list[dict[str, Any]]:
-        """Fetch and parse an RSS/Atom feed, returning recent articles."""
+        """Fetch and parse an RSS/Atom feed, returning articles within [cutoff, window_end]."""
         async with session.get(url) as resp:
             if resp.status != 200:
                 logger.warning(f"{source_name}: HTTP {resp.status}")
@@ -251,7 +276,7 @@ class OSINTCollector(BaseCollector):
                 break
 
             pub_date = _parse_pub_date(entry)
-            if pub_date and pub_date < cutoff:
+            if pub_date and (pub_date < cutoff or (window_end is not None and pub_date > window_end)):
                 continue
 
             title = entry.get("title", "").strip()

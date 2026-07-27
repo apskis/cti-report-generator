@@ -79,6 +79,12 @@ def run(input: GateInput, llm_client: Any, report_type: str) -> GateResult:
         if change_pct in (None, "", "0%"):
             continue
         cp = str(change_pct).strip()
+        # Non-comparative markers legitimately carry no +/- sign: there is no prior
+        # baseline to compute a delta against ("N/A"), the metric is brand new this
+        # quarter ("New"), or it is explicitly flat ("Unchanged"). Mirror Gate 1A/1F and
+        # do not flag these — only a numeric-looking value should carry a sign.
+        if cp.upper() in {"N/A", "NA", "NEW", "UNCHANGED"}:
+            continue
         if not (cp.startswith("+") or cp.startswith("-")):
             warnings.append(f"Stat card change_pct missing +/- sign: '{cp}'")
 
