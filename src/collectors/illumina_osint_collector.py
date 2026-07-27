@@ -13,7 +13,6 @@ from email.utils import parsedate_to_datetime
 
 import aiohttp
 import certifi
-from bs4 import BeautifulSoup
 
 from src.collectors.base import BaseCollector, CollectorResult
 from src.core.config import customer_profile
@@ -411,6 +410,11 @@ class IlluminaOSINTCollector(BaseCollector):
                     return ""
 
                 html = await response.text()
+                try:
+                    from bs4 import BeautifulSoup
+                except ImportError:
+                    logger.warning("beautifulsoup4 not installed; skipping IR HTML scrape")
+                    return ""
                 soup = BeautifulSoup(html, "html.parser")
 
                 # Try to find press release items
