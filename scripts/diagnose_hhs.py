@@ -92,10 +92,17 @@ async def main() -> None:
 
     csv_text = await fetch_hhs_breach_csv(portal, _HEADERS)
     if not csv_text:
+        print("HTTP export did not yield CSV (expected — portal is JS-rendered).")
+        print("Trying headless-browser export (Playwright)...")
+        from src.collectors.hhs_playwright import fetch_hhs_csv_via_browser
+
+        csv_text = await fetch_hhs_csv_via_browser(portal, headless=True)
+
+    if not csv_text:
         print("RESULT: automated export did NOT yield CSV.")
-        print("Paste this output back so the fetch flow can be tuned to the live markup,")
-        print("or download the CSV from the portal UI and set collector_config.hhs_breach_csv_url")
-        print("to that local file path.")
+        print("If Playwright is missing: pip install playwright && playwright install chromium")
+        print("Otherwise paste this output; or download the CSV from the portal UI and set")
+        print("collector_config.hhs_breach_csv_url to that local file path.")
         return
 
     rows = parse_hhs_csv(csv_text)

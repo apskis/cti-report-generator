@@ -120,9 +120,16 @@ class HHSBreachCollector(BaseCollector):
             if text is not None and not looks_like_hhs_csv(text):
                 logger.info("HHS: configured source did not return CSV; falling back to portal auto-export")
                 text = None
-        # 2. Automated export from the JSF portal.
+        # 2. Automated export from the JSF portal (HTTP flow, for server-rendered variants).
         if text is None:
             text = await fetch_hhs_breach_csv(collector_config.hhs_portal_url, _HEADERS)
+        # 3. Browser-driven export (the portal is JS-rendered, so this is the reliable path).
+        if (text is None or not looks_like_hhs_csv(text)) and collector_config.hhs_use_browser:
+            from src.collectors.hhs_playwright import fetch_hhs_csv_via_browser
+
+            text = await fetch_hhs_csv_via_browser(
+                collector_config.hhs_portal_url, headless=collector_config.hhs_browser_headless
+            )
         if text is None or not looks_like_hhs_csv(text):
             logger.info("HHS: no CSV obtained this run")
             return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)

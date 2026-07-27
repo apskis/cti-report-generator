@@ -670,6 +670,26 @@ class TestHHSParser:
         assert parse_hhs_csv("") == []
 
 
+class TestHHSBrowserFetch:
+    @pytest.mark.asyncio
+    async def test_returns_none_when_playwright_absent(self, monkeypatch):
+        # The browser export is optional: with Playwright not installed it must degrade to
+        # None (collector then yields an empty result), never crash.
+        import builtins
+
+        from src.collectors.hhs_playwright import fetch_hhs_csv_via_browser
+
+        real_import = builtins.__import__
+
+        def _blocked(name, *a, **k):
+            if name == "playwright" or name.startswith("playwright."):
+                raise ImportError("No module named 'playwright'")
+            return real_import(name, *a, **k)
+
+        monkeypatch.setattr(builtins, "__import__", _blocked)
+        assert await fetch_hhs_csv_via_browser("https://ocrportal.hhs.gov/x", headless=True) is None
+
+
 class TestHHSPortalFetch:
     """The JSF portal export flow: ViewState/control extraction + CSV sniff (offline)."""
 

@@ -14,3 +14,9 @@ pip-audit>=2.7.0
 
 # Lockfile generation (pip-compile)
 pip-tools>=7.0.0
+
+# OPTIONAL (not pinned here to keep CI light): the HHS breach collector can export its CSV
+# via a headless browser, since the portal is JS-rendered. The import is guarded — absence
+# just disables that source. To enable:
+#   pip install playwright
+#   playwright install chromium

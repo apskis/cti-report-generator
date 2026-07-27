@@ -65,6 +65,11 @@ class CollectorConfig:
     # or set it to a direct CSV URL / local file path to bypass the portal scrape.
     hhs_breach_csv_url: str = ""
     hhs_portal_url: str = "https://ocrportal.hhs.gov/ocr/breach/breach_report.jsf"
+    # The portal is JS-rendered, so a headless browser (Playwright) is used to export the
+    # CSV. Requires: pip install playwright && playwright install chromium. Set to False to
+    # disable the browser path (then only a direct URL / local file in hhs_breach_csv_url works).
+    hhs_use_browser: bool = True
+    hhs_browser_headless: bool = True
     # Have I Been Pwned public breaches endpoint (keyless; a descriptive User-Agent is required).
     hibp_breaches_url: str = "https://haveibeenpwned.com/api/v3/breaches"
 
