@@ -92,6 +92,37 @@ async def main() -> None:
     await browser_explore(portal)
 
 
+_KW = re.compile(r"csv|excel|export|download|\.xls|spreadsheet", re.I)
+
+
+def _scan_grid(html: str) -> None:
+    """Find export/download controls in the rendered grid HTML (pure Python)."""
+    n_tables = len(re.findall(r"<table\b", html, re.I))
+    n_iframes = len(re.findall(r"<iframe\b", html, re.I))
+    print(f"Tables: {n_tables}   iframes: {n_iframes}")
+
+    found = []
+    # Anchors / buttons carry their label as inner text/HTML.
+    for m in re.finditer(r"<(a|button)\b([^>]*)>(.*?)</\1>", html, re.I | re.S):
+        whole, attrs, inner = m.group(0), m.group(2), m.group(3)
+        text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", inner)).strip()
+        if _KW.search(whole):
+            found.append((m.group(1).upper(), text[:60], attrs.strip()[:180]))
+    # Self-closing controls (inputs/images) carry it in attributes.
+    for m in re.finditer(r"<(input|img)\b[^>]*>", html, re.I):
+        if _KW.search(m.group(0)):
+            found.append((m.group(1).upper(), "", m.group(0)[:180]))
+
+    print(f"Export-ish controls ({len(found)}):")
+    for tag, text, attrs in found[:25]:
+        print(f"    [{tag}] text={text!r}  {attrs}")
+
+    if not found:
+        # Show any element ids/classes containing 'export' as a fallback hint.
+        hints = sorted(set(re.findall(r'(?:id|class)="([^"]*(?:export|csv|excel)[^"]*)"', html, re.I)))
+        print(f"  (no labelled controls; id/class hints: {hints[:15]})")
+
+
 async def browser_explore(portal: str) -> None:
     """Drive a real browser to the grid and dump its markup + candidate export controls."""
     try:
@@ -128,31 +159,12 @@ async def browser_explore(portal: str) -> None:
             await page.wait_for_timeout(2500)  # let any lazy grid settle
             print(f"After nav: url={page.url}  title={await page.title()!r}")
 
-            html = await page.content()
+            html = await page.content()  # post-JS rendered DOM
             grid_path = Path(__file__).resolve().parent.parent / "hhs_grid.html"
             grid_path.write_text(html, encoding="utf-8")
             print(f"Grid page bytes: {len(html)}   (saved -> {grid_path})")
-
-            # Use page.evaluate (plain DOM) — eval_on_selector_all can hit an injected-script bug.
-            info = await page.evaluate(
-                r"""() => {
-                    const els = Array.from(document.querySelectorAll(
-                        'a, button, [role=button], span[onclick], img, input'));
-                    const cands = els.map(e => ({
-                        tag: e.tagName,
-                        text: (e.innerText||e.value||e.title||e.alt||'').replace(/\s+/g,' ').trim().slice(0,50),
-                        id: e.id||'', title: e.title||'',
-                        href: (e.getAttribute && e.getAttribute('href'))||'',
-                        cls: (e.className||'').toString().slice(0,60)
-                    })).filter(o => /csv|excel|export|download|\.xls|spreadsheet/i.test(
-                        o.text+' '+o.id+' '+o.title+' '+o.href+' '+o.cls));
-                    return {tables: document.querySelectorAll('table').length, cands};
-                }"""
-            )
-            print(f"Tables on grid: {info['tables']}")
-            print(f"Export-ish controls ({len(info['cands'])}):")
-            for c in info["cands"][:25]:
-                print(f"    {c}")
+            # Parse the rendered HTML in Python (avoids Playwright's in-browser eval bugs).
+            _scan_grid(html)
             print("\nPaste the 'Export-ish controls' list above (attach hhs_grid.html if it's empty).")
         finally:
             await browser.close()
