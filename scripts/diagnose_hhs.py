@@ -13,6 +13,11 @@ No credentials required. If the export fails, the printed diagnostics tell us wh
 from __future__ import annotations
 
 import asyncio
+import sys
+from pathlib import Path
+
+# Allow running this script directly (adds the repo root to sys.path for src imports).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import aiohttp
 
