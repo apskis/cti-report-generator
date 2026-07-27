@@ -31,10 +31,9 @@ pyyaml>=6.0,<7.0
 # Optional OSINT full-text extraction (ENABLE_OSINT_FULLTEXT); pulls article bodies.
 trafilatura>=1.8.0,<3.0.0
 
-# Rapid7 Bulk Export - Parquet file parsing
-# >=14.0.1 avoids CVE-2023-47248 (deserialization RCE)
-pyarrow>=14.0.1,<15.0.0
-pandas>=2.0.0,<3.0.0
+# NOTE: pyarrow/pandas were removed — they were unused anywhere in the codebase and the
+# pinned pyarrow (<15) has no wheels for newer Python (3.13+), forcing a source build that
+# fails on Windows. Re-add (and a real consumer) if Parquet/dataframe support is needed.
 
 # Uncomment to enable Azure Monitor OpenTelemetry
 # Ref: aka.ms/functions-azure-monitor-python
