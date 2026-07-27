@@ -13,6 +13,7 @@ No credentials required. If the export fails, the printed diagnostics tell us wh
 from __future__ import annotations
 
 import asyncio
+import re
 import sys
 from pathlib import Path
 
@@ -40,6 +41,29 @@ _HEADERS = {
 }
 
 
+def _scan(html: str) -> None:
+    """Print structural signals so the correct export flow can be designed from real markup."""
+    forms = re.findall(r'<form\b[^>]*\baction\s*=\s*"([^"]*)"', html, re.I)
+    print(f"Form actions ({len(forms)}): {forms}")
+
+    links = re.findall(r'<a\b[^>]*\bhref\s*=\s*"([^"]*)"[^>]*>(.*?)</a>', html, re.I | re.S)
+    interesting = [
+        (href, re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", text)).strip()[:60])
+        for href, text in links
+        if re.search(r"csv|export|download|report|investigat|breach|archive", href + " " + text, re.I)
+    ]
+    print(f"Interesting links ({len(interesting)}):")
+    for href, text in interesting[:25]:
+        print(f"    {text!r:45} -> {href}")
+
+    scripts = re.findall(r'<script\b[^>]*\bsrc\s*=\s*"([^"]*)"', html, re.I)
+    print(f"Script srcs ({len(scripts)}): {scripts[:10]}")
+
+    markers = ["csv", "export", "datatable", "lazy", "primefaces", "jsf.js", "widget", "iframe"]
+    hits = {m: html.lower().count(m) for m in markers if html.lower().count(m)}
+    print(f"Marker counts: {hits}")
+
+
 async def main() -> None:
     portal = collector_config.hhs_portal_url
     print(f"Portal URL: {portal}\n" + "=" * 70)
@@ -57,6 +81,13 @@ async def main() -> None:
     print(f"Form action:           {extract_form_action(html, portal)}")
     controls = find_export_controls(html)
     print(f"Export controls found: {len(controls)} -> {controls[:8]}")
+    print("-" * 70)
+    _scan(html)
+
+    out_path = Path(__file__).resolve().parent.parent / "hhs_page.html"
+    out_path.write_text(html, encoding="utf-8")
+    print(f"\nSaved raw HTML -> {out_path}")
+    print("(Paste the above output; attach hhs_page.html if the links don't reveal the data view.)")
     print("=" * 70)
 
     csv_text = await fetch_hhs_breach_csv(portal, _HEADERS)
