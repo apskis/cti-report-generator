@@ -129,29 +129,31 @@ async def browser_explore(portal: str) -> None:
             print(f"After nav: url={page.url}  title={await page.title()!r}")
 
             html = await page.content()
-            print(f"Grid page bytes: {len(html)}   tables: ", end="")
-            print(await page.eval_on_selector_all("table", "els => els.length"))
-
-            # Any control that looks like an export/download (CSV/Excel/etc.).
-            controls = await page.eval_on_selector_all(
-                "a, button, [role=button], span[onclick], img, input",
-                r"""els => els.map(e => ({
-                    tag: e.tagName,
-                    text: (e.innerText||e.value||e.title||e.alt||'').replace(/\s+/g,' ').trim().slice(0,50),
-                    id: e.id||'', title: e.title||'',
-                    href: (e.getAttribute && e.getAttribute('href'))||'',
-                    cls: (e.className||'').toString().slice(0,60)
-                })).filter(o => /csv|excel|export|download|\.xls|spreadsheet/i.test(
-                    o.text+' '+o.id+' '+o.title+' '+o.href+' '+o.cls))""",
-            )
-            print(f"Export-ish controls on grid ({len(controls)}):")
-            for c in controls[:20]:
-                print(f"    {c}")
-
             grid_path = Path(__file__).resolve().parent.parent / "hhs_grid.html"
             grid_path.write_text(html, encoding="utf-8")
-            print(f"\nSaved grid HTML -> {grid_path}")
-            print("Paste the 'Export-ish controls' list above (and attach hhs_grid.html if empty).")
+            print(f"Grid page bytes: {len(html)}   (saved -> {grid_path})")
+
+            # Use page.evaluate (plain DOM) — eval_on_selector_all can hit an injected-script bug.
+            info = await page.evaluate(
+                r"""() => {
+                    const els = Array.from(document.querySelectorAll(
+                        'a, button, [role=button], span[onclick], img, input'));
+                    const cands = els.map(e => ({
+                        tag: e.tagName,
+                        text: (e.innerText||e.value||e.title||e.alt||'').replace(/\s+/g,' ').trim().slice(0,50),
+                        id: e.id||'', title: e.title||'',
+                        href: (e.getAttribute && e.getAttribute('href'))||'',
+                        cls: (e.className||'').toString().slice(0,60)
+                    })).filter(o => /csv|excel|export|download|\.xls|spreadsheet/i.test(
+                        o.text+' '+o.id+' '+o.title+' '+o.href+' '+o.cls));
+                    return {tables: document.querySelectorAll('table').length, cands};
+                }"""
+            )
+            print(f"Tables on grid: {info['tables']}")
+            print(f"Export-ish controls ({len(info['cands'])}):")
+            for c in info["cands"][:25]:
+                print(f"    {c}")
+            print("\nPaste the 'Export-ish controls' list above (attach hhs_grid.html if it's empty).")
         finally:
             await browser.close()
 
