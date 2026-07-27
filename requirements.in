@@ -34,6 +34,12 @@ trafilatura>=1.8.0,<3.0.0
 # NOTE: pyarrow/pandas were removed — they were unused anywhere in the codebase and the
 # pinned pyarrow (<15) has no wheels for newer Python (3.13+), forcing a source build that
 # fails on Windows. Re-add (and a real consumer) if Parquet/dataframe support is needed.
+#
+# CROSS-PLATFORM LOCK NOTE: requirements.txt is hashed and includes pywin32 (a Windows-only
+# transitive of mcp, via semantic-kernel) under a `sys_platform == "win32"` marker so
+# `pip install --require-hashes` works on Windows too. Linux pip-compile evaluates that
+# marker away, so if you regenerate requirements.txt, either re-add the pywin32 block or
+# regenerate with `uv pip compile --universal --generate-hashes requirements.in`.
 
 # Uncomment to enable Azure Monitor OpenTelemetry
 # Ref: aka.ms/functions-azure-monitor-python
