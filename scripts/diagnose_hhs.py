@@ -91,6 +91,20 @@ async def main() -> None:
     print("HTTP flow can't reach a JS-rendered grid; exploring with a real browser...\n")
     await browser_explore(portal)
 
+    print("\n" + "=" * 70)
+    print("End-to-end: running the wired browser export (fetch_hhs_csv_via_browser)...")
+    from src.collectors.hhs_breach_collector import parse_hhs_csv
+    from src.collectors.hhs_playwright import fetch_hhs_csv_via_browser
+
+    csv_text = await fetch_hhs_csv_via_browser(portal, headless=True)
+    if not csv_text:
+        print("RESULT: export still did not yield CSV — paste the controls list above.")
+        return
+    rows = parse_hhs_csv(csv_text)
+    print(f"RESULT: CSV captured ({len(csv_text)} bytes), parsed {len(rows)} breach rows.")
+    for r in rows[:3]:
+        print(f"  - {r['date']}  {r['organization']}  ({r['incident_type']}, records={r['records_exposed']})")
+
 
 _KW = re.compile(r"csv|excel|export|download|\.xls|spreadsheet", re.I)
 
