@@ -22,11 +22,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import aiohttp
 
-from src.collectors.hhs_breach_collector import parse_hhs_csv
 from src.collectors.hhs_fetch import (
     extract_form_action,
     extract_viewstate,
-    fetch_hhs_breach_csv,
     find_export_controls,
     looks_like_hhs_csv,
 )
@@ -90,25 +88,72 @@ async def main() -> None:
     print("(Paste the above output; attach hhs_page.html if the links don't reveal the data view.)")
     print("=" * 70)
 
-    csv_text = await fetch_hhs_breach_csv(portal, _HEADERS)
-    if not csv_text:
-        print("HTTP export did not yield CSV (expected — portal is JS-rendered).")
-        print("Trying headless-browser export (Playwright)...")
-        from src.collectors.hhs_playwright import fetch_hhs_csv_via_browser
+    print("HTTP flow can't reach a JS-rendered grid; exploring with a real browser...\n")
+    await browser_explore(portal)
 
-        csv_text = await fetch_hhs_csv_via_browser(portal, headless=True)
 
-    if not csv_text:
-        print("RESULT: automated export did NOT yield CSV.")
-        print("If Playwright is missing: pip install playwright && playwright install chromium")
-        print("Otherwise paste this output; or download the CSV from the portal UI and set")
-        print("collector_config.hhs_breach_csv_url to that local file path.")
+async def browser_explore(portal: str) -> None:
+    """Drive a real browser to the grid and dump its markup + candidate export controls."""
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        print("Playwright not installed: pip install playwright && playwright install chromium")
         return
 
-    rows = parse_hhs_csv(csv_text)
-    print(f"RESULT: CSV obtained ({len(csv_text)} bytes), parsed {len(rows)} breach rows.")
-    for r in rows[:3]:
-        print(f"  - {r['date']}  {r['organization']}  ({r['incident_type']}, records={r['records_exposed']})")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        try:
+            context = await browser.new_context(accept_downloads=True)
+            page = await context.new_page()
+            await page.goto(portal, wait_until="networkidle", timeout=60000)
+            print(f"Landing:  url={page.url}  title={await page.title()!r}")
+
+            # Click the "View HIPAA Breach Reports" nav (href="#", JS-driven).
+            clicked = False
+            for getter in (
+                lambda: page.get_by_role("link", name=re.compile("View HIPAA Breach Reports", re.I)),
+                lambda: page.get_by_text("View HIPAA Breach Reports", exact=False),
+            ):
+                try:
+                    await getter().first.click(timeout=8000)
+                    clicked = True
+                    break
+                except Exception as e:
+                    print(f"  nav click attempt failed: {e}")
+            print(f"Clicked 'View HIPAA Breach Reports': {clicked}")
+            try:
+                await page.wait_for_load_state("networkidle", timeout=30000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(2500)  # let any lazy grid settle
+            print(f"After nav: url={page.url}  title={await page.title()!r}")
+
+            html = await page.content()
+            print(f"Grid page bytes: {len(html)}   tables: ", end="")
+            print(await page.eval_on_selector_all("table", "els => els.length"))
+
+            # Any control that looks like an export/download (CSV/Excel/etc.).
+            controls = await page.eval_on_selector_all(
+                "a, button, [role=button], span[onclick], img, input",
+                r"""els => els.map(e => ({
+                    tag: e.tagName,
+                    text: (e.innerText||e.value||e.title||e.alt||'').replace(/\s+/g,' ').trim().slice(0,50),
+                    id: e.id||'', title: e.title||'',
+                    href: (e.getAttribute && e.getAttribute('href'))||'',
+                    cls: (e.className||'').toString().slice(0,60)
+                })).filter(o => /csv|excel|export|download|\.xls|spreadsheet/i.test(
+                    o.text+' '+o.id+' '+o.title+' '+o.href+' '+o.cls))""",
+            )
+            print(f"Export-ish controls on grid ({len(controls)}):")
+            for c in controls[:20]:
+                print(f"    {c}")
+
+            grid_path = Path(__file__).resolve().parent.parent / "hhs_grid.html"
+            grid_path.write_text(html, encoding="utf-8")
+            print(f"\nSaved grid HTML -> {grid_path}")
+            print("Paste the 'Export-ish controls' list above (and attach hhs_grid.html if empty).")
+        finally:
+            await browser.close()
 
 
 if __name__ == "__main__":
