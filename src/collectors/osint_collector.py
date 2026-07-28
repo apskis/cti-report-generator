@@ -296,7 +296,9 @@ class OSINTCollector(BaseCollector):
         except Exception as e:
             logger.warning(f"{source_name}: live fetch failed - {e}")
 
-        # Wayback snapshots from within the window (best-effort, non-fatal).
+        # Wayback snapshots from within the window (best-effort, non-fatal). Everything
+        # collected so far is from the live feed; anything after is archive-sourced.
+        n_live_bodies = len(bodies)
         if use_archive and window_end is not None:
             from src.collectors.wayback import fetch_archived_feed_bodies
 
@@ -306,7 +308,7 @@ class OSINTCollector(BaseCollector):
                     max_snapshots=max_snapshots, headers=_REQUEST_HEADERS,
                 )
                 if archived:
-                    logger.info(f"  {source_name}: +{len(archived)} Wayback snapshot(s) for the window")
+                    logger.info(f"  {source_name}: fetched {len(archived)} Wayback snapshot(s) for the window")
                 bodies.extend(archived)
             except Exception as e:
                 logger.info(f"  {source_name}: Wayback augmentation failed (non-fatal) - {e}")
@@ -317,8 +319,10 @@ class OSINTCollector(BaseCollector):
         articles: list[dict[str, Any]] = []
         seen: set[str] = set()
         cve_pattern = r"CVE-\d{4}-\d{4,7}"
+        live_count = 0
 
-        for body in bodies:
+        for body_idx, body in enumerate(bodies):
+            is_live = body_idx < n_live_bodies
             feed = feedparser.parse(body)
             if feed.bozo and not feed.entries:
                 logger.debug(f"{source_name}: feed body parse error - {feed.bozo_exception}")
@@ -334,6 +338,8 @@ class OSINTCollector(BaseCollector):
                 if not key or key in seen:
                     continue
                 seen.add(key)
+                if is_live:
+                    live_count += 1
 
                 summary = _clean_html(entry.get("summary", entry.get("description", "")))
                 if len(summary) > 300:
@@ -356,4 +362,10 @@ class OSINTCollector(BaseCollector):
         # Freshest first, then cap per source (archived snapshots can add older in-window
         # articles, so a global sort beats live-feed order).
         articles.sort(key=lambda a: a["published_date"] or "", reverse=True)
+        if use_archive and len(bodies) > n_live_bodies:
+            archive_count = len(articles) - live_count
+            logger.info(
+                f"  {source_name}: {len(articles)} in-window article(s) "
+                f"({live_count} live + {archive_count} recovered from Wayback)"
+            )
         return articles[:max_articles]
