@@ -161,6 +161,22 @@ class OSINTCollector(BaseCollector):
         all_articles: list[dict[str, Any]] = []
 
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15), headers=_REQUEST_HEADERS) as session:
+            # If the archive fallback is on, confirm web.archive.org is actually reachable
+            # ONCE up front. Corporate web filters commonly block web.archive.org (while
+            # leaving archive.org reachable), which would otherwise surface as silent per-feed
+            # zeros. Disable the fallback and log a clear, attributed reason instead.
+            if use_archive:
+                from src.collectors.wayback import wayback_reachable
+
+                ok, reason = await wayback_reachable(session)
+                if not ok:
+                    logger.warning(
+                        "OSINT Wayback fallback disabled: web.archive.org is unreachable on "
+                        f"this network ({reason}). Short-retention feeds cannot be backfilled "
+                        "from the archive for this quarter; allowlist web.archive.org to enable it."
+                    )
+                    use_archive = False
+
             for source in sources:
                 if len(all_articles) >= max_total:
                     break

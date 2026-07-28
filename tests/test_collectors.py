@@ -568,6 +568,39 @@ class TestWaybackHelpers:
         assert all(b.startswith("<rss>") for b in bodies)
 
     @pytest.mark.asyncio
+    async def test_wayback_reachable_detects_ok_and_blocks(self):
+        from src.collectors.wayback import wayback_reachable
+
+        class _Resp:
+            def __init__(self, status, body):
+                self.status, self._body = status, body
+
+            async def text(self):
+                return self._body
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+        class _Sess:
+            def __init__(self, status, body):
+                self._status, self._body = status, body
+
+            def get(self, url, timeout=None):
+                return _Resp(self._status, self._body)
+
+        ok, _ = await wayback_reachable(_Sess(200, '[["timestamp","original"]]'))
+        assert ok is True
+        # A proxy/WAF block: 498 + nginx HTML page.
+        ok, reason = await wayback_reachable(_Sess(498, "<html><title>404 Not Found</title></html>"))
+        assert ok is False and "498" in reason
+        # A 200 that is NOT the expected JSON array (block page served with 200).
+        ok, reason = await wayback_reachable(_Sess(200, "<html>blocked</html>"))
+        assert ok is False and "non-JSON" in reason
+
+    @pytest.mark.asyncio
     async def test_fetch_archived_feed_bodies_empty_on_cdx_error(self):
         from datetime import datetime
 

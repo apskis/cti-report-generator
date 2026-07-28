@@ -108,6 +108,31 @@ def snapshot_raw_url(timestamp: str, original: str) -> str:
     return f"{_WEB_ENDPOINT}/{timestamp}id_/{original}"
 
 
+async def wayback_reachable(
+    session: aiohttp.ClientSession, *, per_request_timeout: int = 10
+) -> tuple[bool, str]:
+    """Probe whether web.archive.org's CDX API is reachable, returning (ok, reason).
+
+    A single tiny CDX query. Corporate web filters commonly intercept web.archive.org and
+    answer with a synthetic block page (e.g. HTTP 498 + an nginx 404 body) while leaving the
+    bare archive.org host reachable — so a non-200, or a 200 whose body is not the expected
+    JSON array, is treated as "blocked". Lets the collector disable the archive fallback once
+    and log a clear, attributed reason instead of emitting silent zeros per feed.
+    """
+    probe = f"{_CDX_ENDPOINT}?url=example.com&output=json&limit=1"
+    timeout = aiohttp.ClientTimeout(total=per_request_timeout)
+    try:
+        async with session.get(probe, timeout=timeout) as resp:
+            body = (await resp.text()).lstrip()
+            if resp.status != 200:
+                return False, f"HTTP {resp.status}"
+            if not body.startswith("["):
+                return False, "non-JSON response (likely a proxy/WAF block page)"
+            return True, ""
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"
+
+
 async def fetch_archived_feed_bodies(
     session: aiohttp.ClientSession,
     feed_url: str,
