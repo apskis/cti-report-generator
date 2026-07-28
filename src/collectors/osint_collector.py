@@ -65,6 +65,11 @@ def _load_osint_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
         "quarterly_lookback_days": config.get("quarterly_lookback_days", 100),
         "max_articles_per_source": config.get("max_articles_per_source", 5),
         "max_total_articles": config.get("max_total_articles", 30),
+        # Wayback Machine fallback: for quarterly runs over a historical window, pull
+        # archived snapshots of each feed from within the quarter so short-retention feeds
+        # (BleepingComputer, US-CERT) recover articles the live feed has since dropped.
+        "use_wayback_for_quarterly": config.get("use_wayback_for_quarterly", True),
+        "max_wayback_snapshots_per_source": config.get("max_wayback_snapshots_per_source", 6),
     }
 
 
@@ -137,9 +142,20 @@ class OSINTCollector(BaseCollector):
         # discard (which previously left every feed reading "0 articles in lookback window").
         window_end = end_date.replace(tzinfo=UTC)
 
+        # Wayback fallback only for a quarterly run over a historical window (an explicit
+        # collection_window). Live feeds suffice for a trailing weekly/current window, and
+        # augmenting those would just refetch the same recent entries.
+        use_archive = (
+            report_type == "quarterly"
+            and self.collection_window is not None
+            and config["use_wayback_for_quarterly"]
+        )
+        max_snapshots = config["max_wayback_snapshots_per_source"]
+
         logger.info(
             f"Collecting OSINT from {len(sources)} enabled sources "
-            f"(window: {cutoff.date()} to {window_end.date()})"
+            f"(window: {cutoff.date()} to {window_end.date()}"
+            f"{'; Wayback archive fallback ON' if use_archive else ''})"
         )
 
         all_articles: list[dict[str, Any]] = []
@@ -159,7 +175,8 @@ class OSINTCollector(BaseCollector):
 
                 try:
                     articles = await self._fetch_rss(
-                        session, name, url, category, cutoff, max_per_source, window_end
+                        session, name, url, category, cutoff, max_per_source, window_end,
+                        use_archive=use_archive, max_snapshots=max_snapshots,
                     )
                     all_articles.extend(articles)
                     if articles:
@@ -256,50 +273,87 @@ class OSINTCollector(BaseCollector):
         cutoff: datetime,
         max_articles: int,
         window_end: datetime | None = None,
+        use_archive: bool = False,
+        max_snapshots: int = 6,
     ) -> list[dict[str, Any]]:
-        """Fetch and parse an RSS/Atom feed, returning articles within [cutoff, window_end]."""
-        async with session.get(url) as resp:
-            if resp.status != 200:
-                logger.warning(f"{source_name}: HTTP {resp.status}")
-                return []
-            body = await resp.text()
+        """Fetch a feed and return its freshest articles within [cutoff, window_end].
 
-        feed = feedparser.parse(body)
+        When ``use_archive`` is set (quarterly historical run), the live feed is augmented
+        with Wayback Machine snapshots of the same URL captured inside the window, so
+        short-retention feeds still surface their in-quarter articles. Entries from all
+        bodies are deduped by URL (then title), filtered to the window, sorted newest-first,
+        and capped at ``max_articles``.
+        """
+        bodies: list[str] = []
 
-        if feed.bozo and not feed.entries:
-            logger.warning(f"{source_name}: Feed parse error - {feed.bozo_exception}")
+        # Live feed.
+        try:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    bodies.append(await resp.text())
+                else:
+                    logger.warning(f"{source_name}: HTTP {resp.status}")
+        except Exception as e:
+            logger.warning(f"{source_name}: live fetch failed - {e}")
+
+        # Wayback snapshots from within the window (best-effort, non-fatal).
+        if use_archive and window_end is not None:
+            from src.collectors.wayback import fetch_archived_feed_bodies
+
+            try:
+                archived = await fetch_archived_feed_bodies(
+                    session, url, cutoff, window_end,
+                    max_snapshots=max_snapshots, headers=_REQUEST_HEADERS,
+                )
+                if archived:
+                    logger.info(f"  {source_name}: +{len(archived)} Wayback snapshot(s) for the window")
+                bodies.extend(archived)
+            except Exception as e:
+                logger.info(f"  {source_name}: Wayback augmentation failed (non-fatal) - {e}")
+
+        if not bodies:
             return []
 
-        articles = []
-        for entry in feed.entries:
-            if len(articles) >= max_articles:
-                break
+        articles: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        cve_pattern = r"CVE-\d{4}-\d{4,7}"
 
-            pub_date = _parse_pub_date(entry)
-            if pub_date and (pub_date < cutoff or (window_end is not None and pub_date > window_end)):
+        for body in bodies:
+            feed = feedparser.parse(body)
+            if feed.bozo and not feed.entries:
+                logger.debug(f"{source_name}: feed body parse error - {feed.bozo_exception}")
                 continue
+            for entry in feed.entries:
+                pub_date = _parse_pub_date(entry)
+                if pub_date and (pub_date < cutoff or (window_end is not None and pub_date > window_end)):
+                    continue
 
-            title = entry.get("title", "").strip()
-            link = entry.get("link", "")
-            summary = _clean_html(entry.get("summary", entry.get("description", "")))
-            if len(summary) > 300:
-                summary = summary[:297] + "..."
+                title = entry.get("title", "").strip()
+                link = entry.get("link", "")
+                key = (link or title).strip().lower()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
 
-            # Extract CVE mentions from title and summary
-            cve_pattern = r"CVE-\d{4}-\d{4,7}"
-            cves_found = list(set(re.findall(cve_pattern, f"{title} {summary}")))
+                summary = _clean_html(entry.get("summary", entry.get("description", "")))
+                if len(summary) > 300:
+                    summary = summary[:297] + "..."
+                cves_found = list(set(re.findall(cve_pattern, f"{title} {summary}")))
 
-            articles.append(
-                {
-                    "title": title,
-                    "url": link,
-                    "summary": summary,
-                    "published_date": pub_date.isoformat() if pub_date else "",
-                    "source": source_name,
-                    "category": category,
-                    "cves_mentioned": cves_found,
-                    "type": "osint_article",
-                }
-            )
+                articles.append(
+                    {
+                        "title": title,
+                        "url": link,
+                        "summary": summary,
+                        "published_date": pub_date.isoformat() if pub_date else "",
+                        "source": source_name,
+                        "category": category,
+                        "cves_mentioned": cves_found,
+                        "type": "osint_article",
+                    }
+                )
 
-        return articles
+        # Freshest first, then cap per source (archived snapshots can add older in-window
+        # articles, so a global sort beats live-feed order).
+        articles.sort(key=lambda a: a["published_date"] or "", reverse=True)
+        return articles[:max_articles]

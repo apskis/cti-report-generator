@@ -114,3 +114,15 @@ max_articles_per_source: 10
 
 # Maximum total articles across all sources (increased for better coverage)
 max_total_articles: 50
+
+# Wayback Machine fallback for QUARTERLY reports over a past quarter. Short-retention feeds
+# (BleepingComputer, US-CERT) only expose a couple of weeks of entries, so for a quarter
+# that has since ended the live feed returns nothing in-window. When enabled, the collector
+# also pulls a few archived snapshots of each feed captured DURING the quarter and merges
+# their entries (deduped, still filtered to the window). Only active on quarterly runs that
+# supply an explicit historical window; weekly/current runs are unaffected.
+use_wayback_for_quarterly: true
+
+# Snapshots fetched per feed per quarterly run (evenly spread across the window). Higher =
+# more articles recovered but more requests to the Internet Archive.
+max_wayback_snapshots_per_source: 6

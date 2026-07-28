@@ -480,6 +480,201 @@ class TestOSINTWindow:
         assert [a["title"] for a in out] == ["in-window"]
 
 
+class TestWaybackHelpers:
+    """Pure Wayback CDX/snapshot helpers (offline)."""
+
+    def test_build_cdx_url(self):
+        from datetime import datetime
+
+        from src.collectors.wayback import build_cdx_url
+
+        u = build_cdx_url("https://www.bleepingcomputer.com/feed/", datetime(2026, 4, 1), datetime(2026, 6, 30))
+        assert "from=20260401" in u and "to=20260630" in u
+        assert "collapse=timestamp%3A8" in u and "filter=statuscode%3A200" in u
+
+    def test_parse_cdx_json(self):
+        from src.collectors.wayback import parse_cdx_json
+
+        txt = (
+            '[["timestamp","original"],'
+            '["20260415120000","https://www.bleepingcomputer.com/feed/"],'
+            '["20260501000000","https://www.bleepingcomputer.com/feed/"]]'
+        )
+        rows = parse_cdx_json(txt)
+        assert rows == [
+            ("20260415120000", "https://www.bleepingcomputer.com/feed/"),
+            ("20260501000000", "https://www.bleepingcomputer.com/feed/"),
+        ]
+        # Malformed / header-only / empty all yield []
+        assert parse_cdx_json("") == []
+        assert parse_cdx_json('[["timestamp","original"]]') == []
+        assert parse_cdx_json("not json") == []
+
+    def test_sample_snapshots_even_spread_keeps_ends(self):
+        from src.collectors.wayback import sample_snapshots
+
+        rows = [(str(i), "u") for i in range(20)]
+        s = sample_snapshots(rows, 6)
+        assert len(s) == 6 and s[0] == rows[0] and s[-1] == rows[19]
+        assert sample_snapshots(rows, 1) == [rows[10]]
+        assert sample_snapshots(rows[:3], 6) == rows[:3]  # fewer than max -> all
+        assert sample_snapshots([], 6) == []
+        assert sample_snapshots(rows, 0) == []
+
+    def test_snapshot_raw_url_uses_id_suffix(self):
+        from src.collectors.wayback import snapshot_raw_url
+
+        assert snapshot_raw_url("20260415120000", "https://x/feed/") == (
+            "https://web.archive.org/web/20260415120000id_/https://x/feed/"
+        )
+
+    @pytest.mark.asyncio
+    async def test_fetch_archived_feed_bodies_orchestration(self):
+        from datetime import datetime
+
+        from src.collectors.wayback import fetch_archived_feed_bodies
+
+        cdx_json = (
+            '[["timestamp","original"],'
+            '["20260415120000","https://x/feed/"],'
+            '["20260515120000","https://x/feed/"]]'
+        )
+
+        class _DispatchResp:
+            def __init__(self, url):
+                self.status = 200
+                self._url = url
+
+            async def text(self):
+                if "/cdx/" in self._url:
+                    return cdx_json
+                assert "id_/" in self._url  # raw snapshot form, no toolbar
+                return f"<rss>{self._url}</rss>"
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+        class _DispatchSession:
+            def get(self, url, timeout=None, headers=None):
+                return _DispatchResp(url)
+
+        bodies = await fetch_archived_feed_bodies(
+            _DispatchSession(), "https://x/feed/", datetime(2026, 4, 1), datetime(2026, 6, 30), max_snapshots=6
+        )
+        assert len(bodies) == 2
+        assert all(b.startswith("<rss>") for b in bodies)
+
+    @pytest.mark.asyncio
+    async def test_fetch_archived_feed_bodies_empty_on_cdx_error(self):
+        from datetime import datetime
+
+        from src.collectors.wayback import fetch_archived_feed_bodies
+
+        class _ErrResp:
+            status = 503
+
+            async def text(self):
+                return ""
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+        class _ErrSession:
+            def get(self, url, timeout=None, headers=None):
+                return _ErrResp()
+
+        out = await fetch_archived_feed_bodies(
+            _ErrSession(), "https://x/feed/", datetime(2026, 4, 1), datetime(2026, 6, 30)
+        )
+        assert out == []
+
+
+class TestOSINTArchiveMerge:
+    """_fetch_rss merges live + Wayback snapshot bodies, deduped and window-filtered.
+
+    feedparser.parse is patched per-body (bodies are opaque marker strings) so the test is
+    deterministic without depending on the real parser.
+    """
+
+    @staticmethod
+    def _entry(title, link, date):
+        return {"title": title, "link": link, "summary": "", "published": date}
+
+    def _parser(self, mapping):
+        from types import SimpleNamespace
+
+        def _parse(body):
+            return SimpleNamespace(bozo=False, bozo_exception=None, entries=mapping.get(body, []))
+
+        return _parse
+
+    @pytest.mark.asyncio
+    async def test_archive_recovers_in_window_articles_and_dedupes(self):
+        from datetime import UTC, datetime
+
+        from src.collectors.osint_collector import OSINTCollector
+
+        live, snap1, snap2 = "LIVE", "SNAP1", "SNAP2"
+        mapping = {
+            # Live feed holds only a too-new (out-of-window) article.
+            live: [self._entry("Live July", "https://x/live-jul", "Mon, 20 Jul 2026 12:00:00 +0000")],
+            # Two snapshots overlapping on "Shared May" plus one unique each.
+            snap1: [
+                self._entry("Shared May", "https://x/shared-may", "Fri, 15 May 2026 12:00:00 +0000"),
+                self._entry("April One", "https://x/apr-1", "Wed, 15 Apr 2026 12:00:00 +0000"),
+            ],
+            snap2: [
+                self._entry("Shared May", "https://x/shared-may", "Fri, 15 May 2026 12:00:00 +0000"),
+                self._entry("June One", "https://x/jun-1", "Mon, 15 Jun 2026 12:00:00 +0000"),
+            ],
+        }
+        cutoff = datetime(2026, 4, 1, tzinfo=UTC)
+        window_end = datetime(2026, 6, 30, 23, 59, 59, tzinfo=UTC)
+
+        collector = OSINTCollector()
+        with (
+            patch("src.collectors.wayback.fetch_archived_feed_bodies", new=AsyncMock(return_value=[snap1, snap2])),
+            patch("src.collectors.osint_collector.feedparser.parse", side_effect=self._parser(mapping)),
+        ):
+            out = await collector._fetch_rss(
+                _FakeSession(live), "BleepingComputer", "https://x/feed", "News",
+                cutoff, 10, window_end, use_archive=True, max_snapshots=6,
+            )
+        titles = [a["title"] for a in out]
+        # July excluded (out of window); the shared May article deduped to one; freshest first.
+        assert titles == ["June One", "Shared May", "April One"]
+
+    @pytest.mark.asyncio
+    async def test_no_archive_call_when_use_archive_false(self):
+        from datetime import UTC, datetime
+
+        from src.collectors.osint_collector import OSINTCollector
+
+        live = "LIVE"
+        mapping = {live: [self._entry("In May", "https://x/may", "Fri, 15 May 2026 12:00:00 +0000")]}
+        cutoff = datetime(2026, 4, 1, tzinfo=UTC)
+        window_end = datetime(2026, 6, 30, 23, 59, 59, tzinfo=UTC)
+
+        collector = OSINTCollector()
+        spy = AsyncMock(return_value=[])
+        with (
+            patch("src.collectors.wayback.fetch_archived_feed_bodies", new=spy),
+            patch("src.collectors.osint_collector.feedparser.parse", side_effect=self._parser(mapping)),
+        ):
+            out = await collector._fetch_rss(
+                _FakeSession(live), "Feed", "https://x/feed", "News",
+                cutoff, 10, window_end, use_archive=False,
+            )
+        spy.assert_not_awaited()
+        assert [a["title"] for a in out] == ["In May"]
+
+
 class TestIlluminaSecFilings:
     """The company scraper must surface MATERIAL filings (10-K/10-Q/8-K), not the
     insider-trade Form 4/144 noise that dominates the newest-first EDGAR feed."""
