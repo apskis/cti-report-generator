@@ -96,6 +96,32 @@ async def main() -> None:
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=30), headers=_REQUEST_HEADERS
     ) as session:
+        # --- Connectivity probe: is web.archive.org reachable at all? --------------------
+        # Bare CDX query for a feed the archive definitely has (Krebs is captured daily).
+        # If THIS returns 0 rows or a non-200, the problem is archive.org access from this
+        # network (corporate proxy / block), not the per-feed query.
+        probe_url = "https://web.archive.org/cdx/search/cdx?url=krebsonsecurity.com/feed/&output=json&limit=5"
+        print("Connectivity probe A (CDX)          -> " + probe_url)
+        try:
+            async with session.get(probe_url) as resp:
+                body = await resp.text()
+                print(f"  web.archive.org CDX status: HTTP {resp.status}   body[:300]: {body[:300]!r}")
+                print(f"  parsed probe rows: {len(parse_cdx_json(body))}")
+        except Exception as e:
+            print(f"  web.archive.org CDX probe FAILED: {type(e).__name__}: {e}")
+
+        # Probe B: different host + endpoint. If A fails but B works -> CDX-specific issue.
+        # If BOTH fail -> archive.org is blocked wholesale on this network (proxy/firewall).
+        avail_url = "https://archive.org/wayback/available?url=krebsonsecurity.com/feed/&timestamp=20260501"
+        print("Connectivity probe B (availability) -> " + avail_url)
+        try:
+            async with session.get(avail_url) as resp:
+                body = await resp.text()
+                print(f"  archive.org availability status: HTTP {resp.status}   body[:300]: {body[:300]!r}")
+        except Exception as e:
+            print(f"  archive.org availability probe FAILED: {type(e).__name__}: {e}")
+        print("=" * 78)
+
         for feed in feeds:
             name = feed.get("name", "?")
             url = feed.get("url", "")
@@ -108,16 +134,21 @@ async def main() -> None:
             live_articles = _in_window_articles(live, cutoff, window_end)
             print(f"  LIVE in-window articles: {len(live_articles)}")
 
-            # 2) Wayback CDX capture count for the quarter.
+            # 2) Wayback CDX capture count for the quarter (print status + body on any miss).
             n_captures = 0
+            cdx_url = build_cdx_url(url, cutoff, window_end)
             try:
-                async with session.get(build_cdx_url(url, cutoff, window_end)) as resp:
-                    cdx_rows = parse_cdx_json(await resp.text()) if resp.status == 200 else []
+                async with session.get(cdx_url) as resp:
+                    body = await resp.text()
+                    cdx_rows = parse_cdx_json(body) if resp.status == 200 else []
                     n_captures = len(cdx_rows)
                     picks = sample_snapshots(cdx_rows, max_snapshots)
                     print(f"  Wayback CDX captures in quarter: {n_captures}   (sampling {len(picks)})")
+                    if n_captures == 0:
+                        print(f"    CDX status HTTP {resp.status}; url={cdx_url}")
+                        print(f"    CDX body[:300]: {body[:300]!r}")
             except Exception as e:
-                print(f"  Wayback CDX query failed: {e}")
+                print(f"  Wayback CDX query failed: {type(e).__name__}: {e}")
 
             # 3) Archive-recovered articles (unique, beyond live).
             archived = await fetch_archived_feed_bodies(
