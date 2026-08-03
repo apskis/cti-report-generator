@@ -960,8 +960,61 @@ async def generate_report_local(
     except UnicodeEncodeError:
         print_section("Generating Report")
     print_status("Creating document...", "progress")
+
+    # Signal the generator to skip bullet-list recommendations (the carryover
+    # table will provide the content instead).
+    if report_type == "weekly":
+        generator._carryover_active = True
+
     doc = generator.generate(analysis)
     print_status("Document created", "success")
+
+    # Carryover action tracking (weekly reports only)
+    if report_type == "weekly":
+        try:
+            print_section("📋 Carryover Action Tracking")
+        except UnicodeEncodeError:
+            print_section("Carryover Action Tracking")
+
+        from carryover.inject import inject_recommendations_table
+        from carryover.store import ActionStore
+        from carryover.sync import sync_recommendations
+        from carryover.week import Week
+
+        # Determine report week from the generator's period_end
+        if hasattr(generator, "period_end"):
+            report_week = Week.from_date(generator.period_end.date() if hasattr(generator.period_end, 'date') else generator.period_end)
+        else:
+            report_week = Week.current()
+
+        # Sync AI recommendations with carryover store
+        recommendations = analysis.get("recommendations", [])
+        if recommendations:
+            store = ActionStore()
+            sync_result = sync_recommendations(recommendations, report_week, store=store)
+
+            if sync_result["reissued"]:
+                print_status(f"Matched {len(sync_result['reissued'])} persistent recommendations", "info")
+            if sync_result["added"]:
+                for action_id, title in sync_result["added"]:
+                    print_status(f"New: {action_id} — {title}", "success")
+            if not sync_result["reissued"] and not sync_result["added"]:
+                print_status("All recommendations matched existing actions", "info")
+
+            # Inject recommendations table into the report
+            actions_for_table = store.actions_for_table(report_week)
+            if actions_for_table:
+                new_ids = {action_id for action_id, _ in sync_result["added"]}
+                inject_recommendations_table(doc, actions_for_table, report_week, new_action_ids=new_ids)
+                persistent_count = sum(1 for a in actions_for_table if a.id not in new_ids and a.status != "complete")
+                new_count = len(new_ids)
+                overdue_count = sum(1 for a in actions_for_table if a.is_overdue(report_week))
+                print_status(
+                    f"Recommendations table: {persistent_count} persistent, {new_count} new, {overdue_count} overdue",
+                    "success",
+                )
+        else:
+            print_status("No recommendations in analysis output", "warning")
 
     # Always save a local copy
     output_path = Path(output_dir)

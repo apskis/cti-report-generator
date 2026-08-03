@@ -1,0 +1,181 @@
+- id: ACT-2026-001
+  title: Harden laboratory and IoT devices
+  description: Patch outdated firmware on laboratory instruments and IoT devices; segment critical devices onto isolated VLANs with restricted egress.
+  owner: Unknown
+  first_raised_week: 2026-W23
+  target_week: 2026-W33
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W23
+    status: open
+    note: Action raised
+  - week: 2026-W24
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W25
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W26
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W27
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W28
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W29
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W30
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W31
+    status: open
+    note: Reissued — no progress reported
+
+- id: ACT-2026-002
+  title: Enforce MFA on vendor portals
+  description: Enforce multifactor authentication on all vendor and supply chain portals; prioritize portals with privileged access to production systems.
+  owner: Unknown
+  first_raised_week: 2026-W23
+  target_week: 2026-W33
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W23
+    status: open
+    note: Action raised
+  - week: 2026-W24
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W25
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W26
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W27
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W28
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W29
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W30
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W31
+    status: open
+    note: Reissued — no progress reported
+
+- id: ACT-2026-003
+  title: Review supply chain dependencies
+  description: Review supply chain dependencies and validate package integrity; audit third-party software for known vulnerabilities and unauthorized modifications.
+  owner: Unknown
+  first_raised_week: 2026-W23
+  target_week: 2026-W33
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W23
+    status: open
+    note: Action raised
+  - week: 2026-W24
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W25
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W26
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W27
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W28
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W29
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W30
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W31
+    status: open
+    note: Reissued — no progress reported
+
+- id: ACT-2026-004
+  title: Patch edge and perimeter products
+  description: Patch and restrict access to edge and perimeter products (firewalls, VPN concentrators, load balancers); disable unused management interfaces.
+  owner: Unknown
+  first_raised_week: 2026-W23
+  target_week: 2026-W33
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W23
+    status: open
+    note: Action raised
+  - week: 2026-W24
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W25
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W26
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W27
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W28
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W29
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W30
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W31
+    status: open
+    note: Reissued — no progress reported
+
+- id: ACT-2026-005
+  title: Enhance phishing defenses
+  description: Enhance phishing defenses and user awareness training; deploy advanced email filtering and conduct targeted simulations for high-risk roles.
+  owner: Unknown
+  first_raised_week: 2026-W24
+  target_week: 2026-W33
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W24
+    status: open
+    note: Action raised
+  - week: 2026-W25
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W26
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W27
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W28
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W29
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W30
+    status: open
+    note: Reissued — no progress reported
+  - week: 2026-W31
+    status: open
+    note: Reissued — no progress reported

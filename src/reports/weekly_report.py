@@ -1421,11 +1421,21 @@ class WeeklyReportGenerator(BaseReportGenerator):
             return incident_type  # Return as-is if no mapping
 
     def _add_recommended_actions(self, analysis_result: dict[str, Any]) -> None:
-        """Add recommended actions section."""
+        """Add recommended actions heading.
+
+        Content is populated by the carryover table injection in the pipeline.
+        Falls back to bullet list only if carryover tracking is disabled.
+        """
         logger.info("Adding Recommended Actions section")
 
         h = self.doc.add_heading("Recommended Actions", level=1)
         self._style_heading_1(h)
+
+        # If carryover tracking is active, skip bullets — the pipeline injects
+        # the recommendations table after generate() returns.
+        if getattr(self, "_carryover_active", False):
+            self.doc.add_paragraph()
+            return
 
         recommendations = analysis_result.get("recommendations", [])
 
@@ -1435,7 +1445,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 for run in para.runs:
                     run.font.size = FontSizes.BODY_SMALL
 
-                    # Bold important/urgent recommendations
                     lower_rec = rec.lower()
                     if any(word in lower_rec for word in ["urgent", "critical", "immediate", "persistent"]):
                         run.font.bold = True
