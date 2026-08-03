@@ -34,6 +34,20 @@ class CollectorConfig:
     crowdstrike_indicators_limit: int = 50
     crowdstrike_spotlight_limit: int = 200  # Max vulnerabilities from Spotlight for exposure counts
 
+    # ICS/OT advisories (RapidAPI "ICS[AP] APIs" — republished CISA ICS advisories).
+    # Feeds the weekly report's Operational Technology (OT) section. Auth is a RapidAPI
+    # key (x-rapidapi-key header) stored in Key Vault; the host is fixed per the RapidAPI
+    # listing. Host/path are config (not secrets) so they can be repointed without code.
+    ics_advisory_host: str = "ics-ap-apis.p.rapidapi.com"
+    # Path of the "Advisories - Latest" endpoint on the RapidAPI listing. Override with
+    # ICS_ADVISORY_LATEST_PATH if the listing changes the route.
+    ics_advisory_latest_path: str = field(
+        default_factory=lambda: os.environ.get("ICS_ADVISORY_LATEST_PATH", "/advisories/latest")
+    )
+    ics_advisory_lookback_days: int = 7
+    ics_advisory_quarterly_lookback_days: int = 90
+    ics_advisory_max_results: int = 50
+
     # News-search (GDELT) collector — used mainly for historical/prior-quarter backfill,
     # where RSS feeds can no longer serve articles from a past window.
     news_search_max_records: int = 40

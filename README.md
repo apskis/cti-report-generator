@@ -147,6 +147,7 @@ All secrets are stored in Azure Key Vault. Add the following secrets:
 | `crowdstrike-client-id` | CrowdStrike OAuth client ID |
 | `crowdstrike-client-secret` | CrowdStrike OAuth client secret |
 | `crowdstrike-base-url` | CrowdStrike API base URL (e.g., `https://api.crowdstrike.com`) |
+| `rapidapi-ics-key` | RapidAPI key for the ICS[AP] API (CISA ICS/OT advisories → OT report section) |
 
 ### Azure OpenAI
 
@@ -169,6 +170,7 @@ KEYVAULT_NAME="kv-cti-rep-prod"
 
 az keyvault secret set --vault-name $KEYVAULT_NAME --name "nvd-api-key" --value "your-value"
 az keyvault secret set --vault-name $KEYVAULT_NAME --name "intel471-email" --value "your-value"
+az keyvault secret set --vault-name $KEYVAULT_NAME --name "rapidapi-ics-key" --value "your-rapidapi-key"
 az keyvault secret set --vault-name $KEYVAULT_NAME --name "storage-account-name" --value "ctireportingstorage"
 az keyvault secret set --vault-name $KEYVAULT_NAME --name "openai-endpoint" --value "https://ids-secops-openai-prd-eastus2.openai.azure.com/"
 # ... repeat for all secrets

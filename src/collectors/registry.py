@@ -13,6 +13,7 @@ from src.collectors.base import BaseCollector
 from src.collectors.crowdstrike_collector import CrowdStrikeCollector
 from src.collectors.hhs_breach_collector import HHSBreachCollector
 from src.collectors.hibp_breach_collector import HIBPBreachCollector
+from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
 from src.collectors.illumina_osint_collector import IlluminaOSINTCollector
 from src.collectors.intel471_collector import Intel471Collector
 from src.collectors.news_search_collector import NewsSearchCollector
@@ -31,6 +32,7 @@ COLLECTOR_REGISTRY: dict[str, type[BaseCollector]] = {
     "intel471": Intel471Collector,
     "crowdstrike": CrowdStrikeCollector,
     "osint": OSINTCollector,
+    "ics_advisory": ICSAdvisoryCollector,
     "illumina_osint": IlluminaOSINTCollector,
     "news_search": NewsSearchCollector,
     "vcdb": VCDBCollector,

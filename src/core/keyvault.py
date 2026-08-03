@@ -112,6 +112,7 @@ def get_all_api_keys(vault_url: str | None = None) -> dict[str, str]:
         "nvd": ["nvd_key"],
         "intel471": ["intel471_email", "intel471_key"],
         "crowdstrike": ["crowdstrike_id", "crowdstrike_secret", "crowdstrike_base_url"],
+        "ics_advisory": ["rapidapi_ics_key"],
     }
 
     # Always required (not collector-specific)
@@ -131,6 +132,7 @@ def get_all_api_keys(vault_url: str | None = None) -> dict[str, str]:
         "crowdstrike_id": "crowdstrike-client-id",
         "crowdstrike_secret": "crowdstrike-client-secret",
         "crowdstrike_base_url": "crowdstrike-base-url",
+        "rapidapi_ics_key": "rapidapi-ics-key",
     }
 
     # Add required secrets

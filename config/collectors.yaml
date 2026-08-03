@@ -37,6 +37,12 @@ collectors:
     description: "Curated public news and research feeds (configure in osint_sources.yaml)"
     enabled: true
 
+  # ── Operational Technology (OT) / ICS ───────────────────────────────
+
+  - name: ics_advisory
+    description: "ICS[AP] APIs (RapidAPI) - CISA ICS/OT advisories for the Operational Technology section"
+    enabled: true
+
   - name: illumina_osint
     description: "Illumina company OSINT - public disclosures, news, and filings (quarterly only)"
     enabled: true

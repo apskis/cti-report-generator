@@ -88,6 +88,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._add_week_at_glance(analysis_result)
             self._add_executive_summary(analysis_result)
             self._add_vulnerability_exposure(analysis_result)
+            self._add_ot_advisories(analysis_result)
             self._add_sector_threat_activity(analysis_result)
             self._add_active_campaigns(analysis_result)
             self._add_industry_incidents(analysis_result)
@@ -810,6 +811,149 @@ class WeeklyReportGenerator(BaseReportGenerator):
             evidence_parts.append("Exploitation confirmed")
 
         return "; ".join(evidence_parts[:2])  # Max 2 sources to keep readable
+
+    def _severity_color(self, severity: str) -> RGBColor:
+        """Map an advisory severity string to a brand color for emphasis."""
+        sev = (severity or "").upper()
+        if "CRITICAL" in sev:
+            return BrandColors.RED_HIGH_RISK
+        if "HIGH" in sev:
+            return BrandColors.ORANGE_DESIGN
+        return BrandColors.TEXT_DARK
+
+    def _add_ot_advisories(self, analysis_result: dict[str, Any]) -> None:
+        """Add Operational Technology (OT) section from ICS/OT advisories.
+
+        Sourced from the ICS[AP] API (republished CISA ICS advisories). Covers
+        vulnerabilities in industrial/manufacturing control systems (SCADA, PLC, HMI,
+        lab instrumentation) that sit outside the IT CVE feed. Rendered directly from
+        the collector's structured data — no AI summarization.
+        """
+        logger.info("Adding Operational Technology (OT) section")
+
+        h = self.doc.add_heading("Operational Technology (OT) Advisories", level=1)
+        self._style_heading_1(h)
+
+        advisories = analysis_result.get("ot_advisories", []) or []
+
+        # Intro with actionable context
+        intro = self.doc.add_paragraph()
+        intro_run = intro.add_run(
+            "Industrial control system (ICS) and operational technology advisories affecting "
+            "manufacturing, laboratory instrumentation, and plant-floor environments this week "
+            "(source: CISA ICS advisories). "
+        )
+        intro_run.font.size = FontSizes.BODY_SMALL
+        intro_run.font.italic = True
+        intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+
+        action_run = intro.add_run(
+            "Verify IT/OT network segmentation and prioritize patching for affected devices in "
+            "production and lab networks."
+        )
+        action_run.font.size = FontSizes.BODY_SMALL
+        action_run.font.bold = True
+        action_run.font.color.rgb = BrandColors.TEXT_DARK
+
+        self.doc.add_paragraph()
+
+        if not advisories:
+            self.doc.add_paragraph(
+                "No new ICS/OT advisories affecting relevant environments were published this week."
+            )
+            self.doc.add_paragraph()
+            return
+
+        # Table: Advisory | Vendor / Product | Severity (CVSS) | CVEs
+        table = self.doc.add_table(rows=1, cols=4)
+        headers = ["Advisory", "Vendor / Product", "Severity (CVSS)", "CVEs"]
+        header_cells = table.rows[0].cells
+        for i, header in enumerate(headers):
+            cell = header_cells[i]
+            cell.text = header
+            para = cell.paragraphs[0]
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = para.runs[0]
+            run.font.bold = True
+            run.font.size = FontSizes.SUBTITLE
+            run.font.color.rgb = BrandColors.WHITE
+            self._set_cell_shading(cell, BrandColors.TABLE_HEADER_BG)
+            self._set_cell_borders(cell, "CCCCCC")
+
+        for advisory in advisories:
+            row = table.add_row()
+            cells = row.cells
+
+            # Column 0: Advisory ID (bold), linked to CISA advisory when a URL is present
+            cells[0].text = ""
+            adv_para = cells[0].paragraphs[0]
+            advisory_id = advisory.get("advisory_id", "N/A")
+            url = advisory.get("url", "")
+            if url:
+                self._add_hyperlink(adv_para, advisory_id, url)
+            else:
+                adv_run = adv_para.add_run(advisory_id)
+                adv_run.font.bold = True
+                adv_run.font.size = FontSizes.SUBTITLE
+                adv_run.font.color.rgb = BrandColors.TEXT_DARK
+
+            # Column 1: Vendor / Product
+            vendor = advisory.get("vendor", "Unknown")
+            product = advisory.get("product") or advisory.get("products_affected") or ""
+            cells[1].text = f"{vendor} — {product}"[:70] if product else vendor[:70]
+
+            # Column 2: Severity (CVSS)
+            severity = advisory.get("severity", "") or "N/A"
+            cvss = advisory.get("cvss")
+            sev_text = f"{severity.title()} ({cvss})" if cvss is not None else severity.title()
+            cells[2].text = ""
+            sev_para = cells[2].paragraphs[0]
+            sev_run = sev_para.add_run(sev_text)
+            sev_run.font.size = FontSizes.SUBTITLE
+            sev_run.font.bold = True
+            sev_run.font.color.rgb = self._severity_color(severity)
+
+            # Column 3: CVEs (cap the list so the cell stays readable)
+            cves = advisory.get("cves", []) or []
+            if isinstance(cves, list) and cves:
+                cve_text = ", ".join(cves[:4])
+                if len(cves) > 4:
+                    cve_text += f" (+{len(cves) - 4})"
+            else:
+                cve_text = "—"
+            cells[3].text = cve_text
+
+            # Uniform styling / borders for the row
+            for idx in range(4):
+                self._clear_cell_shading(cells[idx])
+                self._set_cell_borders(cells[idx], "CCCCCC")
+                for para in cells[idx].paragraphs:
+                    for run in para.runs:
+                        if run.font.size is None:
+                            run.font.size = FontSizes.SUBTITLE
+                        if run.font.color.rgb is None:
+                            run.font.color.rgb = BrandColors.TEXT_DARK
+
+        # Column widths
+        table.columns[0].width = Inches(1.1)
+        table.columns[1].width = Inches(2.6)
+        table.columns[2].width = Inches(1.3)
+        table.columns[3].width = Inches(1.2)
+
+        # Caption
+        caption = self.doc.add_paragraph()
+        caption.space_before = Pt(4)
+        caption.space_after = Pt(8)
+        caption_run = caption.add_run(
+            f"Table: {len(advisories)} ICS/OT advisories from CISA ICS advisories (ICS[AP] API)."
+        )
+        caption_run.font.size = Pt(7)
+        caption_run.font.italic = True
+        caption_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+        caption_run.font.name = "Arial"
+        caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+        self.doc.add_paragraph()
 
     def _add_sector_threat_activity(self, analysis_result: dict[str, Any]) -> None:
         """Add sector threat activity section with threat actor table."""

@@ -195,9 +195,11 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         intel471_data = data_by_source.get("Intel471", [])
         crowdstrike_data = data_by_source.get("CrowdStrike", [])
         osint_data = data_by_source.get("OSINT", [])
+        ics_advisory_data = data_by_source.get("ICS-Advisory", [])
         logger.info(
             f"Data collected - CVEs: {len(cve_data)}, Intel471: {len(intel471_data)}, "
-            f"CrowdStrike: {len(crowdstrike_data)}, OSINT: {len(osint_data)}"
+            f"CrowdStrike: {len(crowdstrike_data)}, OSINT: {len(osint_data)}, "
+            f"ICS/OT advisories: {len(ics_advisory_data)}"
         )
 
         # Analyze threats (tactical mode) + historical context
@@ -226,6 +228,11 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         )
         # Merge CrowdStrike (Spotlight) device counts into CVE analysis for Exposure column
         _merge_exposure_into_analysis(analysis, crowdstrike_data)
+
+        # Attach ICS/OT advisories (structured collector data) for the OT report section.
+        # This bypasses the AI analyst — the advisories are already structured and are
+        # rendered verbatim, so there is nothing to summarize or correlate.
+        analysis["ot_advisories"] = ics_advisory_data
 
         logger.info("Saving analysis context for historical tracking...")
         if not await asyncio.to_thread(context_mgr.save_analysis_context, "weekly", date.today(), analysis):

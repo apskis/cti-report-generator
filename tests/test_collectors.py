@@ -1135,6 +1135,138 @@ class TestBreachCollectorsRegistered:
         # A non-existent local path is treated as "no data", not a crash.
         assert await fetch_dataset_text(str(tmp_path / "nope.json"), headers={}) is None
 
+class TestICSAdvisoryCollector:
+    """Tests for the ICS/OT advisory collector (RapidAPI ICS[AP] API)."""
+
+    @pytest.fixture
+    def ics_credentials(self):
+        return {"rapidapi_ics_key": "test-rapidapi-key"}
+
+    @pytest.fixture
+    def ics_api_response(self):
+        """Sample response mirroring the ICS Advisory Project (CISA ICS) schema."""
+        return [
+            {
+                "ICS-CERT_Number": "ICSA-26-100-01",
+                "ICS-CERT_Advisory_Title": "Example PLC Stack Overflow",
+                "Vendor": "ExampleVendor",
+                "Product": "ExamplePLC 3000",
+                "Products_Affected": "ExamplePLC 3000 firmware < 2.1",
+                "CVSS_Severity": "Critical",
+                "Cumulative_CVSS": "9.8",
+                "CVE": "CVE-2026-1111, CVE-2026-2222",
+                "Original_Release_Date": "2026-04-10",
+                "Last_Updated": "2026-04-10",
+            },
+            {
+                "advisory_id": "ICSMA-26-101-02",
+                "title": "Example Infusion Pump Auth Bypass",
+                "vendor": "MedVendor",
+                "product": "PumpOS",
+                "severity": "high",
+                "cvss": 7.5,
+                "cves": ["CVE-2026-3333"],
+                "release_date": "2026-04-11",
+            },
+        ]
+
+    def test_source_name(self, ics_credentials):
+        from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
+
+        assert ICSAdvisoryCollector(ics_credentials).source_name == "ICS-Advisory"
+
+    def test_enabled_requires_key(self):
+        from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
+
+        assert ICSAdvisoryCollector({"rapidapi_ics_key": "k"}).enabled is True
+        assert ICSAdvisoryCollector({}).enabled is False
+
+    def test_registered(self):
+        assert "ics_advisory" in list_available_collectors()
+        collector = get_collector("ics_advisory", {"rapidapi_ics_key": "k"})
+        assert collector is not None
+        assert collector.source_name == "ICS-Advisory"
+
+    def test_extract_records_envelopes(self, ics_credentials):
+        from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
+
+        c = ICSAdvisoryCollector(ics_credentials)
+        assert c._extract_records([{"a": 1}]) == [{"a": 1}]
+        assert c._extract_records({"data": [{"a": 1}]}) == [{"a": 1}]
+        assert c._extract_records({"advisories": [{"b": 2}]}) == [{"b": 2}]
+        assert c._extract_records({"nope": 1}) == []
+
+    def test_parse_advisory_primary_and_alt_keys(self, ics_credentials, ics_api_response):
+        from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
+
+        c = ICSAdvisoryCollector(ics_credentials)
+
+        a0 = c._parse_advisory(ics_api_response[0])
+        assert a0["advisory_id"] == "ICSA-26-100-01"
+        assert a0["vendor"] == "ExampleVendor"
+        assert a0["severity"] == "CRITICAL"
+        assert a0["cvss"] == 9.8
+        assert a0["cves"] == ["CVE-2026-1111", "CVE-2026-2222"]
+        # URL is synthesized from the advisory id when absent.
+        assert a0["advisory_id"] in a0["url"]
+
+        # Second record uses the lower-case alternate field spellings.
+        a1 = c._parse_advisory(ics_api_response[1])
+        assert a1["advisory_id"] == "ICSMA-26-101-02"
+        assert a1["cves"] == ["CVE-2026-3333"]
+
+    def test_parse_advisory_skips_empty(self, ics_credentials):
+        from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
+
+        assert ICSAdvisoryCollector(ics_credentials)._parse_advisory({"Vendor": "X"}) is None
+
+    def test_within_window_filters_by_date(self, ics_credentials):
+        from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
+
+        c = ICSAdvisoryCollector(ics_credentials)
+        start, end = datetime(2026, 4, 1), datetime(2026, 4, 30)
+        assert c._within_window({"released": "2026-04-15"}, start, end) is True
+        assert c._within_window({"released": "2026-01-15"}, start, end) is False
+        # Undated advisories are kept rather than silently dropped.
+        assert c._within_window({"released": ""}, start, end) is True
+
+    @pytest.mark.asyncio
+    async def test_collect_disabled_without_key(self):
+        from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
+
+        result = await ICSAdvisoryCollector({}).collect()
+        assert result.success is True
+        assert result.record_count == 0
+
+    @pytest.mark.asyncio
+    async def test_collect_parses_and_windows(self, ics_credentials, ics_api_response):
+        from src.collectors import ics_advisory_collector as mod
+        from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
+
+        class _FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, url, headers=None, params=None):
+                # Assert RapidAPI auth headers are set correctly.
+                assert headers["x-rapidapi-key"] == "test-rapidapi-key"
+                assert headers["x-rapidapi-host"] == "ics-ap-apis.p.rapidapi.com"
+                return ics_api_response
+
+        collector = ICSAdvisoryCollector(ics_credentials, collection_window=(datetime(2026, 4, 1), datetime(2026, 4, 30)))
+        with patch.object(mod, "HTTPClient", lambda *a, **k: _FakeClient()):
+            result = await collector.collect()
+
+        assert result.success is True
+        assert result.record_count == 2
+        ids = {a["advisory_id"] for a in result.data}
+        assert ids == {"ICSA-26-100-01", "ICSMA-26-101-02"}
+
+
+class TestBreachHibpFlag:
     def test_hibp_off_by_default_on_when_flag_set(self, mock_credentials, monkeypatch):
         from types import SimpleNamespace
 
