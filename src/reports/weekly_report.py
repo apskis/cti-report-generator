@@ -107,14 +107,29 @@ class WeeklyReportGenerator(BaseReportGenerator):
             raise
 
     def _calculate_date_range(self) -> None:
-        """Calculate the reporting period based on actual data lookback window."""
+        """Calculate the reporting period based on actual data lookback window.
+
+        The report covers the previous 7-day window ending yesterday (since it is
+        typically generated on Monday morning for the prior week).
+        """
         from src.core.config import collector_config
 
         today = self.created_at
         lookback_days = collector_config.nvd_lookback_days
-        self.period_end = today
-        self.period_start = today - timedelta(days=lookback_days)
+        # The reporting window ends yesterday (the last complete day) so that a
+        # Monday-morning run labels itself as covering the prior week, not the
+        # current one.
+        self.period_end = today - timedelta(days=1)
+        self.period_start = self.period_end - timedelta(days=lookback_days - 1)
         self.lookback_days = lookback_days
+
+    def _get_week_number(self) -> int:
+        """ISO week number of the period being reported on (not the generation date)."""
+        return self.period_end.isocalendar()[1]
+
+    def _get_year(self) -> int:
+        """ISO year of the period being reported on."""
+        return self.period_end.isocalendar()[0]
 
     def _add_header(self) -> None:
         """Add banner, report code in header bar; then title block on single line."""
@@ -122,8 +137,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
         year = self._get_year()
         report_id = f"CTI-WK-{year}-{week_num:02d}"
         date_range = (
-            f"{self.lookback_days}-Day Lookback | "
-            f"{self.period_start.strftime('%B %d')} to {self.period_end.strftime('%B %d, %Y')}"
+            f"Week {week_num} "
+            f"({self.period_start.strftime('%B %d')}\u2013{self.period_end.strftime('%B %d, %Y')})"
         )
 
         # Banner in header
@@ -147,7 +162,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         title_para.paragraph_format.space_before = Pt(4)
         title_para.paragraph_format.space_after = Pt(0)
         title_para.paragraph_format.line_spacing = 0.9  # Tighter line height
-        title_run = title_para.add_run("Cyber Threat Intelligence Weekly Report")
+        title_run = title_para.add_run(f"Cyber Threat Intelligence Weekly Report \u2014 Week {week_num}")
         title_run.font.size = FontSizes.TITLE  # 18pt
         title_run.font.bold = True
         title_run.font.color.rgb = BrandColors.ORANGE_DESIGN
@@ -239,7 +254,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
         subtitle.paragraph_format.space_after = Pt(4)
         sub_run = subtitle.add_run(
             f"Threat intelligence metrics from Intel471, CrowdStrike, and OSINT "
-            f"({self.period_start.strftime('%B %d')} to {self.period_end.strftime('%B %d, %Y')})."
+            f"(Week {self._get_week_number()}: "
+            f"{self.period_start.strftime('%B %d')}\u2013{self.period_end.strftime('%B %d, %Y')})."
         )
         sub_run.font.size = Pt(9)
         sub_run.font.italic = True

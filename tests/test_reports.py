@@ -205,7 +205,7 @@ class TestWeeklyReportGenerator:
         assert hasattr(generator, "period_start")
         assert hasattr(generator, "period_end")
         delta = generator.period_end - generator.period_start
-        assert delta.days == generator.lookback_days
+        assert delta.days == generator.lookback_days - 1
 
     def test_document_has_paragraphs(self, generator, sample_analysis_result):
         """Generated document should have paragraphs."""
@@ -247,13 +247,15 @@ class TestBaseReportGenerator:
 
     def test_get_week_number(self, generator):
         """_get_week_number should return valid ISO week number."""
+        generator._calculate_date_range()
         week = generator._get_week_number()
         assert 1 <= week <= 53
 
     def test_get_year(self, generator):
-        """_get_year should return current year."""
+        """_get_year should return a valid year."""
+        generator._calculate_date_range()
         year = generator._get_year()
-        assert year == datetime.now().year
+        assert year == generator.period_end.isocalendar()[0]
 
     def test_format_date_range(self, generator):
         """_format_date_range should produce readable date range."""
