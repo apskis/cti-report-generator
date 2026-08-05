@@ -836,12 +836,14 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         advisories = analysis_result.get("ot_advisories", []) or []
 
-        # Intro with actionable context
+        # Intro with actionable context. Deliberately "recent" rather than "this week":
+        # the ICS[AP] free tier serves advisories ~1 month stale, so this is a rolling
+        # awareness view of recently published advisories, not a strictly-this-week list.
         intro = self.doc.add_paragraph()
         intro_run = intro.add_run(
-            "Industrial control system (ICS) and operational technology advisories affecting "
-            "manufacturing, laboratory instrumentation, and plant-floor environments this week "
-            "(source: CISA ICS advisories). "
+            "Recently published industrial control system (ICS) and operational technology "
+            "advisories affecting manufacturing, laboratory instrumentation, and plant-floor "
+            "environments (source: CISA ICS advisories). "
         )
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
@@ -859,7 +861,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         if not advisories:
             self.doc.add_paragraph(
-                "No new ICS/OT advisories affecting relevant environments were published this week."
+                "No recent ICS/OT advisories affecting relevant environments were identified."
             )
             self.doc.add_paragraph()
             return
