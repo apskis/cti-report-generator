@@ -1591,6 +1591,78 @@ class TestClarotyCollector:
         assert out[0]["claroty_status"] == "error"
         assert out[0]["affected_assets"] == 0  # unknown, not confirmed-zero
 
+    def test_parse_vuln_reads_cvss(self, claroty_credentials):
+        """CVSS score is normalized to a float; a missing/garbage score becomes None."""
+        from src.collectors.claroty_collector import ClarotyCollector
+
+        c = ClarotyCollector(claroty_credentials)
+        assert c._parse_vuln({"cve_ids": ["CVE-2026-1"], "cvss_v3_score": "9.8"})["cvss"] == 9.8
+        assert c._parse_vuln({"cve_ids": ["CVE-2026-1"], "cvss_v3_score": None})["cvss"] is None
+        assert c._parse_vuln({"cve_ids": ["CVE-2026-1"], "cvss_v3_score": "n/a"})["cvss"] is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_environment_exposure_sorts_by_device_count(self, claroty_credentials):
+        """Env-exposure query filters affected>0, sorts by device count desc, returns parsed rows."""
+        from src.collectors import claroty_collector as mod
+        from src.collectors.claroty_collector import fetch_environment_exposure
+
+        seen = {}
+
+        class _FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, headers=None, json_data=None, data=None, params=None, expected_status=(200,)):
+                seen["url"] = url
+                seen["body"] = json_data
+                return {"vulnerabilities": [
+                    {"name": "RCE", "cve_ids": ["CVE-2026-18019"], "cvss_v3_score": 9.8,
+                     "affected_devices_count": 4088, "affected_ot_devices_count": 3000,
+                     "is_known_exploited": True},
+                    {"name": "noise", "cve_ids": [], "affected_devices_count": 1},
+                ]}
+
+        with patch.object(mod, "HTTPClient", lambda *a, **k: _FakeClient()):
+            out = await fetch_environment_exposure(claroty_credentials, limit=5)
+
+        assert seen["url"].endswith("/vulnerabilities/")
+        assert seen["body"]["filter_by"] == {"field": "affected_devices_count", "operation": "greater", "value": 0}
+        assert seen["body"]["sort_by"] == [{"field": "affected_devices_count", "order": "desc"}]
+        assert seen["body"]["limit"] == 5
+        # Row without a usable CVE is dropped; the real one is parsed with cvss + KEV.
+        assert len(out) == 1
+        assert out[0]["cve_ids"] == ["CVE-2026-18019"] and out[0]["cvss"] == 9.8
+        assert out[0]["affected_devices_count"] == 4088 and out[0]["is_known_exploited"] is True
+
+    @pytest.mark.asyncio
+    async def test_fetch_environment_exposure_without_token_returns_empty(self):
+        """No token -> no API call, empty result (best-effort)."""
+        from src.collectors.claroty_collector import fetch_environment_exposure
+
+        assert await fetch_environment_exposure({}) == []
+
+    @pytest.mark.asyncio
+    async def test_fetch_environment_exposure_failure_returns_empty(self, claroty_credentials):
+        """A failed query degrades to an empty list rather than raising."""
+        from src.collectors import claroty_collector as mod
+        from src.collectors.claroty_collector import fetch_environment_exposure
+
+        class _FailingClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, *a, **k):
+                raise TimeoutError()
+
+        with patch.object(mod, "HTTPClient", lambda *a, **k: _FailingClient()):
+            assert await fetch_environment_exposure(claroty_credentials) == []
+
     def test_product_match_folds_into_env_assets(self):
         """An advisory with no CVE match still counts if you own the vendor's gear."""
         from src.collectors.claroty_collector import annotate_ot_advisories_with_assets

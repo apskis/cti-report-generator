@@ -90,6 +90,10 @@ class CollectorConfig:
     # report generation: a single attempt with a short timeout (no long retry storm).
     claroty_timeout_seconds: int = 25
     claroty_max_retries: int = 0
+    # "Environment OT Exposure" view: the top N environment vulnerabilities by affected
+    # device count, straight from Claroty (independent of the ICS advisory feed). This is
+    # the real exposure and does not depend on the stale free-tier advisories overlapping.
+    claroty_env_exposure_limit: int = 10
 
     # News-search (GDELT) collector — used mainly for historical/prior-quarter backfill,
     # where RSS feeds can no longer serve articles from a past window.

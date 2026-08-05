@@ -819,6 +819,163 @@ class WeeklyReportGenerator(BaseReportGenerator):
             return BrandColors.ORANGE_DESIGN
         return BrandColors.TEXT_DARK
 
+    def _cvss_color(self, score: Any) -> RGBColor:
+        """Map a numeric CVSS score to a brand color for emphasis."""
+        try:
+            value = float(score)
+        except (TypeError, ValueError):
+            return BrandColors.TEXT_DARK
+        if value >= 9.0:
+            return BrandColors.RED_HIGH_RISK
+        if value >= 7.0:
+            return BrandColors.ORANGE_DESIGN
+        return BrandColors.TEXT_DARK
+
+    def _add_ot_environment_exposure(self, analysis_result: dict[str, Any]) -> None:
+        """Add the Claroty-first "Environment OT Exposure" subsection.
+
+        Shows the monitored environment's own top vulnerabilities ranked by the number of
+        affected devices (from Claroty xDome), independent of whether any ICS advisory
+        currently covers them. This surfaces the real, present exposure even when the
+        (stale, free-tier) ICS advisory feed does not overlap the estate. Best-effort:
+        the whole subsection is skipped when no exposure data is available (e.g. Claroty
+        not configured or the query did not complete), keeping the section clean.
+        """
+        exposure = analysis_result.get("ot_environment_exposure", []) or []
+        if not exposure:
+            return
+
+        # Highest-impact first (the API already sorts, but be defensive).
+        exposure = sorted(exposure, key=lambda v: v.get("affected_devices_count", 0) or 0, reverse=True)
+
+        sub = self.doc.add_heading("Environment OT Exposure — Top Affected Vulnerabilities", level=2)
+        for run in sub.runs:
+            run.font.color.rgb = BrandColors.ORANGE_DESIGN
+            run.font.size = FontSizes.HEADING_2
+            run.font.name = "Arial"
+
+        intro = self.doc.add_paragraph()
+        intro_run = intro.add_run(
+            "Vulnerabilities present in the monitored OT environment, ranked by the number of "
+            "affected devices (source: Claroty xDome asset inventory). This reflects current "
+            "exposure in the estate regardless of ICS advisory coverage."
+        )
+        intro_run.font.size = FontSizes.BODY_SMALL
+        intro_run.font.italic = True
+        intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+        self.doc.add_paragraph()
+
+        # Table: CVE(s) | Devices | OT Devices | CVSS | Known Exploited
+        table = self.doc.add_table(rows=1, cols=5)
+        headers = ["CVE(s)", "Devices", "OT Devices", "CVSS", "Known Exploited"]
+        header_cells = table.rows[0].cells
+        for i, header in enumerate(headers):
+            cell = header_cells[i]
+            cell.text = header
+            para = cell.paragraphs[0]
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = para.runs[0]
+            run.font.bold = True
+            run.font.size = FontSizes.SUBTITLE
+            run.font.color.rgb = BrandColors.WHITE
+            self._set_cell_shading(cell, BrandColors.TABLE_HEADER_BG)
+            self._set_cell_borders(cell, "CCCCCC")
+
+        for vuln in exposure:
+            row = table.add_row()
+            cells = row.cells
+
+            # Column 0: CVE(s), with the vulnerability name on a small second line.
+            cve_ids = vuln.get("cve_ids", []) or []
+            if isinstance(cve_ids, list) and cve_ids:
+                cve_text = ", ".join(cve_ids[:3])
+                if len(cve_ids) > 3:
+                    cve_text += f" (+{len(cve_ids) - 3})"
+            else:
+                cve_text = "—"
+            cells[0].text = ""
+            cve_para = cells[0].paragraphs[0]
+            cve_run = cve_para.add_run(cve_text)
+            cve_run.font.bold = True
+            cve_run.font.size = FontSizes.SUBTITLE
+            cve_run.font.color.rgb = BrandColors.TEXT_DARK
+            name = (vuln.get("name") or "").strip()
+            if name and name.upper() not in cve_text.upper():
+                name_para = cells[0].add_paragraph()
+                name_para.paragraph_format.space_before = Pt(0)
+                name_run = name_para.add_run(name[:80])
+                name_run.font.size = FontSizes.FOOTNOTE
+                name_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+
+            # Column 1: Affected devices (bold — the ranking signal)
+            cells[1].text = ""
+            dev_para = cells[1].paragraphs[0]
+            dev_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            dev_run = dev_para.add_run(f"{vuln.get('affected_devices_count', 0):,}")
+            dev_run.font.bold = True
+            dev_run.font.size = FontSizes.SUBTITLE
+            dev_run.font.color.rgb = BrandColors.RED_HIGH_RISK
+
+            # Column 2: Affected OT devices
+            cells[2].text = ""
+            ot_para = cells[2].paragraphs[0]
+            ot_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            ot_run = ot_para.add_run(f"{vuln.get('affected_ot_devices_count', 0):,}")
+            ot_run.font.size = FontSizes.SUBTITLE
+            ot_run.font.color.rgb = BrandColors.TEXT_DARK
+
+            # Column 3: CVSS (colored by severity band)
+            cvss = vuln.get("cvss")
+            cells[3].text = ""
+            cvss_para = cells[3].paragraphs[0]
+            cvss_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            cvss_run = cvss_para.add_run(f"{cvss:g}" if isinstance(cvss, (int, float)) else "—")
+            cvss_run.font.bold = True
+            cvss_run.font.size = FontSizes.SUBTITLE
+            cvss_run.font.color.rgb = self._cvss_color(cvss)
+
+            # Column 4: Known Exploited (bold red "Yes" is the escalation signal)
+            cells[4].text = ""
+            kev_para = cells[4].paragraphs[0]
+            kev_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            if vuln.get("is_known_exploited"):
+                kev_run = kev_para.add_run("Yes")
+                kev_run.font.bold = True
+                kev_run.font.color.rgb = BrandColors.RED_HIGH_RISK
+            else:
+                kev_run = kev_para.add_run("—")
+                kev_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+            kev_run.font.size = FontSizes.SUBTITLE
+
+            for idx in range(5):
+                self._clear_cell_shading(cells[idx])
+                self._set_cell_borders(cells[idx], "CCCCCC")
+
+        table.columns[0].width = Inches(2.3)
+        table.columns[1].width = Inches(1.0)
+        table.columns[2].width = Inches(1.0)
+        table.columns[3].width = Inches(0.8)
+        table.columns[4].width = Inches(1.2)
+
+        kev_count = sum(1 for v in exposure if v.get("is_known_exploited"))
+        caption = self.doc.add_paragraph()
+        caption.space_before = Pt(4)
+        caption.space_after = Pt(8)
+        caption_text = (
+            f"Table: top {len(exposure)} environment vulnerabilities by affected device count "
+            f"(Claroty xDome)."
+        )
+        if kev_count:
+            caption_text += f" {kev_count} flagged as known-exploited."
+        caption_run = caption.add_run(caption_text)
+        caption_run.font.size = Pt(7)
+        caption_run.font.italic = True
+        caption_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+        caption_run.font.name = "Arial"
+        caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+        self.doc.add_paragraph()
+
     def _add_ot_advisories(self, analysis_result: dict[str, Any]) -> None:
         """Add Operational Technology (OT) section from ICS/OT advisories.
 
@@ -831,6 +988,10 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         h = self.doc.add_heading("Operational Technology (OT) Advisories", level=1)
         self._style_heading_1(h)
+
+        # Claroty-first view of the estate's real exposure (skipped when unavailable),
+        # rendered above the advisory feed.
+        self._add_ot_environment_exposure(analysis_result)
 
         advisories = analysis_result.get("ot_advisories", []) or []
 

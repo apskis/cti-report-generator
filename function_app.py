@@ -234,9 +234,12 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         # rendered verbatim, so there is nothing to summarize or correlate.
         analysis["ot_advisories"] = ics_advisory_data
         # Match advisory CVEs/vendors to real environment assets via Claroty (targeted query).
-        from src.collectors.claroty_collector import fetch_and_annotate
+        from src.collectors.claroty_collector import fetch_and_annotate, fetch_environment_exposure
 
         await fetch_and_annotate(analysis["ot_advisories"], credentials)
+        # Claroty-first view: the environment's top OT exposure by affected device count,
+        # independent of whether any ICS advisory currently covers it.
+        analysis["ot_environment_exposure"] = await fetch_environment_exposure(credentials)
 
         logger.info("Saving analysis context for historical tracking...")
         if not await asyncio.to_thread(context_mgr.save_analysis_context, "weekly", date.today(), analysis):

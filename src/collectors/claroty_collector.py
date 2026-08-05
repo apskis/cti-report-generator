@@ -97,11 +97,17 @@ class ClarotyCollector(BaseCollector):
             except (TypeError, ValueError):
                 return 0
 
+        try:
+            cvss = float(row.get("cvss_v3_score")) if row.get("cvss_v3_score") is not None else None
+        except (TypeError, ValueError):
+            cvss = None
+
         return {
             "source": "Claroty",
             "record_type": "vulnerability",
             "name": row.get("name", ""),
             "cve_ids": cve_ids,
+            "cvss": cvss,
             "affected_devices_count": _int(row.get("affected_devices_count")),
             "affected_ot_devices_count": _int(row.get("affected_ot_devices_count")),
             "affected_confirmed_devices_count": _int(row.get("affected_confirmed_devices_count")),
@@ -234,6 +240,49 @@ def _tag_status(ot_advisories: list[dict[str, Any]], status: str) -> list[dict[s
     for advisory in ot_advisories or []:
         advisory["claroty_status"] = status
     return ot_advisories
+
+
+async def fetch_environment_exposure(
+    credentials: dict[str, str], limit: int | None = None
+) -> list[dict[str, Any]]:
+    """Return the top environment vulnerabilities by affected device count, from Claroty.
+
+    This is the real OT exposure in the monitored environment, independent of whether any
+    ICS advisory covers it — it surfaces what actually affects the most devices. Server-side
+    sorted by ``affected_devices_count`` descending, so a single page is the true top N.
+    Best-effort: returns [] on missing token or any failure.
+    """
+    token = (credentials or {}).get("claroty_token", "")
+    if not token:
+        return []
+    limit = limit or collector_config.claroty_env_exposure_limit
+    base_url = (credentials.get("claroty_base_url") or collector_config.claroty_base_url).rstrip("/")
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    body = {
+        "filter_by": {"field": "affected_devices_count", "operation": "greater", "value": 0},
+        "sort_by": [{"field": "affected_devices_count", "order": "desc"}],
+        "fields": _VULN_FIELDS,
+        "offset": 0,
+        "limit": limit,
+        "include_count": False,
+    }
+    url = f"{base_url}/api/v1/vulnerabilities/"
+    try:
+        async with HTTPClient(
+            timeout=collector_config.claroty_timeout_seconds, max_retries=collector_config.claroty_max_retries
+        ) as client:
+            data = await client.post(url, headers=headers, json_data=body, expected_status=(200,))
+        rows = data.get("vulnerabilities", []) if isinstance(data, dict) else []
+        out = [v for v in (ClarotyCollector._parse_vuln(r) for r in rows) if v]
+        logger.info(f"Claroty environment exposure: top {len(out)} vulnerabilities by affected device count")
+        return out
+    except Exception as e:
+        logger.warning(f"Claroty environment-exposure query failed ({type(e).__name__}: {e!r})")
+        return []
 
 
 def build_cve_asset_map(claroty_data: list[dict[str, Any]]) -> dict[str, dict[str, int]]:

@@ -944,3 +944,53 @@ class TestCitationSubscripts:
         cell_para = table.rows[0].cells[0].paragraphs[0]
         assert [r.text for r in cell_para.runs if r.font.subscript] == ["[3]"]
         assert "CrowdStrike" in "".join(r.text for r in cell_para.runs)
+
+
+class TestOTEnvironmentExposure:
+    """Tests for the Claroty-first Environment OT Exposure subsection."""
+
+    def _gen(self):
+        from docx import Document
+
+        gen = WeeklyReportGenerator.__new__(WeeklyReportGenerator)
+        gen.doc = Document()
+        return gen
+
+    def test_renders_exposure_table(self):
+        gen = self._gen()
+        gen._add_ot_environment_exposure({
+            "ot_environment_exposure": [
+                {"name": "Remote code execution", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
+                 "affected_devices_count": 4088, "affected_ot_devices_count": 3000,
+                 "is_known_exploited": True},
+                {"name": "Info disclosure", "cve_ids": ["CVE-2026-18015"], "cvss": 5.3,
+                 "affected_devices_count": 120, "affected_ot_devices_count": 40,
+                 "is_known_exploited": False},
+            ]
+        })
+        tables = gen.doc.tables
+        assert len(tables) == 1
+        # Header + 2 data rows.
+        assert len(tables[0].rows) == 3
+        text = "\n".join(c.text for row in tables[0].rows for c in row.cells)
+        assert "CVE-2026-18019" in text
+        assert "4,088" in text  # thousands-formatted device count
+        assert "Yes" in text  # known-exploited flag
+
+    def test_higher_device_count_sorts_first(self):
+        gen = self._gen()
+        gen._add_ot_environment_exposure({
+            "ot_environment_exposure": [
+                {"name": "small", "cve_ids": ["CVE-2026-1"], "cvss": 4.0, "affected_devices_count": 10},
+                {"name": "big", "cve_ids": ["CVE-2026-2"], "cvss": 9.0, "affected_devices_count": 9000},
+            ]
+        })
+        first_data_row = gen.doc.tables[0].rows[1]
+        assert "CVE-2026-2" in first_data_row.cells[0].text
+
+    def test_empty_exposure_renders_nothing(self):
+        gen = self._gen()
+        gen._add_ot_environment_exposure({"ot_environment_exposure": []})
+        assert gen.doc.tables == []
+        # No heading/intro either — the whole subsection is skipped when unavailable.
+        assert gen.doc.paragraphs == [] or all(not p.text.strip() for p in gen.doc.paragraphs)
