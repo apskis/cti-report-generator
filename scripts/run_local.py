@@ -1063,7 +1063,7 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
 
     from src.agents.threat_analyst import ThreatAnalystAgent
     from src.collectors import collect_all, get_data_by_source
-    from src.collectors.claroty_collector import annotate_ot_advisories_with_assets
+    from src.collectors.claroty_collector import fetch_and_annotate
     from src.core.config import analysis_config, azure_config, get_enabled_collectors
     from src.core.keyvault import get_all_api_keys
 
@@ -1198,7 +1198,7 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
             )
             # Attach ICS/OT advisories for the weekly OT section (mirrors function_app.py).
             result["ot_advisories"] = data_by_source.get("ICS-Advisory", [])
-            annotate_ot_advisories_with_assets(result["ot_advisories"], data_by_source.get("Claroty", []))
+            await fetch_and_annotate(result["ot_advisories"], credentials)
         else:
             intel471_all = data_by_source.get("Intel471", [])
             breach_data = [item for item in intel471_all if item.get("threat_type", "").upper() == "BREACH ALERT"]
@@ -1224,7 +1224,7 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
         )
         # Attach ICS/OT advisories for the weekly OT section (mirrors function_app.py).
         result["ot_advisories"] = data_by_source.get("ICS-Advisory", [])
-        annotate_ot_advisories_with_assets(result["ot_advisories"], data_by_source.get("Claroty", []))
+        await fetch_and_annotate(result["ot_advisories"], credentials)
         print_status("Analysis complete", "success")
         return result, data_by_source
     else:

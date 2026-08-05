@@ -21,7 +21,7 @@ import re
 from typing import Any
 
 from src.collectors.base import BaseCollector
-from src.collectors.http_utils import HTTPClient, NonRetryableHTTPError
+from src.collectors.http_utils import HTTPClient
 from src.core.config import collector_config
 from src.core.models import CollectorResult
 
@@ -71,70 +71,15 @@ class ClarotyCollector(BaseCollector):
         return bool(self.credentials.get("claroty_token"))
 
     async def collect(self, report_type: str = "weekly") -> CollectorResult:
+        """No-op in the parallel collection phase.
+
+        Claroty matching is done as a *targeted* enrichment (``fetch_and_annotate``) after
+        the ICS/OT advisories are known, so it queries only the advisory CVEs and vendors
+        instead of pulling the entire environment (which does not scale — a large tenant has
+        far more than the page cap of vulnerabilities and devices). The collector stays
+        registered only so the ``claroty-api-token`` secret is fetched from Key Vault.
         """
-        Fetch vulnerabilities that affect devices in the environment.
-
-        Returns:
-            CollectorResult with a list of normalized vulnerability dicts, each with
-            ``cve_ids`` and affected-device counts. Never raises.
-        """
-        logger.info("Fetching environment vulnerabilities from Claroty xDome")
-
-        token = self.credentials.get("claroty_token", "")
-        if not token:
-            logger.warning("Claroty API token not provided, skipping Claroty")
-            return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
-
-        base_url = (self.credentials.get("claroty_base_url") or collector_config.claroty_base_url).rstrip("/")
-        url = f"{base_url}{self.VULN_PATH}"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-        limit = collector_config.claroty_vuln_page_limit
-        max_pages = collector_config.claroty_vuln_max_pages
-
-        vulns: list[dict[str, Any]] = []
-        try:
-            async with HTTPClient() as client:
-                offset = 0
-                for page in range(max_pages):
-                    body = {
-                        # Only vulnerabilities that affect a real inventory device.
-                        "filter_by": {"field": "affected_devices_count", "operation": "greater", "value": 0},
-                        "fields": _VULN_FIELDS,
-                        "offset": offset,
-                        "limit": limit,
-                        "include_count": page == 0,
-                    }
-                    data = await client.post(url, headers=headers, json_data=body, expected_status=(200,))
-                    rows = data.get("vulnerabilities", []) if isinstance(data, dict) else []
-                    for row in rows:
-                        parsed = self._parse_vuln(row)
-                        if parsed:
-                            vulns.append(parsed)
-
-                    if len(rows) < limit:
-                        break  # last page
-                    offset += limit
-
-                logger.info(f"Retrieved {len(vulns)} environment-affecting vulnerabilities from Claroty")
-
-                # Optionally fetch the device inventory for product/vendor matching.
-                if collector_config.claroty_match_products:
-                    devices = await self._fetch_devices(client, base_url, headers)
-                    logger.info(f"Retrieved {len(devices)} device inventory records from Claroty")
-                    vulns.extend(devices)
-
-            return CollectorResult(source=self.source_name, success=True, data=vulns, record_count=len(vulns))
-
-        except NonRetryableHTTPError as e:
-            logger.error(f"Claroty API error: {e}")
-            return CollectorResult(source=self.source_name, success=False, error=str(e), record_count=0)
-        except Exception as e:
-            logger.error(f"Error fetching Claroty vulnerabilities: {e}", exc_info=True)
-            return CollectorResult(source=self.source_name, success=False, error=str(e), record_count=0)
+        return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
 
     @staticmethod
     def _parse_vuln(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -163,44 +108,117 @@ class ClarotyCollector(BaseCollector):
             "is_known_exploited": bool(row.get("is_known_exploited")),
         }
 
-    async def _fetch_devices(
-        self, client: HTTPClient, base_url: str, headers: dict[str, str]
-    ) -> list[dict[str, Any]]:
-        """Fetch the (non-retired) device inventory's manufacturer/model for product matching."""
-        url = f"{base_url}/api/v1/devices/"
-        limit = collector_config.claroty_device_page_limit
-        devices: list[dict[str, Any]] = []
-        offset = 0
-        for page in range(collector_config.claroty_device_max_pages):
-            body = {
-                "filter_by": {"field": "retired", "operation": "in", "value": [False]},
-                "fields": _DEVICE_FIELDS,
-                "offset": offset,
-                "limit": limit,
-                "include_count": page == 0,
-            }
-            try:
-                data = await client.post(url, headers=headers, json_data=body, expected_status=(200,))
-            except Exception as e:
-                logger.warning(f"Claroty device inventory fetch failed: {e}")
-                break
-            rows = data.get("devices", []) if isinstance(data, dict) else []
-            for row in rows:
-                devices.append(
-                    {
-                        "record_type": "device",
-                        "manufacturer": (row.get("manufacturer") or "").strip(),
-                        "model": (row.get("model") or "").strip(),
-                        "model_family": (row.get("model_family") or "").strip(),
-                        "product_code": (row.get("product_code") or "").strip(),
-                        "site_name": (row.get("site_name") or "").strip(),
-                        "site_group_name": (row.get("site_group_name") or "").strip(),
-                    }
-                )
-            if len(rows) < limit:
-                break
-            offset += limit
-        return devices
+    @staticmethod
+    def _parse_device(row: dict[str, Any]) -> dict[str, Any]:
+        """Normalize a device row for product/vendor matching."""
+        return {
+            "record_type": "device",
+            "manufacturer": (row.get("manufacturer") or "").strip(),
+            "model": (row.get("model") or "").strip(),
+            "model_family": (row.get("model_family") or "").strip(),
+            "product_code": (row.get("product_code") or "").strip(),
+            "site_name": (row.get("site_name") or "").strip(),
+            "site_group_name": (row.get("site_group_name") or "").strip(),
+        }
+
+
+async def _post_paged(
+    client: HTTPClient, url: str, headers: dict[str, str], base_body: dict[str, Any], results_key: str
+) -> list[dict[str, Any]]:
+    """POST the filter body, following pages until exhausted or the page cap is reached."""
+    limit = collector_config.claroty_vuln_page_limit
+    out: list[dict[str, Any]] = []
+    offset = 0
+    for _page in range(collector_config.claroty_vuln_max_pages):
+        body = {**base_body, "offset": offset, "limit": limit, "include_count": False}
+        data = await client.post(url, headers=headers, json_data=body, expected_status=(200,))
+        rows = data.get(results_key, []) if isinstance(data, dict) else []
+        out.extend(rows)
+        if len(rows) < limit:
+            break
+        offset += limit
+    return out
+
+
+async def _query_vulns_by_cves(
+    client: HTTPClient, base_url: str, headers: dict[str, str], cves: list[str]
+) -> list[dict[str, Any]]:
+    """Vulnerabilities affecting inventory devices whose CVE is one of the advisory CVEs."""
+    if not cves:
+        return []
+    url = f"{base_url}/api/v1/vulnerabilities/"
+    body = {
+        "filter_by": {
+            "operation": "and",
+            "operands": [
+                {"field": "affected_devices_count", "operation": "greater", "value": 0},
+                {"field": "cve_ids", "operation": "in", "value": cves},
+            ],
+        },
+        "fields": _VULN_FIELDS,
+    }
+    rows = await _post_paged(client, url, headers, body, "vulnerabilities")
+    return [v for v in (ClarotyCollector._parse_vuln(r) for r in rows) if v]
+
+
+async def _query_devices_by_vendors(
+    client: HTTPClient, base_url: str, headers: dict[str, str], vendors: list[str]
+) -> list[dict[str, Any]]:
+    """Inventory devices whose manufacturer is one of the advisory vendors (with sites)."""
+    if not vendors:
+        return []
+    url = f"{base_url}/api/v1/devices/"
+    body = {
+        "filter_by": {"field": "manufacturer", "operation": "in", "value": vendors},
+        "fields": _DEVICE_FIELDS,
+    }
+    rows = await _post_paged(client, url, headers, body, "devices")
+    return [ClarotyCollector._parse_device(r) for r in rows]
+
+
+async def fetch_and_annotate(
+    ot_advisories: list[dict[str, Any]], credentials: dict[str, str]
+) -> list[dict[str, Any]]:
+    """Query Claroty for just the advisory CVEs/vendors, then annotate asset exposure.
+
+    Targeted (not a full-environment pull), so it is complete and fast at any tenant scale.
+    Always calls ``annotate_ot_advisories_with_assets`` so the advisory fields are set even
+    when Claroty is unavailable or the token is missing.
+    """
+    ot_advisories = ot_advisories or []
+    token = (credentials or {}).get("claroty_token", "")
+    if not token or not ot_advisories:
+        return annotate_ot_advisories_with_assets(ot_advisories, [])
+
+    base_url = (credentials.get("claroty_base_url") or collector_config.claroty_base_url).rstrip("/")
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    cves = sorted({c.upper() for a in ot_advisories for c in (a.get("cves") or []) if isinstance(c, str)})
+    vendors = sorted(
+        {
+            (a.get("vendor") or "").strip()
+            for a in ot_advisories
+            if (a.get("vendor") or "").strip() and a.get("vendor") != "Unknown"
+        }
+    )
+
+    records: list[dict[str, Any]] = []
+    try:
+        async with HTTPClient() as client:
+            records += await _query_vulns_by_cves(client, base_url, headers, cves)
+            if collector_config.claroty_match_products:
+                records += await _query_devices_by_vendors(client, base_url, headers, vendors)
+        logger.info(
+            f"Claroty matched {len(cves)} advisory CVEs and {len(vendors)} vendors "
+            f"against the environment ({len(records)} matching records)"
+        )
+    except Exception as e:  # best-effort: a Claroty failure never breaks report generation
+        logger.warning(f"Claroty enrichment failed ({e}); OT section will show no asset exposure")
+
+    return annotate_ot_advisories_with_assets(ot_advisories, records)
 
 
 def build_cve_asset_map(claroty_data: list[dict[str, Any]]) -> dict[str, dict[str, int]]:

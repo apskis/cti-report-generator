@@ -44,7 +44,7 @@ collectors:
     enabled: true
 
   - name: claroty
-    description: "Claroty xDome - matches advisory CVEs to real environment assets (OT section asset exposure)"
+    description: "Claroty xDome - OT asset matching (targeted enrichment; enabled so the API token is loaded)"
     enabled: true
 
   - name: illumina_osint

@@ -1509,15 +1509,23 @@ class TestClarotyCollector:
         assert c._parse_vuln({"cve_ids": []}) is None
 
     @pytest.mark.asyncio
-    async def test_collect_returns_env_vulnerabilities(self, claroty_credentials):
-        from src.collectors import claroty_collector as mod
+    async def test_collect_is_noop(self, claroty_credentials):
+        """The parallel collector does no bulk pull; matching is a targeted enrichment."""
         from src.collectors.claroty_collector import ClarotyCollector
 
-        page = {"count": 2, "vulnerabilities": [
-            {"cve_ids": ["CVE-2026-13768"], "affected_devices_count": 5, "affected_ot_devices_count": 4,
-             "is_known_exploited": True},
-            {"cve_ids": ["CVE-2026-40000"], "affected_devices_count": 1, "affected_ot_devices_count": 1},
-        ]}
+        result = await ClarotyCollector(claroty_credentials).collect()
+        assert result.success is True and result.record_count == 0
+
+    @pytest.mark.asyncio
+    async def test_fetch_and_annotate_queries_only_advisory_cves_and_vendors(self, claroty_credentials):
+        """Targeted queries: filter vulns by the advisory CVEs and devices by their vendors."""
+        from src.collectors import claroty_collector as mod
+        from src.collectors.claroty_collector import fetch_and_annotate
+
+        ot = [
+            {"advisory_id": "A-1", "vendor": "Gardyn", "cves": ["CVE-2026-13768"]},
+            {"advisory_id": "A-2", "vendor": "Mitsubishi Electric", "cves": ["CVE-2099-0"]},
+        ]
         seen = {}
 
         class _FakeClient:
@@ -1530,47 +1538,33 @@ class TestClarotyCollector:
             async def post(self, url, headers=None, json_data=None, data=None, params=None, expected_status=(200,)):
                 seen["auth"] = headers["Authorization"]
                 if url.endswith("/vulnerabilities/"):
-                    seen["filter"] = json_data["filter_by"]
-                    return page
-                return {"devices": []}  # device-inventory endpoint (product matching)
+                    seen["cve_filter"] = json_data["filter_by"]
+                    return {"vulnerabilities": [
+                        {"cve_ids": ["CVE-2026-13768"], "affected_devices_count": 7, "affected_ot_devices_count": 5},
+                    ]}
+                seen["vendor_filter"] = json_data["filter_by"]
+                return {"devices": [{"manufacturer": "Gardyn", "model_family": "", "site_name": "Plant A"}]}
 
         with patch.object(mod, "HTTPClient", lambda *a, **k: _FakeClient()):
-            result = await ClarotyCollector(claroty_credentials).collect()
+            out = await fetch_and_annotate(ot, claroty_credentials)
 
-        # 2 vulnerabilities + 0 devices
-        assert result.success is True and result.record_count == 2
         assert seen["auth"] == "Bearer test-claroty-token"
-        assert seen["filter"] == {"field": "affected_devices_count", "operation": "greater", "value": 0}
+        # Vulnerabilities filtered to affected>0 AND cve_ids in the advisory CVE set.
+        assert {"field": "cve_ids", "operation": "in", "value": ["CVE-2026-13768", "CVE-2099-0"]} in \
+            seen["cve_filter"]["operands"]
+        # Devices filtered to the advisory vendors only (no full-inventory pull).
+        assert seen["vendor_filter"] == {"field": "manufacturer", "operation": "in",
+                                         "value": ["Gardyn", "Mitsubishi Electric"]}
+        g = next(a for a in out if a["advisory_id"] == "A-1")
+        assert g["affected_assets"] == 7 and g["in_environment"] is True
 
     @pytest.mark.asyncio
-    async def test_collect_includes_device_inventory(self, claroty_credentials):
-        from src.collectors import claroty_collector as mod
-        from src.collectors.claroty_collector import ClarotyCollector
+    async def test_fetch_and_annotate_without_token_is_safe(self):
+        """No token -> advisories are annotated with zero exposure, no API calls."""
+        from src.collectors.claroty_collector import fetch_and_annotate
 
-        vulns = {"count": 1, "vulnerabilities": [
-            {"cve_ids": ["CVE-2026-1"], "affected_devices_count": 2, "affected_ot_devices_count": 1},
-        ]}
-        devices = {"count": 2, "devices": [
-            {"manufacturer": "Gardyn", "model": "IoT Hub"},
-            {"manufacturer": "Siemens", "model": "S7-1500"},
-        ]}
-
-        class _FakeClient:
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *a):
-                return False
-
-            async def post(self, url, headers=None, json_data=None, data=None, params=None, expected_status=(200,)):
-                return vulns if url.endswith("/vulnerabilities/") else devices
-
-        with patch.object(mod, "HTTPClient", lambda *a, **k: _FakeClient()):
-            result = await ClarotyCollector(claroty_credentials).collect()
-
-        kinds = {r["record_type"] for r in result.data}
-        assert kinds == {"vulnerability", "device"}
-        assert sum(1 for r in result.data if r["record_type"] == "device") == 2
+        out = await fetch_and_annotate([{"advisory_id": "A-1", "vendor": "Gardyn", "cves": ["CVE-1"]}], {})
+        assert out[0]["in_environment"] is False and out[0]["affected_assets"] == 0
 
     def test_product_match_folds_into_env_assets(self):
         """An advisory with no CVE match still counts if you own the vendor's gear."""
