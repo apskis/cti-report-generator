@@ -90,6 +90,15 @@ class ICSAdvisoryCollector(BaseCollector):
                 data = await client.get(url, headers=headers)
 
             records = self._extract_records(data)
+            # Diagnostic: raw count + actual window make a "0 advisories" result unambiguous
+            # (0 raw -> parse/envelope issue; raw>0 but 0 kept -> window filtered them out).
+            logger.info(
+                f"ICS advisories: {len(records)} raw records from API; "
+                f"window {start_date.date()} to {end_date.date()} (lookback {self.lookback_days}d)"
+            )
+            if isinstance(data, dict) and data.get("message"):
+                logger.info(f"ICS API note: {data.get('message')}")
+
             advisories = []
             seen_ids: set[str] = set()
             for raw in records:
