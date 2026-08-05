@@ -196,6 +196,7 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         crowdstrike_data = data_by_source.get("CrowdStrike", [])
         osint_data = data_by_source.get("OSINT", [])
         ics_advisory_data = data_by_source.get("ICS-Advisory", [])
+        claroty_data = data_by_source.get("Claroty", [])
         logger.info(
             f"Data collected - CVEs: {len(cve_data)}, Intel471: {len(intel471_data)}, "
             f"CrowdStrike: {len(crowdstrike_data)}, OSINT: {len(osint_data)}, "
@@ -233,6 +234,10 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         # This bypasses the AI analyst — the advisories are already structured and are
         # rendered verbatim, so there is nothing to summarize or correlate.
         analysis["ot_advisories"] = ics_advisory_data
+        # Match advisory CVEs to real environment assets via Claroty (adds asset exposure).
+        from src.collectors.claroty_collector import annotate_ot_advisories_with_assets
+
+        annotate_ot_advisories_with_assets(analysis["ot_advisories"], claroty_data)
 
         logger.info("Saving analysis context for historical tracking...")
         if not await asyncio.to_thread(context_mgr.save_analysis_context, "weekly", date.today(), analysis):

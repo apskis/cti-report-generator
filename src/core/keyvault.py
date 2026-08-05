@@ -113,6 +113,7 @@ def get_all_api_keys(vault_url: str | None = None) -> dict[str, str]:
         "intel471": ["intel471_email", "intel471_key"],
         "crowdstrike": ["crowdstrike_id", "crowdstrike_secret", "crowdstrike_base_url"],
         "ics_advisory": ["rapidapi_ics_key", "rapidapi_ics_host"],
+        "claroty": ["claroty_token"],
     }
 
     # Always required (not collector-specific)
@@ -134,6 +135,7 @@ def get_all_api_keys(vault_url: str | None = None) -> dict[str, str]:
         "crowdstrike_base_url": "crowdstrike-base-url",
         "rapidapi_ics_key": "rapidapi-ics-key",
         "rapidapi_ics_host": "rapidapi-ics-host",
+        "claroty_token": "claroty-api-token",
     }
 
     # Add required secrets
@@ -157,9 +159,10 @@ def get_all_api_keys(vault_url: str | None = None) -> dict[str, str]:
     # dependent collector rather than failing the whole run.
     #   - rapidapi_ics_key: missing -> ICS/OT collector self-disables (empty OT section).
     #   - rapidapi_ics_host: missing -> collector falls back to the configured default host.
-    # This keeps a report generating even when the ICS[AP] secrets have not been
-    # provisioned yet, instead of failing the entire run at credential fetch.
-    optional_secrets: set[str] = {"rapidapi_ics_key", "rapidapi_ics_host"}
+    #   - claroty_token: missing -> Claroty collector self-disables (no asset matching).
+    # This keeps a report generating even when these secrets have not been provisioned
+    # yet, instead of failing the entire run at credential fetch.
+    optional_secrets: set[str] = {"rapidapi_ics_key", "rapidapi_ics_host", "claroty_token"}
 
     api_keys = {}
 

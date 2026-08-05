@@ -864,9 +864,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self.doc.add_paragraph()
             return
 
-        # Table: Advisory | Advisory / Affected | Severity (CVSS) | CVEs
-        table = self.doc.add_table(rows=1, cols=4)
-        headers = ["Advisory", "Advisory / Affected", "Severity (CVSS)", "CVEs"]
+        # Table: Advisory | Advisory / Affected | Severity (CVSS) | CVEs | Env. Assets
+        table = self.doc.add_table(rows=1, cols=5)
+        headers = ["Advisory", "Advisory / Affected", "Severity (CVSS)", "CVEs", "Env. Assets"]
         header_cells = table.rows[0].cells
         for i, header in enumerate(headers):
             cell = header_cells[i]
@@ -932,8 +932,24 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 cve_text = "—"
             cells[3].text = cve_text
 
+            # Column 4: Env. Assets — count of real environment assets whose CVEs match
+            # this advisory (from Claroty). A non-zero count is the key "this affects us"
+            # signal, so it is bold red; unmatched advisories show a gray dash.
+            assets = advisory.get("affected_assets", 0) or 0
+            cells[4].text = ""
+            assets_para = cells[4].paragraphs[0]
+            assets_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            if assets > 0:
+                assets_run = assets_para.add_run(str(assets))
+                assets_run.font.bold = True
+                assets_run.font.color.rgb = BrandColors.RED_HIGH_RISK
+            else:
+                assets_run = assets_para.add_run("—")
+                assets_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+            assets_run.font.size = FontSizes.SUBTITLE
+
             # Uniform styling / borders for the row
-            for idx in range(4):
+            for idx in range(5):
                 self._clear_cell_shading(cells[idx])
                 self._set_cell_borders(cells[idx], "CCCCCC")
                 for para in cells[idx].paragraphs:
@@ -944,18 +960,21 @@ class WeeklyReportGenerator(BaseReportGenerator):
                             run.font.color.rgb = BrandColors.TEXT_DARK
 
         # Column widths
-        table.columns[0].width = Inches(1.1)
-        table.columns[1].width = Inches(2.6)
-        table.columns[2].width = Inches(1.3)
+        table.columns[0].width = Inches(1.0)
+        table.columns[1].width = Inches(2.4)
+        table.columns[2].width = Inches(1.1)
         table.columns[3].width = Inches(1.2)
+        table.columns[4].width = Inches(0.8)
 
         # Caption
+        matched = sum(1 for a in advisories if a.get("affected_assets", 0))
         caption = self.doc.add_paragraph()
         caption.space_before = Pt(4)
         caption.space_after = Pt(8)
-        caption_run = caption.add_run(
-            f"Table: {len(advisories)} ICS/OT advisories from CISA ICS advisories (ICS[AP] API)."
-        )
+        caption_text = f"Table: {len(advisories)} ICS/OT advisories from CISA ICS advisories (ICS[AP] API)."
+        if any("in_environment" in a for a in advisories):
+            caption_text += f" Env. Assets = devices affected in your environment (Claroty xDome); {matched} advisory(ies) matched."
+        caption_run = caption.add_run(caption_text)
         caption_run.font.size = Pt(7)
         caption_run.font.italic = True
         caption_run.font.color.rgb = BrandColors.GRAY_MEDIUM

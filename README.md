@@ -149,6 +149,7 @@ All secrets are stored in Azure Key Vault. Add the following secrets:
 | `crowdstrike-base-url` | CrowdStrike API base URL (e.g., `https://api.crowdstrike.com`) |
 | `rapidapi-ics-key` | RapidAPI key for the ICS[AP] API (CISA ICS/OT advisories → OT report section) |
 | `rapidapi-ics-host` | _(optional)_ RapidAPI host for the ICS[AP] API (e.g. `ics-ap-apis.p.rapidapi.com`); falls back to the configured default if unset |
+| `claroty-api-token` | _(optional)_ Claroty xDome API bearer token; matches advisory CVEs to real environment assets in the OT section |
 
 ### Azure OpenAI
 

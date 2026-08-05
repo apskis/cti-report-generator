@@ -1474,6 +1474,96 @@ class TestICSAdvisoryWiring:
         assert seen["url"].startswith("https://custom-host.example.com/")
 
 
+class TestClarotyCollector:
+    """Tests for the Claroty xDome collector and OT asset-matching."""
+
+    @pytest.fixture
+    def claroty_credentials(self):
+        return {"claroty_token": "test-claroty-token"}
+
+    def test_source_name(self, claroty_credentials):
+        from src.collectors.claroty_collector import ClarotyCollector
+
+        assert ClarotyCollector(claroty_credentials).source_name == "Claroty"
+
+    def test_enabled_requires_token(self):
+        from src.collectors.claroty_collector import ClarotyCollector
+
+        assert ClarotyCollector({"claroty_token": "t"}).enabled is True
+        assert ClarotyCollector({}).enabled is False
+
+    def test_registered(self):
+        assert "claroty" in list_available_collectors()
+        assert get_collector("claroty", {"claroty_token": "t"}).source_name == "Claroty"
+
+    def test_parse_vuln_list_and_string_cves(self, claroty_credentials):
+        from src.collectors.claroty_collector import ClarotyCollector
+
+        c = ClarotyCollector(claroty_credentials)
+        v = c._parse_vuln({"cve_ids": ["CVE-2026-1", "not-a-cve"], "affected_devices_count": 3,
+                           "affected_ot_devices_count": 2})
+        assert v["cve_ids"] == ["CVE-2026-1"]
+        assert v["affected_devices_count"] == 3 and v["affected_ot_devices_count"] == 2
+        # string form is split; a row with no real CVE is dropped
+        assert c._parse_vuln({"cve_ids": "CVE-2026-9, CVE-2026-8"})["cve_ids"] == ["CVE-2026-9", "CVE-2026-8"]
+        assert c._parse_vuln({"cve_ids": []}) is None
+
+    @pytest.mark.asyncio
+    async def test_collect_returns_env_vulnerabilities(self, claroty_credentials):
+        from src.collectors import claroty_collector as mod
+        from src.collectors.claroty_collector import ClarotyCollector
+
+        page = {"count": 2, "vulnerabilities": [
+            {"cve_ids": ["CVE-2026-13768"], "affected_devices_count": 5, "affected_ot_devices_count": 4,
+             "is_known_exploited": True},
+            {"cve_ids": ["CVE-2026-40000"], "affected_devices_count": 1, "affected_ot_devices_count": 1},
+        ]}
+        seen = {}
+
+        class _FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, headers=None, json_data=None, data=None, params=None, expected_status=(200,)):
+                seen["auth"] = headers["Authorization"]
+                seen["filter"] = json_data["filter_by"]
+                return page
+
+        with patch.object(mod, "HTTPClient", lambda *a, **k: _FakeClient()):
+            result = await ClarotyCollector(claroty_credentials).collect()
+
+        assert result.success is True and result.record_count == 2
+        assert seen["auth"] == "Bearer test-claroty-token"
+        assert seen["filter"] == {"field": "affected_devices_count", "operation": "greater", "value": 0}
+
+    def test_annotate_matches_cves_to_assets_and_orders(self):
+        from src.collectors.claroty_collector import annotate_ot_advisories_with_assets
+
+        advisories = [
+            {"advisory_id": "A-1", "cves": ["CVE-2026-99"]},                 # no match
+            {"advisory_id": "A-2", "cves": ["CVE-2026-13768", "CVE-2026-1"]},  # match
+        ]
+        claroty = [
+            {"cve_ids": ["CVE-2026-13768"], "affected_devices_count": 5, "affected_ot_devices_count": 4},
+        ]
+        out = annotate_ot_advisories_with_assets(advisories, claroty)
+        # matched advisory is moved to the front and annotated
+        assert out[0]["advisory_id"] == "A-2"
+        assert out[0]["affected_assets"] == 5 and out[0]["affected_ot_assets"] == 4
+        assert out[0]["in_environment"] is True
+        assert out[1]["in_environment"] is False and out[1]["affected_assets"] == 0
+
+    def test_annotate_no_claroty_data_is_safe(self):
+        from src.collectors.claroty_collector import annotate_ot_advisories_with_assets
+
+        advisories = [{"advisory_id": "A-1", "cves": ["CVE-2026-1"]}]
+        out = annotate_ot_advisories_with_assets(advisories, [])
+        assert out[0]["in_environment"] is False and out[0]["affected_assets"] == 0
+
+
 class TestBreachHibpFlag:
     def test_hibp_off_by_default_on_when_flag_set(self, mock_credentials, monkeypatch):
         from types import SimpleNamespace

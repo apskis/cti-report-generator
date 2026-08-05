@@ -15,6 +15,7 @@ Configuration:
 """
 
 from src.collectors.base import BaseCollector
+from src.collectors.claroty_collector import ClarotyCollector
 from src.collectors.crowdstrike_collector import CrowdStrikeCollector
 from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
 from src.collectors.intel471_collector import Intel471Collector
@@ -37,6 +38,7 @@ __all__ = [
     "CrowdStrikeCollector",
     "OSINTCollector",
     "ICSAdvisoryCollector",
+    "ClarotyCollector",
     # Registry functions
     "collect_all",
     "get_collector",

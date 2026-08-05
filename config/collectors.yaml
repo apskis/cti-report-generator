@@ -43,6 +43,10 @@ collectors:
     description: "ICS[AP] APIs (RapidAPI) - CISA ICS/OT advisories for the Operational Technology section"
     enabled: true
 
+  - name: claroty
+    description: "Claroty xDome - matches advisory CVEs to real environment assets (OT section asset exposure)"
+    enabled: true
+
   - name: illumina_osint
     description: "Illumina company OSINT - public disclosures, news, and filings (quarterly only)"
     enabled: true

@@ -69,6 +69,15 @@ class CollectorConfig:
     )
     ics_advisory_enrich_limit: int = 25  # max detail calls per run (guards the request budget)
 
+    # Claroty xDome — matches advisory CVEs to devices actually in the environment, so the
+    # OT section can show real asset exposure. Auth is a bearer token (claroty-api-token in
+    # Key Vault); the base URL is fixed per the xDome API and overridable via env.
+    claroty_base_url: str = field(
+        default_factory=lambda: os.environ.get("CLAROTY_BASE_URL", "https://api.claroty.com")
+    )
+    claroty_vuln_page_limit: int = 500  # page size for /vulnerabilities/ (API max is generous)
+    claroty_vuln_max_pages: int = 20  # cap pages fetched per run (rate-limit / safety guard)
+
     # News-search (GDELT) collector — used mainly for historical/prior-quarter backfill,
     # where RSS feeds can no longer serve articles from a past window.
     news_search_max_records: int = 40

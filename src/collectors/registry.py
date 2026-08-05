@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from src.collectors.base import BaseCollector
+from src.collectors.claroty_collector import ClarotyCollector
 from src.collectors.crowdstrike_collector import CrowdStrikeCollector
 from src.collectors.hhs_breach_collector import HHSBreachCollector
 from src.collectors.hibp_breach_collector import HIBPBreachCollector
@@ -33,6 +34,7 @@ COLLECTOR_REGISTRY: dict[str, type[BaseCollector]] = {
     "crowdstrike": CrowdStrikeCollector,
     "osint": OSINTCollector,
     "ics_advisory": ICSAdvisoryCollector,
+    "claroty": ClarotyCollector,
     "illumina_osint": IlluminaOSINTCollector,
     "news_search": NewsSearchCollector,
     "vcdb": VCDBCollector,
