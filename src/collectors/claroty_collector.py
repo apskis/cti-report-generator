@@ -38,8 +38,17 @@ _VULN_FIELDS = [
     "affected_confirmed_devices_count",
 ]
 
-# Device fields requested when product/vendor matching is enabled.
-_DEVICE_FIELDS = ["manufacturer", "model", "model_family", "product_code", "device_type"]
+# Device fields requested when product/vendor matching is enabled (site fields drive the
+# location breakdown shown under the asset count).
+_DEVICE_FIELDS = [
+    "manufacturer",
+    "model",
+    "model_family",
+    "product_code",
+    "device_type",
+    "site_name",
+    "site_group_name",
+]
 
 
 class ClarotyCollector(BaseCollector):
@@ -184,6 +193,8 @@ class ClarotyCollector(BaseCollector):
                         "model": (row.get("model") or "").strip(),
                         "model_family": (row.get("model_family") or "").strip(),
                         "product_code": (row.get("product_code") or "").strip(),
+                        "site_name": (row.get("site_name") or "").strip(),
+                        "site_group_name": (row.get("site_group_name") or "").strip(),
                     }
                 )
             if len(rows) < limit:
@@ -216,6 +227,15 @@ def build_cve_asset_map(claroty_data: list[dict[str, Any]]) -> dict[str, dict[st
 _CORP_STOPWORDS = {"inc", "corp", "corporation", "llc", "ltd", "co", "gmbh", "ag", "sa",
                    "srl", "plc", "company", "the", "and", "a", "s"}
 
+# Generic industrial words that must NOT, on their own, trigger a vendor match (they appear
+# in many unrelated manufacturer names, e.g. "General Electric" vs "Mitsubishi Electric").
+_GENERIC_TOKENS = {"electric", "electronics", "electronic", "systems", "system", "technologies",
+                   "technology", "automation", "controls", "control", "industrial", "industries",
+                   "corporation", "group", "solutions", "solution", "devices", "device", "medical",
+                   "energy", "power", "digital", "networks", "network", "communications",
+                   "communication", "instruments", "instrument", "software", "international",
+                   "global", "products", "product", "services", "service"}
+
 
 def _name_tokens(text: str) -> set[str]:
     """Normalize a vendor/product string to a set of meaningful (>=4 char) tokens."""
@@ -223,29 +243,35 @@ def _name_tokens(text: str) -> set[str]:
     return {t for t in cleaned.split() if len(t) >= 4 and t not in _CORP_STOPWORDS}
 
 
-def _owned_manufacturer_tokens(claroty_data: list[dict[str, Any]]) -> dict[str, int]:
-    """Count environment devices per normalized manufacturer/model token."""
-    counts: dict[str, int] = {}
+def _owned_devices(claroty_data: list[dict[str, Any]]) -> list[tuple[set[str], str]]:
+    """Return (manufacturer/model tokens, site label) for each inventory device."""
+    out: list[tuple[set[str], str]] = []
     for rec in claroty_data or []:
         if rec.get("record_type") != "device":
             continue
         tokens = _name_tokens(rec.get("manufacturer", "")) | _name_tokens(rec.get("model_family", ""))
-        for tok in tokens:
-            counts[tok] = counts.get(tok, 0) + 1
-    return counts
+        if not tokens:
+            continue
+        site = rec.get("site_name") or rec.get("site_group_name") or "Unspecified site"
+        out.append((tokens, site))
+    return out
 
 
-def _product_match_count(advisory: dict[str, Any], owned_tokens: dict[str, int]) -> int:
-    """Devices owned whose manufacturer/model token overlaps the advisory's vendor/product.
+def _match_device_sites(advisory: dict[str, Any], owned: list[tuple[set[str], str]]) -> list[str]:
+    """Site label for each owned device whose vendor matches the advisory.
 
-    Conservative: returns the max device count among overlapping tokens (not a sum), so
-    matching on a vendor with many devices does not inflate unrelated model overlaps.
+    A device matches only when it shares a NON-generic token with the advisory's
+    vendor/product (so "Mitsubishi Electric" does not match "General Electric" on
+    "electric" alone). Returns one site label per matched device (for counting + grouping).
     """
-    if not owned_tokens:
-        return 0
     adv_tokens = _name_tokens(advisory.get("vendor", "")) | _name_tokens(advisory.get("product", ""))
-    overlap = adv_tokens & set(owned_tokens)
-    return max((owned_tokens[t] for t in overlap), default=0)
+    if not adv_tokens:
+        return []
+    sites: list[str] = []
+    for tokens, site in owned:
+        if (adv_tokens & tokens) - _GENERIC_TOKENS:
+            sites.append(site)
+    return sites
 
 
 def annotate_ot_advisories_with_assets(
@@ -262,13 +288,19 @@ def annotate_ot_advisories_with_assets(
     report leads with what matters. ``match_type`` records which signal drove the count.
     Mutates in place and returns the (re-ordered) list.
     """
+    from collections import Counter
+
     cve_map = build_cve_asset_map(claroty_data)
-    owned_tokens = _owned_manufacturer_tokens(claroty_data)
+    owned = _owned_devices(claroty_data)
     for advisory in ot_advisories or []:
         matched = [c for c in (advisory.get("cves") or []) if c.upper() in cve_map]
         cve_assets = max((cve_map[c.upper()]["assets"] for c in matched), default=0)
         cve_ot_assets = max((cve_map[c.upper()]["ot_assets"] for c in matched), default=0)
-        product_assets = _product_match_count(advisory, owned_tokens)
+
+        # Product match: distinct owned devices of the advisory's vendor, grouped by site.
+        matched_sites = _match_device_sites(advisory, owned)
+        product_assets = len(matched_sites)
+        advisory["sites"] = Counter(matched_sites).most_common(3)  # [(site, count), ...]
 
         advisory["matched_cves"] = matched
         advisory["affected_assets"] = max(cve_assets, product_assets)

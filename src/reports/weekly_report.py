@@ -948,6 +948,17 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 assets_run.font.color.rgb = BrandColors.GRAY_MEDIUM
             assets_run.font.size = FontSizes.SUBTITLE
 
+            # Site breakdown of the matched (vendor) devices, on a second line in small gray.
+            sites = advisory.get("sites") or []
+            if assets > 0 and sites:
+                site_para = cells[4].add_paragraph()
+                site_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                site_para.paragraph_format.space_before = Pt(0)
+                site_text = ", ".join(f"{name} ({count})" for name, count in sites)
+                site_run = site_para.add_run(site_text)
+                site_run.font.size = FontSizes.FOOTNOTE
+                site_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+
             # Uniform styling / borders for the row
             for idx in range(5):
                 self._clear_cell_shading(cells[idx])
@@ -959,12 +970,12 @@ class WeeklyReportGenerator(BaseReportGenerator):
                         if run.font.color.rgb is None:
                             run.font.color.rgb = BrandColors.TEXT_DARK
 
-        # Column widths
+        # Column widths (Env. Assets wider to fit the site breakdown line)
         table.columns[0].width = Inches(1.0)
-        table.columns[1].width = Inches(2.4)
-        table.columns[2].width = Inches(1.1)
-        table.columns[3].width = Inches(1.2)
-        table.columns[4].width = Inches(0.8)
+        table.columns[1].width = Inches(2.0)
+        table.columns[2].width = Inches(1.0)
+        table.columns[3].width = Inches(1.1)
+        table.columns[4].width = Inches(1.5)
 
         # Caption
         matched = sum(1 for a in advisories if a.get("affected_assets", 0))

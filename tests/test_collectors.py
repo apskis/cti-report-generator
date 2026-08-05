@@ -1603,6 +1603,30 @@ class TestClarotyCollector:
         assert out[0]["affected_assets"] == 5  # max(cve=5, product=1)
         assert out[0]["match_type"] == "cve+product"
 
+    def test_product_match_reports_site_breakdown(self):
+        """Matched vendor devices are grouped by site into advisory['sites']."""
+        from src.collectors.claroty_collector import annotate_ot_advisories_with_assets
+
+        advisories = [{"advisory_id": "A-1", "vendor": "Gardyn", "cves": []}]
+        claroty = [
+            {"record_type": "device", "manufacturer": "Gardyn", "model_family": "", "site_name": "Plant A"},
+            {"record_type": "device", "manufacturer": "Gardyn", "model_family": "", "site_name": "Plant A"},
+            {"record_type": "device", "manufacturer": "Gardyn", "model_family": "", "site_name": "Lab B"},
+        ]
+        out = annotate_ot_advisories_with_assets(advisories, claroty)
+        assert out[0]["affected_assets"] == 3
+        assert dict(out[0]["sites"]) == {"Plant A": 2, "Lab B": 1}
+
+    def test_generic_token_alone_does_not_match(self):
+        """'Mitsubishi Electric' must not match 'General Electric' on 'electric' alone."""
+        from src.collectors.claroty_collector import annotate_ot_advisories_with_assets
+
+        advisories = [{"advisory_id": "A-1", "vendor": "Mitsubishi Electric", "cves": []}]
+        claroty = [{"record_type": "device", "manufacturer": "General Electric", "model_family": "",
+                    "site_name": "Plant A"}]
+        out = annotate_ot_advisories_with_assets(advisories, claroty)
+        assert out[0]["in_environment"] is False
+
     def test_product_match_ignores_short_and_corp_tokens(self):
         """Corp suffixes and short tokens don't create spurious matches."""
         from src.collectors.claroty_collector import annotate_ot_advisories_with_assets
