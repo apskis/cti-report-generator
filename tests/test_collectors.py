@@ -1557,6 +1557,7 @@ class TestClarotyCollector:
                                          "value": ["Gardyn", "Mitsubishi Electric"]}
         g = next(a for a in out if a["advisory_id"] == "A-1")
         assert g["affected_assets"] == 7 and g["in_environment"] is True
+        assert g["claroty_status"] == "ok"
 
     @pytest.mark.asyncio
     async def test_fetch_and_annotate_without_token_is_safe(self):
@@ -1565,6 +1566,30 @@ class TestClarotyCollector:
 
         out = await fetch_and_annotate([{"advisory_id": "A-1", "vendor": "Gardyn", "cves": ["CVE-1"]}], {})
         assert out[0]["in_environment"] is False and out[0]["affected_assets"] == 0
+        assert out[0]["claroty_status"] == "disabled"
+
+    @pytest.mark.asyncio
+    async def test_fetch_and_annotate_failure_marks_error_status(self):
+        """A failed Claroty query is surfaced as status 'error', not silent zero."""
+        from src.collectors import claroty_collector as mod
+        from src.collectors.claroty_collector import fetch_and_annotate
+
+        class _FailingClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, *a, **k):
+                raise TimeoutError()
+
+        ot = [{"advisory_id": "A-1", "vendor": "Gardyn", "cves": ["CVE-1"]}]
+        with patch.object(mod, "HTTPClient", lambda *a, **k: _FailingClient()):
+            out = await fetch_and_annotate(ot, {"claroty_token": "t"})
+
+        assert out[0]["claroty_status"] == "error"
+        assert out[0]["affected_assets"] == 0  # unknown, not confirmed-zero
 
     def test_product_match_folds_into_env_assets(self):
         """An advisory with no CVE match still counts if you own the vendor's gear."""

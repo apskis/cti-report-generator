@@ -86,6 +86,10 @@ class CollectorConfig:
     )
     claroty_device_page_limit: int = 500
     claroty_device_max_pages: int = 20
+    # OT asset matching is an optional enrichment, so it must fail fast rather than block
+    # report generation: a single attempt with a short timeout (no long retry storm).
+    claroty_timeout_seconds: int = 25
+    claroty_max_retries: int = 0
 
     # News-search (GDELT) collector — used mainly for historical/prior-quarter backfill,
     # where RSS feeds can no longer serve articles from a past window.

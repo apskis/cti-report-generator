@@ -979,12 +979,18 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         # Caption
         matched = sum(1 for a in advisories if a.get("affected_assets", 0))
+        claroty_status = next((a.get("claroty_status") for a in advisories if a.get("claroty_status")), None)
         caption = self.doc.add_paragraph()
         caption.space_before = Pt(4)
         caption.space_after = Pt(8)
         caption_text = f"Table: {len(advisories)} ICS/OT advisories from CISA ICS advisories (ICS[AP] API)."
-        if any("in_environment" in a for a in advisories):
-            caption_text += f" Env. Assets = devices affected in your environment (Claroty xDome); {matched} advisory(ies) matched."
+        if claroty_status == "error":
+            # Distinguish "we could not check" from "we checked and found nothing".
+            caption_text += " Env. Assets could not be determined this run (Claroty xDome query did not complete)."
+        elif claroty_status == "ok":
+            caption_text += (
+                f" Env. Assets = devices affected in your environment (Claroty xDome); {matched} advisory(ies) matched."
+            )
         caption_run = caption.add_run(caption_text)
         caption_run.font.size = Pt(7)
         caption_run.font.italic = True

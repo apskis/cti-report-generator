@@ -188,7 +188,7 @@ async def fetch_and_annotate(
     ot_advisories = ot_advisories or []
     token = (credentials or {}).get("claroty_token", "")
     if not token or not ot_advisories:
-        return annotate_ot_advisories_with_assets(ot_advisories, [])
+        return _tag_status(annotate_ot_advisories_with_assets(ot_advisories, []), "disabled")
 
     base_url = (credentials.get("claroty_base_url") or collector_config.claroty_base_url).rstrip("/")
     headers = {
@@ -204,21 +204,36 @@ async def fetch_and_annotate(
             if (a.get("vendor") or "").strip() and a.get("vendor") != "Unknown"
         }
     )
+    logger.info(f"Claroty: querying {len(cves)} advisory CVEs and {len(vendors)} vendors against the environment")
 
     records: list[dict[str, Any]] = []
+    status = "error"
     try:
-        async with HTTPClient() as client:
+        # Optional enrichment: short timeout + no retry storm so a slow/failed Claroty call
+        # never blocks report generation.
+        async with HTTPClient(
+            timeout=collector_config.claroty_timeout_seconds, max_retries=collector_config.claroty_max_retries
+        ) as client:
             records += await _query_vulns_by_cves(client, base_url, headers, cves)
             if collector_config.claroty_match_products:
                 records += await _query_devices_by_vendors(client, base_url, headers, vendors)
-        logger.info(
-            f"Claroty matched {len(cves)} advisory CVEs and {len(vendors)} vendors "
-            f"against the environment ({len(records)} matching records)"
-        )
+        status = "ok"
+        logger.info(f"Claroty matched the environment: {len(records)} vulnerability/device records returned")
     except Exception as e:  # best-effort: a Claroty failure never breaks report generation
-        logger.warning(f"Claroty enrichment failed ({e}); OT section will show no asset exposure")
+        # ``repr`` so an empty-message timeout still identifies the exception type.
+        logger.warning(
+            f"Claroty enrichment failed ({type(e).__name__}: {e!r}); "
+            f"OT asset exposure is UNAVAILABLE this run (not necessarily zero)"
+        )
 
-    return annotate_ot_advisories_with_assets(ot_advisories, records)
+    return _tag_status(annotate_ot_advisories_with_assets(ot_advisories, records), status)
+
+
+def _tag_status(ot_advisories: list[dict[str, Any]], status: str) -> list[dict[str, Any]]:
+    """Record whether the Claroty query ran (ok / error / disabled) on each advisory."""
+    for advisory in ot_advisories or []:
+        advisory["claroty_status"] = status
+    return ot_advisories
 
 
 def build_cve_asset_map(claroty_data: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
