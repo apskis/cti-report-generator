@@ -897,18 +897,19 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 adv_run.font.size = FontSizes.SUBTITLE
                 adv_run.font.color.rgb = BrandColors.TEXT_DARK
 
-            # Column 1: Advisory title + affected vendor/product. The title is always
-            # present (even on the free tier, which omits vendor/product), so it leads;
-            # vendor/product are appended when the tier/data provides them.
+            # Column 1: Advisory title, plus affected products/versions when available.
+            # The title is always present (even on the free-tier list feed); the affected
+            # product/version detail comes from the enriched per-advisory record. Append
+            # it only when it adds information beyond the title, to avoid duplication.
             title = advisory.get("title", "")
-            vendor = advisory.get("vendor", "")
-            product = advisory.get("product") or advisory.get("products_affected") or ""
-            affected = " ".join(x for x in (vendor, product) if x and x != "Unknown").strip()
-            if title and affected:
+            affected = advisory.get("products_affected") or advisory.get("product") or ""
+            if affected == "Unknown":
+                affected = ""
+            if title and affected and affected.lower() not in title.lower():
                 col1 = f"{title} — {affected}"
             else:
                 col1 = title or affected or "—"
-            cells[1].text = col1[:90]
+            cells[1].text = col1[:100]
 
             # Column 2: Severity (CVSS)
             severity = advisory.get("severity", "") or "N/A"

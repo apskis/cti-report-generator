@@ -89,36 +89,41 @@ class ICSAdvisoryCollector(BaseCollector):
             async with HTTPClient() as client:
                 data = await client.get(url, headers=headers)
 
-            records = self._extract_records(data)
-            # Diagnostic: raw count + actual window make a "0 advisories" result unambiguous
-            # (0 raw -> parse/envelope issue; raw>0 but 0 kept -> window filtered them out).
-            logger.info(
-                f"ICS advisories: {len(records)} raw records from API; "
-                f"window {start_date.date()} to {end_date.date()} (lookback {self.lookback_days}d)"
-            )
-            if isinstance(data, dict) and data.get("message"):
-                logger.info(f"ICS API note: {data.get('message')}")
+                records = self._extract_records(data)
+                # Diagnostic: raw count + actual window make a "0 advisories" result unambiguous
+                # (0 raw -> parse/envelope issue; raw>0 but 0 kept -> window filtered them out).
+                logger.info(
+                    f"ICS advisories: {len(records)} raw records from API; "
+                    f"window {start_date.date()} to {end_date.date()} (lookback {self.lookback_days}d)"
+                )
+                if isinstance(data, dict) and data.get("message"):
+                    logger.info(f"ICS API note: {data.get('message')}")
 
-            advisories = []
-            seen_ids: set[str] = set()
-            for raw in records:
-                advisory = self._parse_advisory(raw)
-                if advisory is None:
-                    continue
-                # The live feed returns duplicate rows for the same advisory — collapse
-                # them by advisory id so the OT table shows each advisory once.
-                advisory_id = advisory.get("advisory_id", "")
-                if advisory_id and advisory_id != "N/A":
-                    if advisory_id in seen_ids:
+                advisories = []
+                seen_ids: set[str] = set()
+                for raw in records:
+                    advisory = self._parse_advisory(raw)
+                    if advisory is None:
                         continue
-                    seen_ids.add(advisory_id)
-                if not self._within_window(advisory, start_date, end_date):
-                    continue
-                advisories.append(advisory)
+                    # The live feed returns duplicate rows for the same advisory — collapse
+                    # them by advisory id so the OT table shows each advisory once.
+                    advisory_id = advisory.get("advisory_id", "")
+                    if advisory_id and advisory_id != "N/A":
+                        if advisory_id in seen_ids:
+                            continue
+                        seen_ids.add(advisory_id)
+                    if not self._within_window(advisory, start_date, end_date):
+                        continue
+                    advisories.append(advisory)
 
-            # Most recent first (release date, else last-updated), capped for readability.
-            advisories.sort(key=lambda a: a.get("released") or a.get("updated") or "", reverse=True)
-            advisories = advisories[: collector_config.ics_advisory_max_results]
+                # Most recent first (release date, else last-updated), capped for readability.
+                advisories.sort(key=lambda a: a.get("released") or a.get("updated") or "", reverse=True)
+                advisories = advisories[: collector_config.ics_advisory_max_results]
+
+                # Enrich each advisory with the per-advisory detail endpoint, which returns
+                # vendor/product/CVEs/CVSS the summary list omits. Best-effort and capped.
+                if collector_config.ics_advisory_enrich_details and advisories:
+                    advisories = await self._enrich_advisories(client, host, headers, advisories)
 
             logger.info(f"Retrieved {len(advisories)} ICS/OT advisories in the reporting window")
             return CollectorResult(
@@ -131,6 +136,60 @@ class ICSAdvisoryCollector(BaseCollector):
         except Exception as e:
             logger.error(f"Error fetching ICS/OT advisories: {e}", exc_info=True)
             return CollectorResult(source=self.source_name, success=False, error=str(e), record_count=0)
+
+    async def _enrich_advisories(
+        self, client: HTTPClient, host: str, headers: dict[str, str], advisories: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Fill vendor/product/CVEs/CVSS on each advisory via the per-advisory Entry endpoint.
+
+        The list endpoint returns only a summary; the detail endpoint returns the full
+        record. Best-effort: a failed or empty detail leaves the summary advisory intact.
+        Capped at ``ics_advisory_enrich_limit`` detail calls to bound the request budget.
+        """
+        limit = collector_config.ics_advisory_enrich_limit
+        enriched_count = 0
+        out = []
+        for idx, advisory in enumerate(advisories):
+            if idx >= limit:
+                out.append(advisory)  # beyond the cap: keep the summary as-is
+                continue
+            detail = await self._fetch_advisory_detail(client, host, headers, advisory.get("advisory_id", ""))
+            merged = self._merge_detail(advisory, detail)
+            if detail is not None:
+                enriched_count += 1
+            out.append(merged)
+
+        logger.info(f"Enriched {enriched_count}/{min(len(advisories), limit)} ICS advisories via the detail endpoint")
+        return out
+
+    async def _fetch_advisory_detail(
+        self, client: HTTPClient, host: str, headers: dict[str, str], advisory_id: str
+    ) -> dict[str, Any] | None:
+        """Fetch and parse a single advisory's full record; return None on any failure."""
+        if not advisory_id or advisory_id == "N/A":
+            return None
+        path = collector_config.ics_advisory_entry_path.format(advisory_id=advisory_id)
+        detail_url = f"https://{host}{path}"
+        try:
+            data = await client.get(detail_url, headers=headers)
+        except Exception as e:
+            logger.debug(f"ICS detail fetch failed for {advisory_id}: {e}")
+            return None
+        records = self._extract_records(data)
+        if not records:
+            return None
+        return self._parse_advisory(records[0])
+
+    @staticmethod
+    def _merge_detail(summary: dict[str, Any], detail: dict[str, Any] | None) -> dict[str, Any]:
+        """Overlay the detail record's populated fields onto the summary advisory."""
+        if not detail:
+            return summary
+        merged = dict(summary)
+        for key, value in detail.items():
+            if value not in (None, "", [], "Unknown"):
+                merged[key] = value
+        return merged
 
     @staticmethod
     def _extract_records(data: Any) -> list[dict[str, Any]]:
@@ -192,7 +251,7 @@ class ICSAdvisoryCollector(BaseCollector):
         )
         cves = self._parse_cves(record)
 
-        url = self._first(record, "Advisory_URL", "advisory_url", "url", "link")
+        url = self._first(record, "hyperlink", "Advisory_URL", "advisory_url", "url", "link")
         if not url and advisory_id:
             url = f"https://www.cisa.gov/news-events/ics-advisories/{advisory_id}"
 
@@ -214,7 +273,13 @@ class ICSAdvisoryCollector(BaseCollector):
     @staticmethod
     def _parse_cves(record: dict[str, Any]) -> list[str]:
         """Extract CVE IDs, handling both list and comma/space-delimited string forms."""
-        raw = record.get("CVE") or record.get("cve") or record.get("cves") or record.get("CVEs")
+        raw = (
+            record.get("CVE_Number")  # detail-endpoint field (list)
+            or record.get("CVE")
+            or record.get("cve")
+            or record.get("cves")
+            or record.get("CVEs")
+        )
         if raw is None:
             return []
         if isinstance(raw, list):

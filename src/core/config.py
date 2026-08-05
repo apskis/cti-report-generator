@@ -55,6 +55,19 @@ class CollectorConfig:
     )
     ics_advisory_quarterly_lookback_days: int = 90
     ics_advisory_max_results: int = 50
+    # Per-advisory "Entry" detail endpoint. The list endpoint returns only a summary
+    # (id/title/severity/date) on the free tier; the detail endpoint returns the full
+    # record (vendor, product, CVEs, CVSS score) even on the free tier. Enrich each
+    # advisory with one detail call so the OT table's Vendor/CVSS/CVEs columns fill in.
+    # {advisory_id} is substituted with the advisory number. Disable with
+    # ICS_ADVISORY_ENRICH=false to save API calls (one call per advisory per run).
+    ics_advisory_entry_path: str = field(
+        default_factory=lambda: os.environ.get("ICS_ADVISORY_ENTRY_PATH", "/advisories/{advisory_id}")
+    )
+    ics_advisory_enrich_details: bool = field(
+        default_factory=lambda: os.environ.get("ICS_ADVISORY_ENRICH", "true").lower() in {"1", "true", "yes"}
+    )
+    ics_advisory_enrich_limit: int = 25  # max detail calls per run (guards the request budget)
 
     # News-search (GDELT) collector — used mainly for historical/prior-quarter backfill,
     # where RSS feeds can no longer serve articles from a past window.

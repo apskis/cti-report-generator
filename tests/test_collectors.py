@@ -1226,7 +1226,9 @@ class TestICSAdvisoryCollector:
                 return False
 
             async def get(self, url, headers=None, params=None):
-                return live
+                # Latest returns the list; the per-advisory detail endpoint has nothing
+                # extra here (this test focuses on dedup, not enrichment).
+                return live if url.endswith("/latest") else {"result": []}
 
         collector = ICSAdvisoryCollector(
             ics_credentials, collection_window=(datetime(2026, 6, 1), datetime(2026, 7, 31))
@@ -1298,7 +1300,8 @@ class TestICSAdvisoryCollector:
                 # Assert RapidAPI auth headers are set correctly.
                 assert headers["x-rapidapi-key"] == "test-rapidapi-key"
                 assert headers["x-rapidapi-host"] == "ics-ap-apis.p.rapidapi.com"
-                return ics_api_response
+                # Latest returns the list; detail endpoint adds nothing in this test.
+                return ics_api_response if url.endswith("/latest") else {"result": []}
 
         collector = ICSAdvisoryCollector(ics_credentials, collection_window=(datetime(2026, 4, 1), datetime(2026, 4, 30)))
         with patch.object(mod, "HTTPClient", lambda *a, **k: _FakeClient()):
@@ -1308,6 +1311,61 @@ class TestICSAdvisoryCollector:
         assert result.record_count == 2
         ids = {a["advisory_id"] for a in result.data}
         assert ids == {"ICSA-26-100-01", "ICSMA-26-101-02"}
+
+    def test_parse_cve_number_field(self, ics_credentials):
+        """The detail endpoint returns CVEs under 'CVE_Number' (a list)."""
+        from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
+
+        c = ICSAdvisoryCollector(ics_credentials)
+        a = c._parse_advisory(
+            {"ICS-CERT_Number": "ICSA-26-1", "ICS-CERT_Advisory_Title": "X",
+             "CVE_Number": ["CVE-2026-1", "CVE-2026-2"]}
+        )
+        assert a["cves"] == ["CVE-2026-1", "CVE-2026-2"]
+
+    @pytest.mark.asyncio
+    async def test_collect_enriches_from_detail_endpoint(self, ics_credentials):
+        """The summary list is enriched per-advisory with vendor/product/CVEs/CVSS."""
+        from src.collectors import ics_advisory_collector as mod
+        from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
+
+        # Summary (list endpoint, free-tier fields only).
+        summary = {"error": False, "result": [
+            {"Last_Updated": "2026-07-02T00:00:00.000Z", "ICS-CERT_Number": "ICSA-26-183-03",
+             "ICS-CERT_Advisory_Title": "Gardyn IoT Hub", "CVSS_Severity": "Critical"},
+        ]}
+        # Detail (entry endpoint) — full record, real live shape.
+        detail = {"error": False, "result": [
+            {"ICS-CERT_Number": "ICSA-26-183-03", "ICS-CERT_Advisory_Title": "Gardyn IoT Hub",
+             "Vendor": "Gardyn", "Product": "Gardyn IoT Hub",
+             "Products_Affected": "Home Firmware | Cloud API <2.12.2026",
+             "CVE_Number": ["CVE-2026-13768", "CVE-2026-55726"], "Cumulative_CVSS": 10,
+             "CVSS_Severity": "Critical", "Last_Updated": "2026-07-02T00:00:00.000Z",
+             "hyperlink": "https://www.cisa.gov/news-events/ics-advisories/icsa-26-183-03"},
+        ]}
+
+        class _FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, url, headers=None, params=None):
+                return summary if url.endswith("/latest") else detail
+
+        collector = ICSAdvisoryCollector(
+            ics_credentials, collection_window=(datetime(2026, 6, 1), datetime(2026, 7, 31))
+        )
+        with patch.object(mod, "HTTPClient", lambda *a, **k: _FakeClient()):
+            result = await collector.collect()
+
+        assert result.record_count == 1
+        a = result.data[0]
+        assert a["vendor"] == "Gardyn"
+        assert a["cvss"] == 10
+        assert a["cves"] == ["CVE-2026-13768", "CVE-2026-55726"]
+        assert "cisa.gov" in a["url"]
 
 
 class TestICSAdvisoryWiring:
