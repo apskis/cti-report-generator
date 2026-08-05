@@ -1529,15 +1529,89 @@ class TestClarotyCollector:
 
             async def post(self, url, headers=None, json_data=None, data=None, params=None, expected_status=(200,)):
                 seen["auth"] = headers["Authorization"]
-                seen["filter"] = json_data["filter_by"]
-                return page
+                if url.endswith("/vulnerabilities/"):
+                    seen["filter"] = json_data["filter_by"]
+                    return page
+                return {"devices": []}  # device-inventory endpoint (product matching)
 
         with patch.object(mod, "HTTPClient", lambda *a, **k: _FakeClient()):
             result = await ClarotyCollector(claroty_credentials).collect()
 
+        # 2 vulnerabilities + 0 devices
         assert result.success is True and result.record_count == 2
         assert seen["auth"] == "Bearer test-claroty-token"
         assert seen["filter"] == {"field": "affected_devices_count", "operation": "greater", "value": 0}
+
+    @pytest.mark.asyncio
+    async def test_collect_includes_device_inventory(self, claroty_credentials):
+        from src.collectors import claroty_collector as mod
+        from src.collectors.claroty_collector import ClarotyCollector
+
+        vulns = {"count": 1, "vulnerabilities": [
+            {"cve_ids": ["CVE-2026-1"], "affected_devices_count": 2, "affected_ot_devices_count": 1},
+        ]}
+        devices = {"count": 2, "devices": [
+            {"manufacturer": "Gardyn", "model": "IoT Hub"},
+            {"manufacturer": "Siemens", "model": "S7-1500"},
+        ]}
+
+        class _FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, headers=None, json_data=None, data=None, params=None, expected_status=(200,)):
+                return vulns if url.endswith("/vulnerabilities/") else devices
+
+        with patch.object(mod, "HTTPClient", lambda *a, **k: _FakeClient()):
+            result = await ClarotyCollector(claroty_credentials).collect()
+
+        kinds = {r["record_type"] for r in result.data}
+        assert kinds == {"vulnerability", "device"}
+        assert sum(1 for r in result.data if r["record_type"] == "device") == 2
+
+    def test_product_match_folds_into_env_assets(self):
+        """An advisory with no CVE match still counts if you own the vendor's gear."""
+        from src.collectors.claroty_collector import annotate_ot_advisories_with_assets
+
+        advisories = [
+            {"advisory_id": "A-1", "vendor": "Gardyn", "product": "Gardyn IoT Hub", "cves": ["CVE-2026-99"]},
+        ]
+        claroty = [
+            {"record_type": "device", "manufacturer": "Gardyn", "model": "IoT Hub", "model_family": ""},
+            {"record_type": "device", "manufacturer": "Gardyn", "model": "IoT Hub", "model_family": ""},
+            {"record_type": "device", "manufacturer": "Siemens", "model": "S7", "model_family": ""},
+        ]
+        out = annotate_ot_advisories_with_assets(advisories, claroty)
+        assert out[0]["affected_assets"] == 2  # two Gardyn devices
+        assert out[0]["in_environment"] is True
+        assert out[0]["match_type"] == "product"
+
+    def test_cve_match_beats_product_match_count(self):
+        """When both signals fire, the larger asset count is used (max, not sum)."""
+        from src.collectors.claroty_collector import annotate_ot_advisories_with_assets
+
+        advisories = [{"advisory_id": "A-1", "vendor": "Gardyn", "cves": ["CVE-2026-13768"]}]
+        claroty = [
+            {"record_type": "vulnerability", "cve_ids": ["CVE-2026-13768"],
+             "affected_devices_count": 5, "affected_ot_devices_count": 4},
+            {"record_type": "device", "manufacturer": "Gardyn", "model": "Hub", "model_family": ""},
+        ]
+        out = annotate_ot_advisories_with_assets(advisories, claroty)
+        assert out[0]["affected_assets"] == 5  # max(cve=5, product=1)
+        assert out[0]["match_type"] == "cve+product"
+
+    def test_product_match_ignores_short_and_corp_tokens(self):
+        """Corp suffixes and short tokens don't create spurious matches."""
+        from src.collectors.claroty_collector import annotate_ot_advisories_with_assets
+
+        advisories = [{"advisory_id": "A-1", "vendor": "Acme Inc", "product": "", "cves": []}]
+        # A different vendor that only shares the stripped 'inc' / short tokens.
+        claroty = [{"record_type": "device", "manufacturer": "Globex Inc", "model": "X", "model_family": ""}]
+        out = annotate_ot_advisories_with_assets(advisories, claroty)
+        assert out[0]["in_environment"] is False
 
     def test_annotate_matches_cves_to_assets_and_orders(self):
         from src.collectors.claroty_collector import annotate_ot_advisories_with_assets

@@ -17,6 +17,7 @@ Authentication: HTTP bearer token (``claroty-api-token`` in Key Vault):
 """
 
 import logging
+import re
 from typing import Any
 
 from src.collectors.base import BaseCollector
@@ -36,6 +37,9 @@ _VULN_FIELDS = [
     "affected_ot_devices_count",
     "affected_confirmed_devices_count",
 ]
+
+# Device fields requested when product/vendor matching is enabled.
+_DEVICE_FIELDS = ["manufacturer", "model", "model_family", "product_code", "device_type"]
 
 
 class ClarotyCollector(BaseCollector):
@@ -106,7 +110,14 @@ class ClarotyCollector(BaseCollector):
                         break  # last page
                     offset += limit
 
-            logger.info(f"Retrieved {len(vulns)} environment-affecting vulnerabilities from Claroty")
+                logger.info(f"Retrieved {len(vulns)} environment-affecting vulnerabilities from Claroty")
+
+                # Optionally fetch the device inventory for product/vendor matching.
+                if collector_config.claroty_match_products:
+                    devices = await self._fetch_devices(client, base_url, headers)
+                    logger.info(f"Retrieved {len(devices)} device inventory records from Claroty")
+                    vulns.extend(devices)
+
             return CollectorResult(source=self.source_name, success=True, data=vulns, record_count=len(vulns))
 
         except NonRetryableHTTPError as e:
@@ -134,6 +145,7 @@ class ClarotyCollector(BaseCollector):
 
         return {
             "source": "Claroty",
+            "record_type": "vulnerability",
             "name": row.get("name", ""),
             "cve_ids": cve_ids,
             "affected_devices_count": _int(row.get("affected_devices_count")),
@@ -142,11 +154,50 @@ class ClarotyCollector(BaseCollector):
             "is_known_exploited": bool(row.get("is_known_exploited")),
         }
 
+    async def _fetch_devices(
+        self, client: HTTPClient, base_url: str, headers: dict[str, str]
+    ) -> list[dict[str, Any]]:
+        """Fetch the (non-retired) device inventory's manufacturer/model for product matching."""
+        url = f"{base_url}/api/v1/devices/"
+        limit = collector_config.claroty_device_page_limit
+        devices: list[dict[str, Any]] = []
+        offset = 0
+        for page in range(collector_config.claroty_device_max_pages):
+            body = {
+                "filter_by": {"field": "retired", "operation": "in", "value": [False]},
+                "fields": _DEVICE_FIELDS,
+                "offset": offset,
+                "limit": limit,
+                "include_count": page == 0,
+            }
+            try:
+                data = await client.post(url, headers=headers, json_data=body, expected_status=(200,))
+            except Exception as e:
+                logger.warning(f"Claroty device inventory fetch failed: {e}")
+                break
+            rows = data.get("devices", []) if isinstance(data, dict) else []
+            for row in rows:
+                devices.append(
+                    {
+                        "record_type": "device",
+                        "manufacturer": (row.get("manufacturer") or "").strip(),
+                        "model": (row.get("model") or "").strip(),
+                        "model_family": (row.get("model_family") or "").strip(),
+                        "product_code": (row.get("product_code") or "").strip(),
+                    }
+                )
+            if len(rows) < limit:
+                break
+            offset += limit
+        return devices
+
 
 def build_cve_asset_map(claroty_data: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
-    """Map each CVE (upper-cased) to the largest asset counts seen for it across rows."""
+    """Map each CVE (upper-cased) to the largest asset counts seen for it across vuln rows."""
     cve_map: dict[str, dict[str, int]] = {}
     for vuln in claroty_data or []:
+        if vuln.get("record_type") == "device":
+            continue
         total = vuln.get("affected_devices_count", 0)
         ot = vuln.get("affected_ot_devices_count", 0)
         for cve in vuln.get("cve_ids", []):
@@ -160,30 +211,77 @@ def build_cve_asset_map(claroty_data: list[dict[str, Any]]) -> dict[str, dict[st
     return cve_map
 
 
+# Corporate-form suffixes stripped before vendor-name comparison (kept minimal so real
+# name words like "Electric"/"Engineering"/"Systems" are NOT dropped).
+_CORP_STOPWORDS = {"inc", "corp", "corporation", "llc", "ltd", "co", "gmbh", "ag", "sa",
+                   "srl", "plc", "company", "the", "and", "a", "s"}
+
+
+def _name_tokens(text: str) -> set[str]:
+    """Normalize a vendor/product string to a set of meaningful (>=4 char) tokens."""
+    cleaned = re.sub(r"[^a-z0-9 ]", " ", (text or "").lower())
+    return {t for t in cleaned.split() if len(t) >= 4 and t not in _CORP_STOPWORDS}
+
+
+def _owned_manufacturer_tokens(claroty_data: list[dict[str, Any]]) -> dict[str, int]:
+    """Count environment devices per normalized manufacturer/model token."""
+    counts: dict[str, int] = {}
+    for rec in claroty_data or []:
+        if rec.get("record_type") != "device":
+            continue
+        tokens = _name_tokens(rec.get("manufacturer", "")) | _name_tokens(rec.get("model_family", ""))
+        for tok in tokens:
+            counts[tok] = counts.get(tok, 0) + 1
+    return counts
+
+
+def _product_match_count(advisory: dict[str, Any], owned_tokens: dict[str, int]) -> int:
+    """Devices owned whose manufacturer/model token overlaps the advisory's vendor/product.
+
+    Conservative: returns the max device count among overlapping tokens (not a sum), so
+    matching on a vendor with many devices does not inflate unrelated model overlaps.
+    """
+    if not owned_tokens:
+        return 0
+    adv_tokens = _name_tokens(advisory.get("vendor", "")) | _name_tokens(advisory.get("product", ""))
+    overlap = adv_tokens & set(owned_tokens)
+    return max((owned_tokens[t] for t in overlap), default=0)
+
+
 def annotate_ot_advisories_with_assets(
     ot_advisories: list[dict[str, Any]], claroty_data: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """Annotate each OT advisory with the count of environment assets its CVEs affect.
+    """Annotate each OT advisory with the count of environment assets it touches.
 
-    For each advisory, matches its CVEs against Claroty's environment vulnerabilities and
-    records the affected-asset count (``affected_assets`` / ``affected_ot_assets``),
-    the matched CVEs, and an ``in_environment`` flag. Advisories with matches are moved to
-    the front so the report leads with what actually touches the environment. Uses the max
-    per-CVE count (not sum) since one asset can carry several CVEs. Mutates in place and
-    returns the (re-ordered) list.
+    Two signals are folded into a single ``affected_assets`` count:
+      * CVE match  — the advisory's CVE is tracked on real devices in xDome (precise).
+      * Product match — you own the advisory's vendor/product, even if the CVE is not yet
+        linked to a device (broader, fuzzier vendor-name match).
+    The larger of the two counts wins (one asset can carry several CVEs, so summing would
+    double-count). Advisories that touch the environment are moved to the front so the
+    report leads with what matters. ``match_type`` records which signal drove the count.
+    Mutates in place and returns the (re-ordered) list.
     """
     cve_map = build_cve_asset_map(claroty_data)
+    owned_tokens = _owned_manufacturer_tokens(claroty_data)
     for advisory in ot_advisories or []:
         matched = [c for c in (advisory.get("cves") or []) if c.upper() in cve_map]
+        cve_assets = max((cve_map[c.upper()]["assets"] for c in matched), default=0)
+        cve_ot_assets = max((cve_map[c.upper()]["ot_assets"] for c in matched), default=0)
+        product_assets = _product_match_count(advisory, owned_tokens)
+
         advisory["matched_cves"] = matched
-        if matched:
-            advisory["affected_assets"] = max(cve_map[c.upper()]["assets"] for c in matched)
-            advisory["affected_ot_assets"] = max(cve_map[c.upper()]["ot_assets"] for c in matched)
-            advisory["in_environment"] = True
+        advisory["affected_assets"] = max(cve_assets, product_assets)
+        advisory["affected_ot_assets"] = cve_ot_assets
+        advisory["in_environment"] = advisory["affected_assets"] > 0
+        if cve_assets and product_assets:
+            advisory["match_type"] = "cve+product"
+        elif cve_assets:
+            advisory["match_type"] = "cve"
+        elif product_assets:
+            advisory["match_type"] = "product"
         else:
-            advisory["affected_assets"] = 0
-            advisory["affected_ot_assets"] = 0
-            advisory["in_environment"] = False
+            advisory["match_type"] = "none"
 
     # Lead with in-environment advisories, highest asset count first.
     ot_advisories.sort(key=lambda a: (a.get("in_environment", False), a.get("affected_assets", 0)), reverse=True)

@@ -77,6 +77,15 @@ class CollectorConfig:
     )
     claroty_vuln_page_limit: int = 500  # page size for /vulnerabilities/ (API max is generous)
     claroty_vuln_max_pages: int = 20  # cap pages fetched per run (rate-limit / safety guard)
+    # Product/vendor matching: also fetch the device inventory (manufacturer/model) so an
+    # advisory counts as "in environment" when you own the vendor's gear, even if xDome
+    # has not yet linked that advisory's CVE to a device. Fuzzier than CVE matching (vendor
+    # names differ between CISA advisories and Claroty); disable with CLAROTY_MATCH_PRODUCTS=false.
+    claroty_match_products: bool = field(
+        default_factory=lambda: os.environ.get("CLAROTY_MATCH_PRODUCTS", "true").lower() in {"1", "true", "yes"}
+    )
+    claroty_device_page_limit: int = 500
+    claroty_device_max_pages: int = 20
 
     # News-search (GDELT) collector — used mainly for historical/prior-quarter backfill,
     # where RSS feeds can no longer serve articles from a past window.
