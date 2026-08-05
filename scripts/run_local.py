@@ -1247,6 +1247,8 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
                 data_by_source.get("Intel471", []),
                 data_by_source.get("CrowdStrike", []),
             )
+            # Attach ICS/OT advisories for the weekly OT section (mirrors function_app.py).
+            result["ot_advisories"] = data_by_source.get("ICS-Advisory", [])
         else:
             intel471_all = data_by_source.get("Intel471", [])
             breach_data = [item for item in intel471_all if item.get("threat_type", "").upper() == "BREACH ALERT"]
@@ -1270,6 +1272,8 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
             data_by_source.get("CrowdStrike", []),
             data_by_source.get("OSINT", []),
         )
+        # Attach ICS/OT advisories for the weekly OT section (mirrors function_app.py).
+        result["ot_advisories"] = data_by_source.get("ICS-Advisory", [])
         print_status("Analysis complete", "success")
         return result, data_by_source
     else:
