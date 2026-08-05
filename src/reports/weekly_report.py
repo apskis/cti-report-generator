@@ -866,9 +866,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self.doc.add_paragraph()
             return
 
-        # Table: Advisory | Vendor / Product | Severity (CVSS) | CVEs
+        # Table: Advisory | Advisory / Affected | Severity (CVSS) | CVEs
         table = self.doc.add_table(rows=1, cols=4)
-        headers = ["Advisory", "Vendor / Product", "Severity (CVSS)", "CVEs"]
+        headers = ["Advisory", "Advisory / Affected", "Severity (CVSS)", "CVEs"]
         header_cells = table.rows[0].cells
         for i, header in enumerate(headers):
             cell = header_cells[i]
@@ -899,10 +899,18 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 adv_run.font.size = FontSizes.SUBTITLE
                 adv_run.font.color.rgb = BrandColors.TEXT_DARK
 
-            # Column 1: Vendor / Product
-            vendor = advisory.get("vendor", "Unknown")
+            # Column 1: Advisory title + affected vendor/product. The title is always
+            # present (even on the free tier, which omits vendor/product), so it leads;
+            # vendor/product are appended when the tier/data provides them.
+            title = advisory.get("title", "")
+            vendor = advisory.get("vendor", "")
             product = advisory.get("product") or advisory.get("products_affected") or ""
-            cells[1].text = f"{vendor} — {product}"[:70] if product else vendor[:70]
+            affected = " ".join(x for x in (vendor, product) if x and x != "Unknown").strip()
+            if title and affected:
+                col1 = f"{title} — {affected}"
+            else:
+                col1 = title or affected or "—"
+            cells[1].text = col1[:90]
 
             # Column 2: Severity (CVSS)
             severity = advisory.get("severity", "") or "N/A"
