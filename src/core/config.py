@@ -44,7 +44,13 @@ class CollectorConfig:
     ics_advisory_latest_path: str = field(
         default_factory=lambda: os.environ.get("ICS_ADVISORY_LATEST_PATH", "/advisories/latest")
     )
-    ics_advisory_lookback_days: int = 7
+    # Weekly ICS/OT window. Env-overridable because the RapidAPI free tier serves data
+    # ~1 month stale ("Free tier data is one month old"), which a 7-day window filters
+    # out entirely — widen this (e.g. 45) to surface free-tier advisories, or keep 7 on
+    # a PRO subscription that returns current advisories.
+    ics_advisory_lookback_days: int = field(
+        default_factory=lambda: int(os.environ.get("ICS_ADVISORY_LOOKBACK_DAYS", "7"))
+    )
     ics_advisory_quarterly_lookback_days: int = 90
     ics_advisory_max_results: int = 50
 

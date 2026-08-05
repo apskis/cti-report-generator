@@ -91,16 +91,24 @@ class ICSAdvisoryCollector(BaseCollector):
 
             records = self._extract_records(data)
             advisories = []
+            seen_ids: set[str] = set()
             for raw in records:
                 advisory = self._parse_advisory(raw)
                 if advisory is None:
                     continue
+                # The live feed returns duplicate rows for the same advisory — collapse
+                # them by advisory id so the OT table shows each advisory once.
+                advisory_id = advisory.get("advisory_id", "")
+                if advisory_id and advisory_id != "N/A":
+                    if advisory_id in seen_ids:
+                        continue
+                    seen_ids.add(advisory_id)
                 if not self._within_window(advisory, start_date, end_date):
                     continue
                 advisories.append(advisory)
 
-            # Most recent first, capped to keep the report section readable.
-            advisories.sort(key=lambda a: a.get("released") or "", reverse=True)
+            # Most recent first (release date, else last-updated), capped for readability.
+            advisories.sort(key=lambda a: a.get("released") or a.get("updated") or "", reverse=True)
             advisories = advisories[: collector_config.ics_advisory_max_results]
 
             logger.info(f"Retrieved {len(advisories)} ICS/OT advisories in the reporting window")
@@ -125,7 +133,10 @@ class ICSAdvisoryCollector(BaseCollector):
         if isinstance(data, list):
             return [r for r in data if isinstance(r, dict)]
         if isinstance(data, dict):
-            for key in ("data", "advisories", "results", "items"):
+            # "result" is the confirmed key from the live ICS[AP] response
+            # ({"error": false, "result": [...]}); the others are kept as fallbacks
+            # in case the listing/tier changes the envelope.
+            for key in ("result", "results", "data", "advisories", "items"):
                 value = data.get(key)
                 if isinstance(value, list):
                     return [r for r in value if isinstance(r, dict)]

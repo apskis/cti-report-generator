@@ -1192,9 +1192,53 @@ class TestICSAdvisoryCollector:
 
         c = ICSAdvisoryCollector(ics_credentials)
         assert c._extract_records([{"a": 1}]) == [{"a": 1}]
+        # "result" is the confirmed live envelope key ({"error": false, "result": [...]}).
+        assert c._extract_records({"error": False, "result": [{"a": 1}]}) == [{"a": 1}]
         assert c._extract_records({"data": [{"a": 1}]}) == [{"a": 1}]
         assert c._extract_records({"advisories": [{"b": 2}]}) == [{"b": 2}]
         assert c._extract_records({"nope": 1}) == []
+
+    @pytest.mark.asyncio
+    async def test_collect_dedups_live_envelope(self, ics_credentials):
+        """Live free-tier payload: 'result' envelope with duplicate rows -> unique advisories."""
+        from src.collectors import ics_advisory_collector as mod
+        from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
+
+        # Shape and duplicates mirror the real ICS[AP] BASIC-tier response.
+        live = {
+            "error": False,
+            "result": [
+                {"Last_Updated": "2026-07-02T00:00:00.000Z", "ICS-CERT_Number": "ICSA-26-183-03",
+                 "ICS-CERT_Advisory_Title": "Gardyn IoT Hub", "CVSS_Severity": "Critical"},
+                {"Last_Updated": "2026-07-02T00:00:00.000Z", "ICS-CERT_Number": "ICSA-26-183-03",
+                 "ICS-CERT_Advisory_Title": "Gardyn IoT Hub", "CVSS_Severity": "Critical"},
+                {"Last_Updated": "2026-07-02T00:00:00.000Z", "ICS-CERT_Number": "ICSA-26-183-01",
+                 "ICS-CERT_Advisory_Title": "ST Engineering iDirect", "CVSS_Severity": "High"},
+            ],
+            "message": "You are using the BASIC free tier...",
+        }
+
+        class _FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, url, headers=None, params=None):
+                return live
+
+        collector = ICSAdvisoryCollector(
+            ics_credentials, collection_window=(datetime(2026, 6, 1), datetime(2026, 7, 31))
+        )
+        with patch.object(mod, "HTTPClient", lambda *a, **k: _FakeClient()):
+            result = await collector.collect()
+
+        assert result.success is True
+        # 3 raw rows (one duplicate) -> 2 unique advisories, and the free-tier
+        # date field (Last_Updated only) is used for the window check.
+        assert result.record_count == 2
+        assert {a["advisory_id"] for a in result.data} == {"ICSA-26-183-03", "ICSA-26-183-01"}
 
     def test_parse_advisory_primary_and_alt_keys(self, ics_credentials, ics_api_response):
         from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
