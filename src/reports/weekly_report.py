@@ -36,7 +36,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
     - Vulnerability Exposure (CVE table with weeks tracked)
     - Sector Threat Activity (threat actor table)
     - Exploitation Indicators
-    - Recommended Actions
     - Footer with contact info and data sources
     """
 
@@ -92,7 +91,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._add_sector_threat_activity(analysis_result)
             self._add_active_campaigns(analysis_result)
             self._add_industry_incidents(analysis_result)
-            self._add_recommended_actions(analysis_result)
             self._add_resources_section(analysis_result)
             self._add_footer()
 
@@ -1573,48 +1571,6 @@ class WeeklyReportGenerator(BaseReportGenerator):
             return "Unauthorized Access"
         else:
             return incident_type  # Return as-is if no mapping
-
-    def _add_recommended_actions(self, analysis_result: dict[str, Any]) -> None:
-        """Add recommended actions heading.
-
-        Content is populated by the carryover table injection in the pipeline.
-        Falls back to bullet list only if carryover tracking is disabled.
-        """
-        logger.info("Adding Recommended Actions section")
-
-        h = self.doc.add_heading("Recommended Actions", level=1)
-        self._style_heading_1(h)
-
-        # If carryover tracking is active, skip bullets — the pipeline injects
-        # the recommendations table after generate() returns.
-        if getattr(self, "_carryover_active", False):
-            self.doc.add_paragraph()
-            return
-
-        recommendations = analysis_result.get("recommendations", [])
-
-        if recommendations:
-            for rec in recommendations:
-                para = self.doc.add_paragraph(rec, style="List Bullet")
-                for run in para.runs:
-                    run.font.size = FontSizes.BODY_SMALL
-
-                    lower_rec = rec.lower()
-                    if any(word in lower_rec for word in ["urgent", "critical", "immediate", "persistent"]):
-                        run.font.bold = True
-        else:
-            default_recs = [
-                "Review scan results for exposed vulnerabilities; validate asset ownership and remediation timelines",
-                "Brief development teams on current threat campaigns",
-                "Verify endpoint protection has latest behavioral IOAs enabled",
-                "Confirm SIEM is receiving logs from affected systems",
-            ]
-            for rec in default_recs:
-                para = self.doc.add_paragraph(rec, style="List Bullet")
-                for run in para.runs:
-                    run.font.size = FontSizes.BODY_SMALL
-
-        self.doc.add_paragraph()
 
     def _build_citation_map(self, analysis_result: dict[str, Any]) -> dict[str, int]:
         """Build a mapping of OSINT source titles/URLs to their final citation numbers."""

@@ -2,8 +2,6 @@
 Tests for report generators.
 """
 
-from datetime import datetime
-
 import pytest
 
 from src.reports.base import BrandColors, FontSizes
@@ -230,12 +228,11 @@ class TestWeeklyReportGenerator:
         assert "Summary" in text_content
         assert "This week we identified 5 new vulnerabilities" in text_content
 
-    def test_document_contains_recommendations(self, generator, sample_analysis_result):
-        """Document should contain recommendations."""
+    def test_document_omits_recommended_actions(self, generator, sample_analysis_result):
+        """The weekly report no longer includes a Recommended Actions section."""
         doc = generator.generate(sample_analysis_result)
         text_content = _get_document_text(doc)
-        assert "Recommended Actions" in text_content
-        assert "Patch CVE-2026-1234" in text_content
+        assert "Recommended Actions" not in text_content
 
 
 class TestBaseReportGenerator:
