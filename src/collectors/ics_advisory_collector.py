@@ -11,7 +11,9 @@ control systems relevant to organizations with plant-floor or lab-instrument
 environments.
 
 Authentication: RapidAPI key via the ``x-rapidapi-key`` header (stored in Key Vault
-as ``rapidapi-ics-key``). The ``x-rapidapi-host`` header identifies the API.
+as ``rapidapi-ics-key``). The ``x-rapidapi-host`` header identifies the API; its value
+comes from the optional ``rapidapi-ics-host`` Key Vault secret when present, else the
+configured default (so the endpoint can be repointed without a code change).
 """
 
 import logging
@@ -70,7 +72,10 @@ class ICSAdvisoryCollector(BaseCollector):
             logger.warning("RapidAPI ICS key not provided, skipping ICS/OT advisories")
             return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
 
-        host = collector_config.ics_advisory_host
+        # Host may be supplied as a Key Vault secret (rapidapi-ics-host); otherwise fall
+        # back to the configured default. A secret lets the endpoint be rotated/repointed
+        # without a code or app-setting change.
+        host = self.credentials.get("rapidapi_ics_host") or collector_config.ics_advisory_host
         url = f"https://{host}{collector_config.ics_advisory_latest_path}"
         headers = {
             "x-rapidapi-key": api_key,

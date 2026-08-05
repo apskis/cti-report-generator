@@ -1266,6 +1266,112 @@ class TestICSAdvisoryCollector:
         assert ids == {"ICSA-26-100-01", "ICSMA-26-101-02"}
 
 
+class TestICSAdvisoryWiring:
+    """Regression tests locking the OT pipeline wiring.
+
+    The weekly handler (function_app.py) keys off the collector's ``source_name``
+    literal (``"ICS-Advisory"``) to route advisories into ``analysis["ot_advisories"]``,
+    which the report's OT section renders. A rename of ``source_name`` (or the handler
+    key) would silently drop the OT data with no error — these tests fail loudly first.
+    """
+
+    # The single source of truth the whole OT path agrees on.
+    SOURCE_KEY = "ICS-Advisory"
+
+    def test_source_name_is_stable(self):
+        from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
+
+        # If this changes, function_app.py's data_by_source.get(...) key must change too.
+        assert ICSAdvisoryCollector({}).source_name == self.SOURCE_KEY
+
+    @pytest.mark.asyncio
+    async def test_collect_all_keys_result_by_source_name(self):
+        """collect_all must expose the ICS result under exactly SOURCE_KEY."""
+        from src.collectors import ics_advisory_collector as mod
+        from src.collectors.registry import collect_all
+
+        sample = [
+            {
+                "ICS-CERT_Number": "ICSA-26-100-01",
+                "ICS-CERT_Advisory_Title": "PLC overflow",
+                "Vendor": "ExampleVendor",
+                "Product": "PLC 3000",
+                "CVSS_Severity": "Critical",
+                "Cumulative_CVSS": "9.8",
+                "CVE": "CVE-2026-1111",
+                "Original_Release_Date": "2026-08-04",
+            }
+        ]
+
+        class _FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, url, headers=None, params=None):
+                return sample
+
+        with patch.object(mod, "HTTPClient", lambda *a, **k: _FakeClient()):
+            results = await collect_all(
+                {"rapidapi_ics_key": "k"},
+                report_type="weekly",
+                collection_window=(datetime(2026, 8, 1), datetime(2026, 8, 5)),
+                collector_names=["ics_advisory"],
+            )
+
+        assert self.SOURCE_KEY in results
+        assert results[self.SOURCE_KEY].success is True
+        assert results[self.SOURCE_KEY].record_count == 1
+
+    def test_function_app_reads_matching_key(self):
+        """The weekly handler must read the same key and store it as ot_advisories."""
+        import pathlib
+
+        repo_root = pathlib.Path(__file__).resolve().parent.parent
+        source = (repo_root / "function_app.py").read_text(encoding="utf-8")
+        assert f'data_by_source.get("{self.SOURCE_KEY}"' in source
+        assert 'analysis["ot_advisories"]' in source
+
+    def test_report_renders_ot_advisories_key(self):
+        """The report consumes the same analysis key the handler writes."""
+        import pathlib
+
+        repo_root = pathlib.Path(__file__).resolve().parent.parent
+        source = (repo_root / "src" / "reports" / "weekly_report.py").read_text(encoding="utf-8")
+        assert 'analysis_result.get("ot_advisories"' in source
+
+    @pytest.mark.asyncio
+    async def test_host_from_secret_overrides_config_default(self):
+        """A rapidapi_ics_host credential (from Key Vault) is used over the config default."""
+        from src.collectors import ics_advisory_collector as mod
+        from src.collectors.ics_advisory_collector import ICSAdvisoryCollector
+
+        seen = {}
+
+        class _FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, url, headers=None, params=None):
+                seen["url"] = url
+                seen["host_header"] = headers["x-rapidapi-host"]
+                return []
+
+        collector = ICSAdvisoryCollector(
+            {"rapidapi_ics_key": "k", "rapidapi_ics_host": "custom-host.example.com"}
+        )
+        with patch.object(mod, "HTTPClient", lambda *a, **k: _FakeClient()):
+            await collector.collect()
+
+        assert seen["host_header"] == "custom-host.example.com"
+        assert seen["url"].startswith("https://custom-host.example.com/")
+
+
 class TestBreachHibpFlag:
     def test_hibp_off_by_default_on_when_flag_set(self, mock_credentials, monkeypatch):
         from types import SimpleNamespace

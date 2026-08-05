@@ -112,7 +112,7 @@ def get_all_api_keys(vault_url: str | None = None) -> dict[str, str]:
         "nvd": ["nvd_key"],
         "intel471": ["intel471_email", "intel471_key"],
         "crowdstrike": ["crowdstrike_id", "crowdstrike_secret", "crowdstrike_base_url"],
-        "ics_advisory": ["rapidapi_ics_key"],
+        "ics_advisory": ["rapidapi_ics_key", "rapidapi_ics_host"],
     }
 
     # Always required (not collector-specific)
@@ -133,6 +133,7 @@ def get_all_api_keys(vault_url: str | None = None) -> dict[str, str]:
         "crowdstrike_secret": "crowdstrike-client-secret",
         "crowdstrike_base_url": "crowdstrike-base-url",
         "rapidapi_ics_key": "rapidapi-ics-key",
+        "rapidapi_ics_host": "rapidapi-ics-host",
     }
 
     # Add required secrets
@@ -153,8 +154,12 @@ def get_all_api_keys(vault_url: str | None = None) -> dict[str, str]:
                     secrets_to_fetch[key_name] = secrets_map[key_name]
 
     # Optional secrets: fetched if present, but a missing value disables the
-    # dependent collector rather than failing the whole run. (None currently.)
-    optional_secrets: set[str] = set()
+    # dependent collector rather than failing the whole run.
+    #   - rapidapi_ics_key: missing -> ICS/OT collector self-disables (empty OT section).
+    #   - rapidapi_ics_host: missing -> collector falls back to the configured default host.
+    # This keeps a report generating even when the ICS[AP] secrets have not been
+    # provisioned yet, instead of failing the entire run at credential fetch.
+    optional_secrets: set[str] = {"rapidapi_ics_key", "rapidapi_ics_host"}
 
     api_keys = {}
 

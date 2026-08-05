@@ -80,3 +80,22 @@ class TestGetAllApiKeys:
 
         with pytest.raises(RuntimeError, match="Failed to retrieve required API key"):
             get_all_api_keys(VAULT_URL)
+
+    @patch("src.core.config.get_enabled_collectors", return_value=["ics_advisory"])
+    @patch("src.core.keyvault.get_secret")
+    @patch("src.core.config.AzureConfig.get_key_vault_url", return_value=VAULT_URL)
+    def test_missing_ics_secrets_degrade_gracefully(self, mock_vault_url, mock_get_secret, mock_enabled):
+        """A missing rapidapi-ics-key/host must NOT fail the run — the ICS/OT collector
+        self-disables instead. Regression guard for the optional_secrets set."""
+
+        def side_effect(vault_url, secret_name):
+            if secret_name in ("rapidapi-ics-key", "rapidapi-ics-host"):
+                raise ResourceNotFoundError("not found")
+            return "test-value"
+
+        mock_get_secret.side_effect = side_effect
+
+        # Does not raise; optional ICS secrets come back empty.
+        keys = get_all_api_keys(VAULT_URL)
+        assert keys["rapidapi_ics_key"] == ""
+        assert keys["rapidapi_ics_host"] == ""
