@@ -240,6 +240,12 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
         # Claroty-first view: the environment's top OT exposure by affected device count,
         # independent of whether any ICS advisory currently covers it.
         analysis["ot_environment_exposure"] = await fetch_environment_exposure(credentials)
+        # CISA KEV: flag which OT CVEs are used in ransomware campaigns (both tables).
+        from src.enrichment.kev import annotate_records_with_kev, fetch_kev_map
+
+        kev_map = await fetch_kev_map()
+        annotate_records_with_kev(analysis["ot_advisories"], kev_map, "cves")
+        annotate_records_with_kev(analysis["ot_environment_exposure"], kev_map, "cve_ids")
 
         logger.info("Saving analysis context for historical tracking...")
         if not await asyncio.to_thread(context_mgr.save_analysis_context, "weekly", date.today(), analysis):

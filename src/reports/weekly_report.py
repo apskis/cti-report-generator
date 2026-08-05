@@ -934,11 +934,13 @@ class WeeklyReportGenerator(BaseReportGenerator):
             cvss_run.font.size = FontSizes.SUBTITLE
             cvss_run.font.color.rgb = self._cvss_color(cvss)
 
-            # Column 4: Known Exploited (bold red "Yes" is the escalation signal)
+            # Column 4: Known Exploited (bold red "Yes" is the escalation signal).
+            # Claroty's is_known_exploited already reflects CISA KEV; in_cisa_kev is a
+            # belt-and-braces fallback from our own KEV fetch.
             cells[4].text = ""
             kev_para = cells[4].paragraphs[0]
             kev_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            if vuln.get("is_known_exploited"):
+            if vuln.get("is_known_exploited") or vuln.get("in_cisa_kev"):
                 kev_run = kev_para.add_run("Yes")
                 kev_run.font.bold = True
                 kev_run.font.color.rgb = BrandColors.RED_HIGH_RISK
@@ -946,6 +948,16 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 kev_run = kev_para.add_run("—")
                 kev_run.font.color.rgb = BrandColors.GRAY_MEDIUM
             kev_run.font.size = FontSizes.SUBTITLE
+
+            # Ransomware escalation (CISA KEV knownRansomwareCampaignUse) on a second line.
+            if vuln.get("known_ransomware"):
+                rw_para = cells[4].add_paragraph()
+                rw_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                rw_para.paragraph_format.space_before = Pt(0)
+                rw_run = rw_para.add_run("Ransomware")
+                rw_run.font.size = FontSizes.FOOTNOTE
+                rw_run.font.bold = True
+                rw_run.font.color.rgb = BrandColors.RED_HIGH_RISK
 
             for idx in range(5):
                 self._clear_cell_shading(cells[idx])
@@ -957,7 +969,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
         table.columns[3].width = Inches(0.8)
         table.columns[4].width = Inches(1.2)
 
-        kev_count = sum(1 for v in exposure if v.get("is_known_exploited"))
+        kev_count = sum(1 for v in exposure if v.get("is_known_exploited") or v.get("in_cisa_kev"))
+        rw_count = sum(1 for v in exposure if v.get("known_ransomware"))
         caption = self.doc.add_paragraph()
         caption.space_before = Pt(4)
         caption.space_after = Pt(8)
@@ -966,7 +979,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
             f"(Claroty xDome)."
         )
         if kev_count:
-            caption_text += f" {kev_count} flagged as known-exploited."
+            caption_text += f" {kev_count} known-exploited (CISA KEV)"
+            caption_text += f", {rw_count} ransomware-linked." if rw_count else "."
         caption_run = caption.add_run(caption_text)
         caption_run.font.size = Pt(7)
         caption_run.font.italic = True
@@ -1093,6 +1107,18 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 cve_text = "—"
             cells[3].text = cve_text
 
+            # CISA KEV ransomware marker: the advisory table has no dedicated exploited
+            # column, so flag ransomware-linked CVEs inline beneath the CVE list. This is
+            # the "patch now" signal for OT — ransomware is a subset of KEV, so it also
+            # implies active exploitation.
+            if advisory.get("known_ransomware"):
+                rw_para = cells[3].add_paragraph()
+                rw_para.paragraph_format.space_before = Pt(0)
+                rw_run = rw_para.add_run("Known ransomware (CISA KEV)")
+                rw_run.font.size = FontSizes.FOOTNOTE
+                rw_run.font.bold = True
+                rw_run.font.color.rgb = BrandColors.RED_HIGH_RISK
+
             # Column 4: Env. Assets — count of real environment assets whose CVEs match
             # this advisory (from Claroty). A non-zero count is the key "this affects us"
             # signal, so it is bold red; unmatched advisories show a gray dash.
@@ -1152,6 +1178,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
             caption_text += (
                 f" Env. Assets = devices affected in your environment (Claroty xDome); {matched} advisory(ies) matched."
             )
+        rw_advisories = sum(1 for a in advisories if a.get("known_ransomware"))
+        if rw_advisories:
+            caption_text += f" {rw_advisories} advisory(ies) reference CISA KEV ransomware-linked CVEs."
         caption_run = caption.add_run(caption_text)
         caption_run.font.size = Pt(7)
         caption_run.font.italic = True

@@ -95,6 +95,22 @@ class CollectorConfig:
     # the real exposure and does not depend on the stale free-tier advisories overlapping.
     claroty_env_exposure_limit: int = 10
 
+    # CISA KEV (Known Exploited Vulnerabilities) — a free, keyless public JSON feed. Claroty
+    # already flags KEV membership (is_known_exploited) but not the catalog's ransomware-use
+    # marker, so we fetch KEV once per run to add a "known ransomware" flag to the OT tables.
+    # Best-effort: any failure degrades to no annotation. Disable with KEV_ENRICH=false.
+    kev_enrich_enabled: bool = field(
+        default_factory=lambda: os.environ.get("KEV_ENRICH", "true").lower() in {"1", "true", "yes"}
+    )
+    kev_feed_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "KEV_FEED_URL",
+            "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+        )
+    )
+    kev_timeout_seconds: int = 15
+    kev_max_retries: int = 1
+
     # News-search (GDELT) collector — used mainly for historical/prior-quarter backfill,
     # where RSS feeds can no longer serve articles from a past window.
     news_search_max_records: int = 40

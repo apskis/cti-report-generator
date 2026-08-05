@@ -994,3 +994,64 @@ class TestOTEnvironmentExposure:
         assert gen.doc.tables == []
         # No heading/intro either — the whole subsection is skipped when unavailable.
         assert gen.doc.paragraphs == [] or all(not p.text.strip() for p in gen.doc.paragraphs)
+
+    def test_ransomware_flag_marks_env_exposure_row(self):
+        gen = self._gen()
+        gen._add_ot_environment_exposure({
+            "ot_environment_exposure": [
+                {"name": "RCE", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
+                 "affected_devices_count": 4088, "is_known_exploited": True,
+                 "known_ransomware": True},
+            ]
+        })
+        text = "\n".join(c.text for row in gen.doc.tables[0].rows for c in row.cells)
+        assert "Ransomware" in text
+
+    def test_kev_fallback_marks_known_exploited_without_claroty_flag(self):
+        # in_cisa_kev alone (Claroty flag absent) still renders "Yes" in Known Exploited.
+        gen = self._gen()
+        gen._add_ot_environment_exposure({
+            "ot_environment_exposure": [
+                {"name": "RCE", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
+                 "affected_devices_count": 500, "is_known_exploited": False,
+                 "in_cisa_kev": True, "known_ransomware": False},
+            ]
+        })
+        kev_cell = gen.doc.tables[0].rows[1].cells[4]
+        assert "Yes" in kev_cell.text
+
+
+class TestOTAdvisoryRansomwareMarker:
+    """The ICS advisory table gains a CISA KEV ransomware marker (its only exploited signal)."""
+
+    def _gen(self):
+        from docx import Document
+
+        gen = WeeklyReportGenerator.__new__(WeeklyReportGenerator)
+        gen.doc = Document()
+        return gen
+
+    def test_advisory_cve_cell_shows_ransomware_marker(self):
+        gen = self._gen()
+        gen._add_ot_advisories({
+            "ot_advisories": [
+                {"advisory_id": "ICSA-26-001", "title": "PLC flaw", "cves": ["CVE-2026-18019"],
+                 "severity": "critical", "cvss": 9.8, "affected_assets": 3,
+                 "claroty_status": "ok", "known_ransomware": True},
+            ]
+        })
+        # The advisory table is the last table rendered in the section.
+        text = "\n".join(c.text for t in gen.doc.tables for row in t.rows for c in row.cells)
+        assert "Known ransomware (CISA KEV)" in text
+
+    def test_no_marker_when_not_ransomware(self):
+        gen = self._gen()
+        gen._add_ot_advisories({
+            "ot_advisories": [
+                {"advisory_id": "ICSA-26-002", "title": "HMI flaw", "cves": ["CVE-2026-18015"],
+                 "severity": "high", "cvss": 7.1, "affected_assets": 0,
+                 "claroty_status": "ok", "known_ransomware": False},
+            ]
+        })
+        text = "\n".join(c.text for t in gen.doc.tables for row in t.rows for c in row.cells)
+        assert "ransomware" not in text.lower()

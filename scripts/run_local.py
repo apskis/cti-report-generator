@@ -1066,6 +1066,7 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
     from src.collectors.claroty_collector import fetch_and_annotate, fetch_environment_exposure
     from src.core.config import analysis_config, azure_config, get_enabled_collectors
     from src.core.keyvault import get_all_api_keys
+    from src.enrichment.kev import annotate_records_with_kev, fetch_kev_map
 
     # Get credentials
     vault_url = azure_config.get_key_vault_url()
@@ -1200,6 +1201,9 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
             result["ot_advisories"] = data_by_source.get("ICS-Advisory", [])
             await fetch_and_annotate(result["ot_advisories"], credentials)
             result["ot_environment_exposure"] = await fetch_environment_exposure(credentials)
+            _kev_map = await fetch_kev_map()
+            annotate_records_with_kev(result["ot_advisories"], _kev_map, "cves")
+            annotate_records_with_kev(result["ot_environment_exposure"], _kev_map, "cve_ids")
         else:
             intel471_all = data_by_source.get("Intel471", [])
             breach_data = [item for item in intel471_all if item.get("threat_type", "").upper() == "BREACH ALERT"]
@@ -1227,6 +1231,9 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
         result["ot_advisories"] = data_by_source.get("ICS-Advisory", [])
         await fetch_and_annotate(result["ot_advisories"], credentials)
         result["ot_environment_exposure"] = await fetch_environment_exposure(credentials)
+        _kev_map = await fetch_kev_map()
+        annotate_records_with_kev(result["ot_advisories"], _kev_map, "cves")
+        annotate_records_with_kev(result["ot_environment_exposure"], _kev_map, "cve_ids")
         print_status("Analysis complete", "success")
         return result, data_by_source
     else:

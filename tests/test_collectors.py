@@ -1753,6 +1753,94 @@ class TestClarotyCollector:
         assert out[0]["in_environment"] is False and out[0]["affected_assets"] == 0
 
 
+class TestKevEnrichment:
+    """Tests for the CISA KEV ransomware-flag enrichment of the OT tables."""
+
+    _FEED = {
+        "vulnerabilities": [
+            {"cveID": "CVE-2026-18019", "knownRansomwareCampaignUse": "Known",
+             "dueDate": "2026-09-01", "dateAdded": "2026-08-01"},
+            {"cveID": "CVE-2026-18015", "knownRansomwareCampaignUse": "Unknown",
+             "dueDate": "2026-09-15", "dateAdded": "2026-08-02"},
+        ]
+    }
+
+    class _FakeClient:
+        def __init__(self, payload):
+            self._payload = payload
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url, headers=None, params=None, auth=None, expected_status=(200,)):
+            return self._payload
+
+    @pytest.mark.asyncio
+    async def test_fetch_kev_map_parses_ransomware_flag(self):
+        from src.enrichment import kev as mod
+
+        with patch.object(mod, "HTTPClient", lambda *a, **k: self._FakeClient(self._FEED)):
+            m = await mod.fetch_kev_map()
+
+        assert m["CVE-2026-18019"]["ransomware"] is True
+        assert m["CVE-2026-18015"]["ransomware"] is False
+        assert m["CVE-2026-18019"]["due_date"] == "2026-09-01"
+
+    @pytest.mark.asyncio
+    async def test_fetch_kev_map_disabled_returns_empty(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from src.enrichment import kev as mod
+
+        monkeypatch.setattr(mod, "collector_config", SimpleNamespace(kev_enrich_enabled=False))
+        assert await mod.fetch_kev_map() == {}
+
+    @pytest.mark.asyncio
+    async def test_fetch_kev_map_failure_returns_empty(self):
+        from src.enrichment import kev as mod
+
+        class _Failing(self._FakeClient):
+            async def get(self, *a, **k):
+                raise TimeoutError()
+
+        with patch.object(mod, "HTTPClient", lambda *a, **k: _Failing(None)):
+            assert await mod.fetch_kev_map() == {}
+
+    def test_annotate_sets_flags_by_cve_field(self):
+        from src.enrichment.kev import annotate_records_with_kev
+
+        kev_map = {
+            "CVE-2026-18019": {"ransomware": True},
+            "CVE-2026-18015": {"ransomware": False},
+        }
+        # Advisory uses "cves"; env-exposure uses "cve_ids". Case-insensitive matching.
+        advisories = [
+            {"advisory_id": "A-1", "cves": ["cve-2026-18019"]},
+            {"advisory_id": "A-2", "cves": ["CVE-2026-18015"]},
+            {"advisory_id": "A-3", "cves": ["CVE-2099-0"]},
+        ]
+        annotate_records_with_kev(advisories, kev_map, "cves")
+        assert advisories[0]["known_ransomware"] is True
+        assert advisories[0]["in_cisa_kev"] is True
+        assert advisories[0]["kev_ransomware_cves"] == ["CVE-2026-18019"]
+        assert advisories[1]["known_ransomware"] is False and advisories[1]["in_cisa_kev"] is True
+        assert advisories[2]["known_ransomware"] is False and advisories[2]["in_cisa_kev"] is False
+
+        vulns = [{"cve_ids": ["CVE-2026-18019"]}]
+        annotate_records_with_kev(vulns, kev_map, "cve_ids")
+        assert vulns[0]["known_ransomware"] is True
+
+    def test_annotate_empty_map_is_noop(self):
+        from src.enrichment.kev import annotate_records_with_kev
+
+        advisories = [{"advisory_id": "A-1", "cves": ["CVE-2026-18019"]}]
+        annotate_records_with_kev(advisories, {}, "cves")
+        assert "known_ransomware" not in advisories[0]
+
+
 class TestBreachHibpFlag:
     def test_hibp_off_by_default_on_when_flag_set(self, mock_credentials, monkeypatch):
         from types import SimpleNamespace
