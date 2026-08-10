@@ -34,6 +34,7 @@ from src.agents.exploit_enrichment import (
     build_exploited_by,
     fetch_epss_scores,
     fetch_kev_cves,
+    get_recently_added_kev,
 )
 from src.core.config import analysis_config, customer_profile, industry_filter_config
 
@@ -267,6 +268,9 @@ class ThreatAnalystAgent:
                     intel471_data,
                     crowdstrike_data,
                 )
+                analysis_result = self._strip_non_cve_ids(
+                    analysis_result, cve_data, kev_lookup, intel471_data, crowdstrike_data, osint_data
+                )
                 return analysis_result
             else:
                 return self._get_default_analysis(
@@ -357,6 +361,9 @@ class ThreatAnalystAgent:
                     epss_lookup,
                     intel471_data,
                     crowdstrike_data,
+                )
+                analysis_result = self._strip_non_cve_ids(
+                    analysis_result, cve_data, kev_lookup, intel471_data, crowdstrike_data, osint_data
                 )
                 return analysis_result
             else:
@@ -553,17 +560,27 @@ Cross-reference with CrowdStrike actors when possible to provide:
 OSINT - CURATED PUBLIC INTELLIGENCE ({len(osint_data)} articles from vetted sources):
 {_sanitize_for_prompt(osint_articles)}
 
-Use these OSINT articles to:
-1. INDUSTRY INCIDENTS (PRIMARY USE): Extract company breaches from article titles
+CRITICAL - OSINT articles represent real threats from the past 7 days. You MUST incorporate relevant findings into the report body:
+
+1. INDUSTRY INCIDENTS: Extract EVERY company breach mentioned (named victim organizations)
    - Look for patterns like "Company X breach", "Organization Y hacked", "Ransomware hits Z"
    - Be generous with extraction - even partial company names are valuable
-   - Example: "GitHub confirms data breach" → organization: "GitHub", incident_type: "Breach"
    - These go in industry_incidents array with osint_citation_number
-2. Provide additional context for CVEs or threat actors mentioned
-3. Identify emerging threats not yet in commercial feeds
-4. Track peer incidents (company breaches) for Industry Incidents section
-5. ONLY include articles in osint_sources_used if you actually reference them in your analysis
-6. Do NOT list all 30 articles - be selective and only cite those that add value
+
+2. CVE ANALYSIS: If an article discusses active exploitation of a CVE, add it to cve_analysis
+   - Example: "WordPress Pre-Auth XSS" → add the CVE to cve_analysis with actively_exploited=true
+   - Example: "Metabase Zero-Day Exploited" → add the CVE with exploitation context
+
+3. ACTIVE CAMPAIGNS: If an article describes a campaign (supply chain attack, malware distribution, social engineering at scale), add it to active_campaigns
+   - Example: "800 Malicious npm Packages" → active campaign entry with TTPs
+   - Example: "UNC6671 Vishing Attacks" → active campaign with social engineering TTPs
+
+4. APT ACTIVITY: If an article names a specific threat actor, include in apt_activity
+   - Example: "CORDIAL SPIDER" using vishing → apt_activity entry
+
+5. EXECUTIVE SUMMARY: Reference the most impactful OSINT findings with inline citations [N]
+
+RULE: If you include an article in osint_sources_used, its findings MUST appear in at least one analysis section (cve_analysis, apt_activity, active_campaigns, industry_incidents, or executive_summary). An article that only appears in the source list without contributing to any section is WASTED INTELLIGENCE.
 """
 
         return f"""Analyze this threat intelligence data and provide a comprehensive report.
@@ -580,6 +597,7 @@ KEY PRINCIPLES:
 - ALWAYS mention peer incidents in executive summary - leadership cares about real-world breaches
 - Extract and highlight company breaches from OSINT - these show the active threat landscape
 - This report helps leadership understand current threats in the wild
+- GROUNDING RULE: Every CVE ID in cve_analysis MUST exist in the RAW DATA below. Do NOT invent, recall from memory, or include advisory IDs (PYSEC-*, MAL-*, GHSA-*, OSV-*) — only standard CVE-YYYY-NNNNN identifiers present in the provided source records are permitted.
 
 DATA SUMMARY (7-DAY COLLECTION WINDOW):
 - CVEs: {len(cve_data)} records (from NVD - published in past 7 days)
@@ -634,7 +652,7 @@ Please provide your analysis in the following JSON format:
   ],
   "cve_analysis": [
     {{
-      "cve_id": "CVE-XXXX-XXXX",
+      "cve_id": "CVE-XXXX-XXXX (MUST be standard CVE format: CVE-YYYY-NNNNN. Do NOT include PYSEC, MAL, GHSA, OSV, or any other advisory identifier — ONLY CVE-prefixed IDs that appear in the provided source data.)",
       "severity": "Critical/High/Medium/Low",
       "description": "Brief technical description of the vulnerability",
       "impact": "Potential impact on genomics/biotech/manufacturing operations",
@@ -705,16 +723,24 @@ Please provide your analysis in the following JSON format:
       "date": "Article publish date if available",
       "citation_number": 1
     }}
+  ],
+  "questions_to_ask": [
+    {{
+      "team": "Team or domain name (e.g., 'Identity and Access Management', 'Security Operations Center', 'Cloud Security', 'Third Party Risk', 'Vulnerability Management', 'Network Security', 'Leadership')",
+      "question": "A specific, actionable question that this team should be asking themselves based on the threats identified this week. Reference specific findings from the report. Include inline citation numbers [1][2] where relevant."
+    }}
   ]
 }}
 
 CRITICAL - OSINT Source Selection and Usage:
-- ONLY include articles in osint_sources_used if you ACTUALLY REFERENCE them in your analysis
-- DO NOT include all 30 articles - be highly selective (aim for 5-10 max)
-- Each article must be ACTIVELY USED for one of these purposes:
-  1. Industry incident extraction (company breach mentioned in executive summary or incidents table)
-  2. CVE context (article discusses exploitation of a specific CVE you're analyzing)
-  3. Threat actor context (article provides intelligence about an APT group you're profiling)
+- Every relevant OSINT article should contribute findings to the report body FIRST, then be cited
+- Aim for 5-10 OSINT sources, but EVERY one must have its findings in a report section
+- Each article must CONTRIBUTE FINDINGS to one or more of these sections:
+  1. industry_incidents: Company breach extracted (with osint_citation_number)
+  2. cve_analysis: CVE exploitation evidence or context
+  3. active_campaigns: Campaign/operation described in the article
+  4. apt_activity: Threat actor intelligence
+  5. executive_summary: Key finding referenced with inline citation [N]
 - If you list an OSINT source, it MUST appear as a citation [1], [2] in:
   * Executive summary text (inline citations)
   * Industry incidents table (osint_citation_number column)
@@ -722,6 +748,15 @@ CRITICAL - OSINT Source Selection and Usage:
 - WRONG: Listing 7 OSINT sources but none are cited anywhere in the report
 - RIGHT: Listing 5 OSINT sources, all cited in executive summary or incidents table
 - If an article provides no unique value or you don't reference it, DO NOT include it in osint_sources_used
+
+CRITICAL - Questions to Ask (Team-Specific Prompts):
+- Generate 4-6 questions that specific teams should be asking based on THIS WEEK's findings
+- Each question must be directly tied to a specific threat, CVE, campaign, or incident from the report
+- Target different teams: Identity and Access Management, Security Operations Center, Cloud Security, Third Party Risk, Vulnerability Management, Network Security, Leadership, Service Desk and Security Awareness
+- Questions should be specific and actionable, not generic security platitudes
+- Include citation numbers [1][2] referencing relevant OSINT sources where applicable
+- Example: If a credential-stuffing campaign was identified, ask IAM: "Can we confirm that no password reset or MFA method change happens on the same call it is requested in?"
+- Example: If a vendor breach was reported, ask Third Party Risk: "Which vendors hold our proprietary data or PHI in their own cloud tenants, and what do our contracts require of them on breach notification timing?"
 
 CRITICAL - Active Campaigns Extraction (CrowdStrike AND Intel471 Data):
 APPROVED INDUSTRIES (for filtering):
@@ -998,6 +1033,75 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
         """
         return parse_response(response_text)
 
+    @staticmethod
+    def _strip_non_cve_ids(
+        analysis_result: dict[str, Any],
+        cve_data: list[dict] = None,
+        kev_lookup: dict[str, dict] = None,
+        intel471_data: list[dict] = None,
+        crowdstrike_data: list[dict] = None,
+        osint_data: list[dict] = None,
+    ) -> dict[str, Any]:
+        """Remove entries from cve_analysis that are not grounded in source data.
+
+        Checks two layers:
+        1. Format: must be standard CVE-YYYY-NNNNN
+        2. Grounding: must appear in at least one source (NVD, KEV, Intel471,
+           CrowdStrike, or OSINT article text)
+
+        This prevents the AI from hallucinating CVE IDs that pass format checks
+        but don't exist in any collected data.
+        """
+        import re
+
+        _VALID_CVE = re.compile(r"^CVE-\d{4}-\d{4,7}$", re.IGNORECASE)
+        _CVE_PATTERN = re.compile(r"CVE-\d{4}-\d{4,7}", re.IGNORECASE)
+
+        cve_analysis = analysis_result.get("cve_analysis")
+        if not cve_analysis or not isinstance(cve_analysis, list):
+            return analysis_result
+
+        # Build the set of all CVE IDs that appear anywhere in source data
+        known_cves: set[str] = set()
+
+        for cve in (cve_data or []):
+            cve_id = cve.get("cve_id", "")
+            if cve_id:
+                known_cves.add(cve_id.upper())
+
+        for cve_id in (kev_lookup or {}):
+            known_cves.add(cve_id.upper())
+
+        # Scan Intel471/CrowdStrike/OSINT text for CVE mentions
+        import json
+        source_text = ""
+        for record in (intel471_data or []):
+            source_text += json.dumps(record, default=str) + " "
+        for record in (crowdstrike_data or []):
+            source_text += json.dumps(record, default=str) + " "
+        for record in (osint_data or []):
+            source_text += json.dumps(record, default=str) + " "
+        known_cves.update(m.upper() for m in _CVE_PATTERN.findall(source_text))
+
+        original_count = len(cve_analysis)
+        filtered = []
+        for cve in cve_analysis:
+            if not isinstance(cve, dict):
+                continue
+            cve_id = str(cve.get("cve_id", ""))
+            if not _VALID_CVE.match(cve_id):
+                continue
+            if known_cves and cve_id.upper() not in known_cves:
+                continue
+            filtered.append(cve)
+
+        analysis_result["cve_analysis"] = filtered
+        removed = original_count - len(filtered)
+        if removed:
+            logger.warning(f"Stripped {removed} ungrounded/invalid CVE(s) from cve_analysis")
+
+        return analysis_result
+
     def _fill_gaps_from_backup(
         self,
         analysis_result: dict[str, Any],
@@ -1121,6 +1225,19 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
         if gaps_filled > 0:
             logger.info(f"Filled {gaps_filled} gaps in AI analysis from NVD backup data")
 
+        # Inject recently-added CISA KEV entries that the AI missed (CVEs added to
+        # KEV this week but published months ago won't be in the NVD 7-day pull).
+        existing_ids = {c.get("cve_id", "").upper() for c in cve_analysis}
+        recent_kev = get_recently_added_kev(kev_lookup)
+        injected = 0
+        for kev_cve in recent_kev:
+            if kev_cve["cve_id"].upper() not in existing_ids:
+                cve_analysis.append(kev_cve)
+                existing_ids.add(kev_cve["cve_id"].upper())
+                injected += 1
+        if injected:
+            logger.info(f"Injected {injected} recently-added CISA KEV CVEs into cve_analysis")
+
         return analysis_result
 
     def _get_default_analysis(
@@ -1214,6 +1331,16 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
                     -x.get("priority_score", 0),
                 )
             )
+
+        total_cves = len(cve_analysis)
+
+        # Inject recently-added CISA KEV entries not already in NVD pull
+        existing_ids = {c.get("cve_id", "").upper() for c in cve_analysis}
+        recent_kev = get_recently_added_kev(kev_lookup)
+        for kev_cve in recent_kev:
+            if kev_cve["cve_id"].upper() not in existing_ids:
+                cve_analysis.append(kev_cve)
+                existing_ids.add(kev_cve["cve_id"].upper())
 
         total_cves = len(cve_analysis)
         p1_count = sum(1 for c in cve_analysis if c.get("priority") == "P1")

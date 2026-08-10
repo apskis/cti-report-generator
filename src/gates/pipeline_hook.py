@@ -69,6 +69,21 @@ def run_gate_framework_over_collected_data(
         "CrowdStrike": data_by_source.get("CrowdStrike", []),
     }
 
+    # Include CISA KEV-sourced CVEs in the grounding index so Gate 6 doesn't
+    # flag them as hallucinated. These are real CVEs from the KEV catalog that
+    # the AI or the KEV injection step added to the analysis.
+    if analysis:
+        kev_records = []
+        for cve in analysis.get("cve_analysis", []):
+            if isinstance(cve, dict) and (
+                cve.get("in_cisa_kev")
+                or "CISA KEV" in str(cve.get("exploited_by", ""))
+                or "CISA KEV" in str(cve.get("source_citations", []))
+            ):
+                kev_records.append({"cve_id": cve.get("cve_id", ""), "source": "CISA KEV"})
+        if kev_records:
+            tier1_data["CISA_KEV"] = kev_records
+
     orchestrator = GateOrchestrator(
         llm_client=build_gate_llm_client(credentials),
         report_type=report_type.upper(),

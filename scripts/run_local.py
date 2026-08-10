@@ -66,13 +66,47 @@ except ImportError:
 # Configure logging - will be set based on --debug flag
 logger = logging.getLogger(__name__)
 
+_LOGS_DIR = "logs"
+
+
+def _resolve_timestamped_log(base_name: str) -> str:
+    """Return a timestamped log path under the logs/ directory.
+
+    Example: logs/debug_2026-08-10_093600.log
+    """
+    from datetime import datetime
+
+    os.makedirs(_LOGS_DIR, exist_ok=True)
+    stem = os.path.splitext(os.path.basename(base_name))[0]
+    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    return os.path.join(_LOGS_DIR, f"{stem}_{ts}.log")
+
+
+def _cleanup_old_logs(log_dir: str, max_age_days: int = 30) -> None:
+    """Delete log files older than max_age_days."""
+    from datetime import datetime, timedelta
+
+    if not os.path.isdir(log_dir):
+        return
+    cutoff = datetime.now() - timedelta(days=max_age_days)
+    for fname in os.listdir(log_dir):
+        fpath = os.path.join(log_dir, fname)
+        if not os.path.isfile(fpath) or not fname.endswith(".log"):
+            continue
+        mtime = datetime.fromtimestamp(os.path.getmtime(fpath))
+        if mtime < cutoff:
+            try:
+                os.remove(fpath)
+            except OSError:
+                pass
+
 
 def configure_logging(debug_mode: bool = False, log_file: str = "debug.log"):
     """Configure logging based on debug mode.
 
-    In debug mode, verbose logs are written to both the console and ``log_file``
-    (overwritten each run) so you can watch the console live and keep the full
-    transcript on disk. Pass ``log_file=None`` to disable the file.
+    In debug mode, verbose logs are written to both the console and a timestamped
+    log file under ``logs/`` (retained for 30 days). Pass ``log_file=None`` to
+    disable the file entirely.
     """
     if debug_mode:
         # Debug mode: show detailed logs
@@ -87,14 +121,14 @@ def configure_logging(debug_mode: bool = False, log_file: str = "debug.log"):
         logging.getLogger("semantic_kernel").setLevel(logging.INFO)
         logging.getLogger("azure").setLevel(logging.WARNING)
 
-        # Also tee the full DEBUG stream to a file (overwrite each run) so the
-        # console output is preserved on disk without needing a shell pipe.
         if log_file:
-            file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+            log_path = _resolve_timestamped_log(log_file)
+            file_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
             file_handler.setLevel(logging.DEBUG)
             file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s"))
             logging.getLogger().addHandler(file_handler)
-            logger.info(f"Debug logging to file: {os.path.abspath(log_file)}")
+            logger.info(f"Debug logging to file: {log_path}")
+            _cleanup_old_logs(os.path.dirname(log_path), max_age_days=30)
     else:
         # Clean mode: only show clean status messages and errors
         logging.basicConfig(level=logging.ERROR, format="%(message)s", force=True)
@@ -761,6 +795,7 @@ async def generate_report_local(
     use_azure: bool = False,
     reporting_period=None,
     backfill_prior: bool = True,
+    exclude_ot: bool = False,
 ) -> str:
     """
     Generate a report locally.
@@ -808,7 +843,7 @@ async def generate_report_local(
     elif use_real or use_azure:
         # collect_and_analyze trims records to the reporting period (if set) before the AI
         # analysis, so the returned data_by_source the gates see is already in-window.
-        analysis, data_by_source = await collect_and_analyze(report_type, reporting_period=reporting_period)
+        analysis, data_by_source = await collect_and_analyze(report_type, reporting_period=reporting_period, exclude_ot=exclude_ot)
 
         # Ground the breach stat cards in real, date-stamped incidents (VCDB/HHS/HIBP).
         if report_type == "quarterly" and hasattr(generator, "set_breach_dataset"):
@@ -961,7 +996,7 @@ async def generate_report_local(
         print_section("Generating Report")
     print_status("Creating document...", "progress")
 
-    doc = generator.generate(analysis)
+    doc = generator.generate(analysis, exclude_ot=exclude_ot)
     print_status("Document created", "success")
 
     # Always save a local copy
@@ -1048,11 +1083,16 @@ async def check_openai_connectivity(
         return False
 
 
-async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[dict, dict]:
+async def collect_and_analyze(report_type: str, reporting_period=None, exclude_ot: bool = False) -> tuple[dict, dict]:
     """Collect data and run analysis (requires Azure credentials).
 
     When ``reporting_period`` is provided (quarterly), collected records are trimmed to
     that quarter's window BEFORE analysis so the AI only reasons over in-window data.
+
+    Args:
+        report_type: 'weekly' or 'quarterly'
+        reporting_period: Optional quarterly reporting period
+        exclude_ot: If True, skip OT/ICS collectors (ics_advisory, claroty)
 
     Returns:
         (analysis, data_by_source) tuple where analysis is the AI analysis result
@@ -1066,6 +1106,8 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
     from src.collectors.claroty_collector import fetch_and_annotate, fetch_environment_exposure
     from src.core.config import analysis_config, azure_config, get_enabled_collectors
     from src.core.keyvault import get_all_api_keys
+
+    OT_COLLECTORS = {"ics_advisory", "claroty"}
     from src.enrichment.kev import annotate_records_with_kev, fetch_kev_map
 
     # Get credentials
@@ -1121,6 +1163,9 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
         # still legitimately report a coverage gap), while every other source is collected
         # as configured — NVD/CrowdStrike deliberately stay current for IOC extraction.
         enabled = get_enabled_collectors()
+        if exclude_ot:
+            enabled = [n for n in enabled if n not in OT_COLLECTORS]
+            print_status("OT/ICS sources excluded (--no-ot)", "info")
         non_osint = [n for n in enabled if n != "osint"]
         collector_results = await collect_all(
             credentials, report_type=report_type, collector_names=non_osint
@@ -1138,7 +1183,12 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
             )
             collector_results.update(osint_results)
     else:
-        collector_results = await collect_all(credentials, report_type=report_type)
+        if exclude_ot:
+            enabled = [n for n in get_enabled_collectors() if n not in OT_COLLECTORS]
+            print_status("OT/ICS sources excluded (--no-ot)", "info")
+            collector_results = await collect_all(credentials, report_type=report_type, collector_names=enabled)
+        else:
+            collector_results = await collect_all(credentials, report_type=report_type)
     data_by_source = get_data_by_source(collector_results)
 
     # Scope the event/news sources (Intel471, OSINT) to the chosen quarter BEFORE
@@ -1198,12 +1248,16 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
                 data_by_source.get("CrowdStrike", []),
             )
             # Attach ICS/OT advisories for the weekly OT section (mirrors function_app.py).
-            result["ot_advisories"] = data_by_source.get("ICS-Advisory", [])
-            await fetch_and_annotate(result["ot_advisories"], credentials)
-            result["ot_environment_exposure"] = await fetch_environment_exposure(credentials)
-            _kev_map = await fetch_kev_map()
-            annotate_records_with_kev(result["ot_advisories"], _kev_map, "cves")
-            annotate_records_with_kev(result["ot_environment_exposure"], _kev_map, "cve_ids")
+            if not exclude_ot:
+                result["ot_advisories"] = data_by_source.get("ICS-Advisory", [])
+                await fetch_and_annotate(result["ot_advisories"], credentials)
+                result["ot_environment_exposure"] = await fetch_environment_exposure(credentials)
+                _kev_map = await fetch_kev_map()
+                annotate_records_with_kev(result["ot_advisories"], _kev_map, "cves")
+                annotate_records_with_kev(result["ot_environment_exposure"], _kev_map, "cve_ids")
+            else:
+                result["ot_advisories"] = []
+                result["ot_environment_exposure"] = []
         else:
             intel471_all = data_by_source.get("Intel471", [])
             breach_data = [item for item in intel471_all if item.get("threat_type", "").upper() == "BREACH ALERT"]
@@ -1228,12 +1282,16 @@ async def collect_and_analyze(report_type: str, reporting_period=None) -> tuple[
             data_by_source.get("OSINT", []),
         )
         # Attach ICS/OT advisories for the weekly OT section (mirrors function_app.py).
-        result["ot_advisories"] = data_by_source.get("ICS-Advisory", [])
-        await fetch_and_annotate(result["ot_advisories"], credentials)
-        result["ot_environment_exposure"] = await fetch_environment_exposure(credentials)
-        _kev_map = await fetch_kev_map()
-        annotate_records_with_kev(result["ot_advisories"], _kev_map, "cves")
-        annotate_records_with_kev(result["ot_environment_exposure"], _kev_map, "cve_ids")
+        if not exclude_ot:
+            result["ot_advisories"] = data_by_source.get("ICS-Advisory", [])
+            await fetch_and_annotate(result["ot_advisories"], credentials)
+            result["ot_environment_exposure"] = await fetch_environment_exposure(credentials)
+            _kev_map = await fetch_kev_map()
+            annotate_records_with_kev(result["ot_advisories"], _kev_map, "cves")
+            annotate_records_with_kev(result["ot_environment_exposure"], _kev_map, "cve_ids")
+        else:
+            result["ot_advisories"] = []
+            result["ot_environment_exposure"] = []
         print_status("Analysis complete", "success")
         return result, data_by_source
     else:
@@ -1409,6 +1467,9 @@ Examples:
 
   # Enable debug mode to see detailed logs
   python test_local.py weekly --local --real --debug
+
+  # Exclude OT/ICS sources and sections from the report
+  python test_local.py weekly --local --real --no-ot
         """,
     )
 
@@ -1430,8 +1491,9 @@ Examples:
     parser.add_argument(
         "--log-file",
         default="debug.log",
-        help="File to write full debug logs to when --debug is set (default: debug.log). "
-        "Use --log-file '' to disable and log to console only.",
+        help="Base name for the timestamped log file when --debug is set (default: debug.log). "
+        "Logs are saved to logs/ with timestamps and retained for 30 days. "
+        "Use --log-file '' to disable file logging and log to console only.",
     )
     parser.add_argument(
         "--quarter",
@@ -1450,6 +1512,11 @@ Examples:
         action="store_true",
         help="Quarterly reports only: skip auto-seeding the prior-quarter baseline from "
         "historical archives (Intel471/NVD/news). Prior comparison stays N/A if absent.",
+    )
+    parser.add_argument(
+        "--no-ot",
+        action="store_true",
+        help="Exclude all OT/ICS sources (Claroty, ICS-CERT advisories) and references from the report.",
     )
 
     args = parser.parse_args()
@@ -1503,6 +1570,7 @@ Examples:
                 use_azure=args.azure,
                 reporting_period=reporting_period,
                 backfill_prior=not args.no_backfill,
+                exclude_ot=args.no_ot,
             )
         )
 

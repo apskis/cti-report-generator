@@ -47,7 +47,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
     def filename_prefix(self) -> str:
         return "CTI_Weekly_Report"
 
-    def generate(self, analysis_result: dict[str, Any]) -> Document:
+    def generate(self, analysis_result: dict[str, Any], exclude_ot: bool = False) -> Document:
         """
         Generate the weekly report document.
 
@@ -87,10 +87,12 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._add_week_at_glance(analysis_result)
             self._add_executive_summary(analysis_result)
             self._add_vulnerability_exposure(analysis_result)
-            self._add_ot_advisories(analysis_result)
+            if not exclude_ot:
+                self._add_ot_advisories(analysis_result)
             self._add_sector_threat_activity(analysis_result)
             self._add_active_campaigns(analysis_result)
             self._add_industry_incidents(analysis_result)
+            self._add_questions_to_ask(analysis_result)
             self._add_resources_section(analysis_result)
             self._add_footer()
 
@@ -437,9 +439,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         active_campaigns_count = len(active_campaigns)
 
         # Metric 3: Exploited CVEs (CVEs with exploitation evidence)
-        exploited_cves_count = sum(
-            1 for cve in cve_analysis if cve.get("actively_exploited") or cve.get("targeted_by_actors")
-        )
+        exploited_cves_count = sum(1 for cve in cve_analysis if self._is_actively_exploited(cve)[0])
 
         # Metric 4: Peer Incidents (from industry_incidents - includes both OSINT and Intel471)
         industry_incidents = analysis_result.get("industry_incidents", [])
@@ -1861,6 +1861,37 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 citation_counter += 1
 
         return citation_map
+
+    def _add_questions_to_ask(self, analysis_result: dict[str, Any]) -> None:
+        """Add Questions to Ask section — team-specific prompts derived from this week's threats."""
+        logger.info("Adding Questions to Ask section")
+
+        questions = analysis_result.get("questions_to_ask", [])
+        if not questions:
+            return
+
+        h = self.doc.add_heading("Questions to Ask", level=1)
+        self._style_heading_1(h)
+
+        for q in questions:
+            if not isinstance(q, dict):
+                continue
+            team = q.get("team", "")
+            question = q.get("question", "")
+            if not question:
+                continue
+
+            para = self.doc.add_paragraph(style="List Bullet")
+            if team:
+                team_run = para.add_run(f"{team}: ")
+                team_run.font.bold = True
+                team_run.font.size = FontSizes.BODY
+                team_run.font.color.rgb = BrandColors.TEXT_DARK
+            q_run = para.add_run(question)
+            q_run.font.size = FontSizes.BODY
+            q_run.font.color.rgb = BrandColors.TEXT_DARK
+
+        self.doc.add_paragraph()
 
     def _add_resources_section(self, analysis_result: dict[str, Any]) -> None:
         """Add Resources section listing threat intelligence sources that actually provided data."""

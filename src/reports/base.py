@@ -63,7 +63,7 @@ def _set_run_text(r_elem, text: str) -> None:
 
 
 def _apply_citation_segment(r_elem, seg_text: str, is_citation: bool) -> None:
-    """Set a run element's text and toggle subscript for citation segments."""
+    """Set a run element's text and toggle superscript for citation segments."""
     _set_run_text(r_elem, seg_text)
     rpr = r_elem.find(qn("w:rPr"))
     if rpr is not None:
@@ -72,7 +72,7 @@ def _apply_citation_segment(r_elem, seg_text: str, is_citation: bool) -> None:
     if is_citation:
         rpr = r_elem.get_or_add_rPr()
         va = OxmlElement("w:vertAlign")
-        va.set(qn("w:val"), "subscript")
+        va.set(qn("w:val"), "superscript")
         rpr.append(va)
 
 

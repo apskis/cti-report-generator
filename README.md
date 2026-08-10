@@ -233,6 +233,12 @@ python scripts/run_local.py weekly --local --real
 
 # Quarterly report with real API data
 python scripts/run_local.py quarterly --local --real
+
+# Exclude OT/ICS sources and sections (IT-only report)
+python scripts/run_local.py weekly --local --real --no-ot
+
+# Enable debug logging (timestamped logs saved to logs/ for 30 days)
+python scripts/run_local.py weekly --local --real --debug
 ```
 
 #### REAL Data - Azure Upload (Full production pipeline)
@@ -267,6 +273,7 @@ Then call:
 | `--local --mock` | Hardcoded examples | Local file | Nothing |
 | `--local --real` | APIs + AI | Local file | Key Vault |
 | `--azure` | APIs + AI | Azure Blob | Key Vault |
+| `--local --real --no-ot` | APIs + AI (no OT/ICS) | Local file | Key Vault |
 
 ## Configuration
 
@@ -276,6 +283,7 @@ Then call:
 |----------|-------------|------------|
 | `KEY_VAULT_URL` | Azure Key Vault URL | `https://kv-cti-rep-prod.vault.azure.net/` |
 | `ENABLED_COLLECTORS` | Override collectors.yaml (comma-separated) | Uses `config/collectors.yaml` |
+| `ENABLE_OSINT_FULLTEXT` | Fetch full article bodies via trafilatura (true/false) | `true` |
 | `SQL_SERVER` | SQL server hostname (optional) | `sql-cti-automation-ilmn.database.windows.net` |
 
 ### Production settings (Key Vault / config)

@@ -1,6 +1,8 @@
 - id: ACT-2026-001
   title: Harden laboratory and IoT devices
-  description: Patch outdated firmware on laboratory instruments and IoT devices; segment critical devices onto isolated VLANs with restricted egress.
+  description: Patch outdated firmware on laboratory instruments and IoT 
+    devices; segment critical devices onto isolated VLANs with restricted 
+    egress.
   owner: Unknown
   first_raised_week: 2026-W23
   target_week: 2026-W33
@@ -34,10 +36,13 @@
   - week: 2026-W31
     status: open
     note: Reissued — no progress reported
-
+  - week: 2026-W32
+    status: open
+    note: Reissued in weekly report
 - id: ACT-2026-002
   title: Enforce MFA on vendor portals
-  description: Enforce multifactor authentication on all vendor and supply chain portals; prioritize portals with privileged access to production systems.
+  description: Enforce multifactor authentication on all vendor and supply chain
+    portals; prioritize portals with privileged access to production systems.
   owner: Unknown
   first_raised_week: 2026-W23
   target_week: 2026-W33
@@ -71,10 +76,14 @@
   - week: 2026-W31
     status: open
     note: Reissued — no progress reported
-
+  - week: 2026-W32
+    status: open
+    note: Carried forward (not reissued by AI this week)
 - id: ACT-2026-003
   title: Review supply chain dependencies
-  description: Review supply chain dependencies and validate package integrity; audit third-party software for known vulnerabilities and unauthorized modifications.
+  description: Review supply chain dependencies and validate package integrity; 
+    audit third-party software for known vulnerabilities and unauthorized 
+    modifications.
   owner: Unknown
   first_raised_week: 2026-W23
   target_week: 2026-W33
@@ -108,10 +117,14 @@
   - week: 2026-W31
     status: open
     note: Reissued — no progress reported
-
+  - week: 2026-W32
+    status: open
+    note: Carried forward (not reissued by AI this week)
 - id: ACT-2026-004
   title: Patch edge and perimeter products
-  description: Patch and restrict access to edge and perimeter products (firewalls, VPN concentrators, load balancers); disable unused management interfaces.
+  description: Patch and restrict access to edge and perimeter products 
+    (firewalls, VPN concentrators, load balancers); disable unused management 
+    interfaces.
   owner: Unknown
   first_raised_week: 2026-W23
   target_week: 2026-W33
@@ -145,10 +158,14 @@
   - week: 2026-W31
     status: open
     note: Reissued — no progress reported
-
+  - week: 2026-W32
+    status: open
+    note: Carried forward (not reissued by AI this week)
 - id: ACT-2026-005
   title: Enhance phishing defenses
-  description: Enhance phishing defenses and user awareness training; deploy advanced email filtering and conduct targeted simulations for high-risk roles.
+  description: Enhance phishing defenses and user awareness training; deploy 
+    advanced email filtering and conduct targeted simulations for high-risk 
+    roles.
   owner: Unknown
   first_raised_week: 2026-W24
   target_week: 2026-W33
@@ -179,3 +196,230 @@
   - week: 2026-W31
     status: open
     note: Reissued — no progress reported
+  - week: 2026-W32
+    status: open
+    note: Carried forward (not reissued by AI this week)
+- id: ACT-2026-006
+  title: Within 24 hours
+  description: Within 24 hours, identify the product associated with 
+    CVE-2026-9198, determine whether it is deployed, apply vendor remediation, 
+    and review affected systems for exploitation before patching [3].
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-007
+  title: Block installation from unapproved npm registries and package sources
+  description: Block installation from unapproved npm registries and package 
+    sources, compare package locks against known good versions, rotate developer
+    and automation credentials exposed to build systems, and inspect 
+    repositories for unexpected lifecycle scripts or hooks related to ChainDrop 
+    [4].
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-008
+  title: Restrict ScreenConnect and other remote monitoring tools to approved 
+    instances
+  description: Restrict ScreenConnect and other remote monitoring tools to 
+    approved instances, block unknown service domains, and alert when remote 
+    access software is launched by browsers, temporary directories, script 
+    interpreters, or recently downloaded installers.
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-009
+  title: Strengthen ransomware readiness by testing immutable backups
+  description: Strengthen ransomware readiness by testing immutable backups, 
+    monitoring privileged and service accounts, detecting bulk archive creation 
+    and outbound transfer, and exercising isolation procedures for research, 
+    patient data, manufacturing, and identity systems.
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-010
+  title: Identify any asset associated with CVE-2026-9198
+  description: Identify any asset associated with CVE-2026-9198, confirm the 
+    affected product mapping through the CISA KEV entry and vendor advisory, 
+    remediate immediately, and hunt for exploitation attempts before considering
+    the asset clean.
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-011
+  title: Review software bills of materials
+  description: Review software bills of materials, lock files, package 
+    registries, build logs, and developer workstations for affected npm packages
+    associated with ChainDrop. Rotate repository, registry, cloud, and 
+    automation credentials where exposure is possible.
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-012
+  title: Block execution of unapproved remote management tools and alert when
+  description: Block execution of unapproved remote management tools and alert 
+    when ScreenConnect or similar software is installed outside the authorized 
+    deployment process. Investigate fake Adobe or Zoom update activity.
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-013
+  title: Hunt for credential theft malware reported this week
+  description: Hunt for credential theft malware reported this week, including 
+    ACR Stealer, Lumma, Remcos, AsyncRAT, and njRAT. Block patch.lunaroasis.cc 
+    and review historical proxy, DNS, endpoint, and authentication telemetry for
+    related activity.
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-014
+  title: Upgrade Apache Traffic Server to version 9.2.15 or 10.1.4 where 
+    applicable and i
+  description: Upgrade Apache Traffic Server to version 9.2.15 or 10.1.4 where 
+    applicable and inspect proxy logs for malformed chunked requests, 
+    conflicting transfer headers, abnormal Host values, and request routing 
+    inconsistencies.
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-015
+  title: Review identity and source control access for impossible travel
+  description: Review identity and source control access for impossible travel, 
+    unfamiliar personal access tokens, unusual repository cloning, new workflow 
+    hooks, and unauthorized modifications to continuous integration automation.
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-016
+  title: Validate offline and immutable backup coverage for research data
+  description: Validate offline and immutable backup coverage for research data,
+    manufacturing configurations, regulated records, and critical identity 
+    services. Test recovery without relying on production credentials.
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-017
+  title: Inventory npm packages and lock files
+  description: Inventory npm packages and lock files, search for unexpected 
+    package publication or install activity, rotate repository and registry 
+    credentials, and rebuild affected development systems from trusted sources 
+    in response to ChainDrop.
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-018
+  title: Restrict software installation to approved repositories
+  description: Restrict software installation to approved repositories, verify 
+    installer signatures and hashes, and hunt for QuickFox or unauthorized 
+    ScreenConnect installation and persistence.
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-019
+  title: Remove direct internet exposure from PLCs, human machine interfaces, 
+    cameras, an
+  description: Remove direct internet exposure from PLCs, human machine 
+    interfaces, cameras, and laboratory devices; require controlled jump hosts 
+    and monitor configuration changes across operational technology networks.
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised
+- id: ACT-2026-020
+  title: Hunt for Intel471 njRAT command and control domains including 
+    puqfxtp.top
+  description: Hunt for Intel471 njRAT command and control domains including 
+    puqfxtp.top, igop.top, mysportsbet.top, kasuji.top, igamehacker.top, and 
+    edg7ai.buzz, then block confirmed malicious traffic and investigate 
+    associated endpoints.
+  owner: Unknown
+  first_raised_week: 2026-W32
+  target_week: 2026-W36
+  status: open
+  closure_note: ''
+  history:
+  - week: 2026-W32
+    status: open
+    note: Action raised

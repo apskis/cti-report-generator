@@ -588,14 +588,14 @@ class TestQuarterlyRobustness:
         # No parenthetical percentage when there is no real prior data.
         assert "(N/A)" not in text
 
-    # ----- Q23: inline citations are subscripted document-wide in quarterly -----
+    # ----- Q23: inline citations are superscripted document-wide in quarterly -----
 
     def test_quarterly_citations_are_subscripted(self, generator):
         analysis = {"executive_summary": "Breach at Stadler Rail [1] and follow-up [2] noted."}
         doc = generator.generate(analysis)
-        subscript_runs = [r.text for p in doc.paragraphs for r in p.runs if r.font.subscript]
-        assert "[1]" in subscript_runs
-        assert "[2]" in subscript_runs
+        superscript_runs = [r.text for p in doc.paragraphs for r in p.runs if r.font.superscript]
+        assert "[1]" in superscript_runs
+        assert "[2]" in superscript_runs
 
     # ----- Explicit reporting period pins the quarter and overrides AI labels -----
 
@@ -919,9 +919,9 @@ class TestCitationSubscripts:
         para = doc.add_paragraph("breach at Stadler Rail [1] this week [2].")
         _subscript_citations_in_paragraph(para)
 
-        subscript_runs = [r.text for r in para.runs if r.font.subscript]
-        # Brackets are KEPT and the markers are subscripted.
-        assert subscript_runs == ["[1]", "[2]"]
+        superscript_runs = [r.text for r in para.runs if r.font.superscript]
+        # Brackets are KEPT and the markers are superscripted.
+        assert superscript_runs == ["[1]", "[2]"]
         assert "Stadler Rail" in "".join(r.text for r in para.runs)
 
     def test_document_wide_pass_covers_table_cells(self):
@@ -937,12 +937,12 @@ class TestCitationSubscripts:
 
         gen._subscript_all_citations()
 
-        # Body paragraph citation subscripted...
+        # Body paragraph citation superscripted...
         body = gen.doc.paragraphs[0]
-        assert [r.text for r in body.runs if r.font.subscript] == ["[1]"]
+        assert [r.text for r in body.runs if r.font.superscript] == ["[1]"]
         # ...and the table-cell citation too.
         cell_para = table.rows[0].cells[0].paragraphs[0]
-        assert [r.text for r in cell_para.runs if r.font.subscript] == ["[3]"]
+        assert [r.text for r in cell_para.runs if r.font.superscript] == ["[3]"]
         assert "CrowdStrike" in "".join(r.text for r in cell_para.runs)
 
 

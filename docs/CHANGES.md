@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-08-10
+
+### Added
+- **`--no-ot` flag**: Exclude all OT/ICS sources (Claroty, ICS-CERT advisories) and
+  the Operational Technology section from the report. Useful for IT-only stakeholders.
+- **CISA KEV recently-added injection**: CVEs added to the CISA KEV catalog within the
+  reporting window are now automatically included in the Exploited Vulnerabilities
+  section, regardless of whether the AI selected them or the NVD published them
+  recently. Ensures confirmed active exploitation is never missed.
+- **"Questions to Ask" section**: AI-generated team-specific questions (IAM, SOC,
+  Cloud Security, Third Party Risk, etc.) based on the week's findings, placed before
+  the Resources section.
+- **Timestamped debug logs**: Each report run now writes to `logs/debug_YYYY-MM-DD_HHMMSS.log`
+  instead of overwriting a single `debug.log`. Logs are retained for 30 days.
+- **OSINT full-text extraction**: `trafilatura` dependency added for full article body
+  retrieval (requires `ENABLE_OSINT_FULLTEXT=true`).
+
+### Fixed
+- **Exploited CVEs metric**: The stat card now uses the same exploitation detection
+  logic as the report body (`_is_actively_exploited`), fixing a bug where `in_cisa_kev`
+  and `exploited_by` fields were not counted toward the metric.
+- **AI hallucination of CVE IDs**: Post-processing now strips any CVE from the analysis
+  that is not grounded in source data (NVD, KEV catalog, Intel471, CrowdStrike, OSINT).
+  Prevents both non-standard IDs (PYSEC-*, MAL-*) and fabricated CVE-format IDs from
+  reaching Gate 6.
+- **Gate 6 false positives on KEV-sourced CVEs**: The gate framework's grounding index
+  now includes CISA KEV-sourced CVEs so they are not flagged as ungrounded.
+- **Citation rendering**: Inline source references ([1], [2]) now render as superscripts
+  instead of subscripts.
+
+### Changed
+- **OSINT prompt strengthened**: AI is now required to incorporate OSINT findings into
+  the report body (CVE analysis, campaigns, incidents) rather than only listing them
+  in the Resources section. Articles that only appear in footnotes are flagged as
+  wasted intelligence.
+- **AI grounding constraint**: The system prompt now explicitly forbids non-CVE advisory
+  identifiers and requires every `cve_id` in the output to exist in the provided source
+  data.
+
 ### Removed
 - **Removed two third-party threat-intelligence integrations entirely** — a
   vulnerability/exposure collector and an IOC-management collector — along with
