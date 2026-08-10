@@ -8,7 +8,6 @@ Enriches CVE data with additional information from multiple sources:
 """
 
 import logging
-from datetime import datetime, timedelta
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -23,23 +22,20 @@ class CVEEnricher:
         - enable_web_search: Toggle web search on/off
         - web_search_timeout_seconds: Timeout for each search
         - max_web_searches_per_run: Limit total searches per enrichment run
-        - kev_cache_duration_hours: How long to cache CISA KEV data
-    """
 
-    # CISA KEV catalog URL
-    CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+    The CISA KEV catalog is fetched via the shared, run-memoized
+    ``src.enrichment.kev.fetch_kev_map`` so it is downloaded once per run across all
+    consumers (this enricher, the IT Exploited section, and the OT tables).
+    """
 
     def __init__(self):
         """Initialize the CVE enricher."""
-        self._kev_cache: dict[str, Any] | None = None
-        self._kev_cache_time: datetime | None = None
         self._web_search_count = 0  # Track searches per run
 
         # Load config
         from src.core.config import enrichment_config
 
         self.config = enrichment_config
-        self._cache_ttl = timedelta(hours=self.config.kev_cache_duration_hours)
 
     async def enrich_cves(self, cves: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
@@ -78,49 +74,14 @@ class CVEEnricher:
 
     async def _load_kev_catalog(self) -> dict[str, Any]:
         """
-        Load CISA KEV catalog with caching.
+        Load the CISA KEV catalog via the shared, run-memoized fetch.
 
-        Returns:
-            Dictionary mapping CVE IDs to KEV entries
+        Returns the same map every KEV consumer uses (keyed by upper-cased CVE id),
+        so the catalog is downloaded once per run rather than once per component.
         """
-        # Check cache
-        if self._kev_cache and self._kev_cache_time:
-            if datetime.now() - self._kev_cache_time < self._cache_ttl:
-                logger.debug("Using cached KEV data")
-                return self._kev_cache
+        from src.enrichment.kev import fetch_kev_map
 
-        logger.info("Fetching CISA KEV catalog...")
-        try:
-            from src.collectors.http_utils import HTTPClient
-
-            async with HTTPClient() as client:
-                data = await client.get(self.CISA_KEV_URL)
-
-                # Build lookup dictionary
-                kev_dict = {}
-                for vuln in data.get("vulnerabilities", []):
-                    cve_id = vuln.get("cveID")
-                    if cve_id:
-                        kev_dict[cve_id] = {
-                            "vendor": vuln.get("vendorProject", ""),
-                            "product": vuln.get("product", ""),
-                            "vulnerability_name": vuln.get("vulnerabilityName", ""),
-                            "date_added": vuln.get("dateAdded", ""),
-                            "short_description": vuln.get("shortDescription", ""),
-                            "required_action": vuln.get("requiredAction", ""),
-                            "due_date": vuln.get("dueDate", ""),
-                            "known_ransomware": vuln.get("knownRansomwareCampaignUse", "Unknown"),
-                        }
-
-                self._kev_cache = kev_dict
-                self._kev_cache_time = datetime.now()
-
-                logger.info(f"Loaded {len(kev_dict)} entries from CISA KEV catalog")
-                return kev_dict
-
-        except Exception as e:
-            logger.error(f"Failed to load CISA KEV catalog: {e}")
-            return {}
+        return await fetch_kev_map()
 
     async def _enrich_single_cve(self, cve: dict[str, Any], kev_data: dict[str, Any]) -> dict[str, Any]:
         """
@@ -136,15 +97,17 @@ class CVEEnricher:
         enriched = cve.copy()
         cve_id = cve.get("cve_id", "")
 
-        # Check CISA KEV first
-        if cve_id in kev_data:
-            kev_entry = kev_data[cve_id]
-            enriched["affected_product"] = f"{kev_entry['vendor']} {kev_entry['product']}".strip()
+        # Check CISA KEV first (shared map keys are upper-cased)
+        kev_entry = kev_data.get(cve_id) or kev_data.get(cve_id.upper())
+        if kev_entry:
+            enriched["affected_product"] = f"{kev_entry.get('vendor', '')} {kev_entry.get('product', '')}".strip()
             enriched["exploited"] = True
             enriched["exploited_by"] = self._determine_exploited_by(kev_entry)
             enriched["in_cisa_kev"] = True
             enriched["kev_required_action"] = kev_entry.get("required_action", "")
-            enriched["known_ransomware"] = kev_entry.get("known_ransomware", "Unknown")
+            # Downstream report logic reads this as the KEV string form ("Known"/"Unknown"),
+            # so present it that way from the shared map's ``ransomware`` bool.
+            enriched["known_ransomware"] = "Known" if kev_entry.get("ransomware") else "Unknown"
 
             logger.debug(f"{cve_id} found in CISA KEV catalog")
         else:
@@ -183,7 +146,7 @@ class CVEEnricher:
         """
         parts = []
 
-        if kev_entry.get("known_ransomware") == "Known":
+        if kev_entry.get("ransomware"):
             parts.append("Ransomware groups")
 
         # Could be enhanced with more intelligence sources

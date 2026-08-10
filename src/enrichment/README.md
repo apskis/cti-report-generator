@@ -276,12 +276,18 @@ Possible causes:
 
 ### Update CISA KEV Cache Manually
 
+The KEV catalog is fetched once per run by the shared, memoized
+`src.enrichment.kev.fetch_kev_map` (used by this enricher, the IT Exploited
+section, and the OT tables). Clear that shared memo to force a fresh download:
+
 ```python
-enricher = CVEEnricher()
-enricher._kev_cache = None  # Clear cache
-enricher._kev_cache_time = None
-enriched = await enricher.enrich_cves(cves)  # Will fetch fresh data
+from src.enrichment.kev import reset_kev_cache
+
+reset_kev_cache()  # or: await fetch_kev_map(force_refresh=True)
+enriched = await CVEEnricher().enrich_cves(cves)  # fetches fresh data
 ```
+
+Cache TTL is `collector_config.kev_cache_hours` (default 6).
 
 ### Add Missing Products
 

@@ -1756,6 +1756,15 @@ class TestClarotyCollector:
 class TestKevEnrichment:
     """Tests for the CISA KEV ransomware-flag enrichment of the OT tables."""
 
+    @pytest.fixture(autouse=True)
+    def _reset_kev_cache(self):
+        """The catalog is memoized per run; clear it around each test for isolation."""
+        from src.enrichment import kev as mod
+
+        mod.reset_kev_cache()
+        yield
+        mod.reset_kev_cache()
+
     _FEED = {
         "vulnerabilities": [
             {"cveID": "CVE-2026-18019", "knownRansomwareCampaignUse": "Known",
@@ -1816,6 +1825,56 @@ class TestKevEnrichment:
 
         with patch.object(mod, "HTTPClient", lambda *a, **k: _Failing(None)):
             assert await mod.fetch_kev_map() == {}
+
+    @pytest.mark.asyncio
+    async def test_fetch_kev_map_memoized_across_calls(self):
+        """The catalog downloads once per run; later calls reuse the memoized map."""
+        from src.enrichment import kev as mod
+
+        calls = {"n": 0}
+
+        class _Counting(self._FakeClient):
+            async def get(self, *a, **k):
+                calls["n"] += 1
+                return self._payload
+
+        with patch.object(mod, "HTTPClient", lambda *a, **k: _Counting(self._FEED)):
+            first = await mod.fetch_kev_map()
+            second = await mod.fetch_kev_map()
+            forced = await mod.fetch_kev_map(force_refresh=True)
+
+        assert calls["n"] == 2  # one initial fetch + one forced refresh (the middle call is cached)
+        assert first is second  # same memoized object
+        assert forced["CVE-2026-18019"]["ransomware"] is True
+
+    @pytest.mark.asyncio
+    async def test_cve_enricher_uses_shared_map_and_string_ransomware(self):
+        """CVEEnricher reads the shared map and keeps the string ransomware contract."""
+        from types import SimpleNamespace
+
+        from src.enrichment import kev as kev_mod
+        from src.enrichment.cve_enricher import CVEEnricher
+
+        enricher = CVEEnricher()
+        # Frozen config; swap the reference to keep web search off in the test.
+        enricher.config = SimpleNamespace(enable_web_search=False, max_web_searches_per_run=0)
+        with patch.object(kev_mod, "HTTPClient", lambda *a, **k: self._FakeClient(self._FEED)):
+            out = await enricher.enrich_cves([
+                {"cve_id": "CVE-2026-18019", "description": ""},   # ransomware KEV
+                {"cve_id": "CVE-2026-18015", "description": ""},   # KEV, not ransomware
+                {"cve_id": "CVE-2099-0", "description": ""},       # not in KEV
+            ])
+
+        by_id = {c["cve_id"]: c for c in out}
+        # Ransomware KEV entry: string form preserved for the report's exploited-detection.
+        assert by_id["CVE-2026-18019"]["in_cisa_kev"] is True
+        assert by_id["CVE-2026-18019"]["known_ransomware"] == "Known"
+        assert by_id["CVE-2026-18019"]["exploited_by"] == "Ransomware groups"
+        assert by_id["CVE-2026-18019"]["affected_product"] == "Acme PLC"
+        # Non-ransomware KEV entry: "Unknown" (not the truthy-bool that would misfire).
+        assert by_id["CVE-2026-18015"]["known_ransomware"] == "Unknown"
+        # Not in KEV.
+        assert by_id["CVE-2099-0"]["in_cisa_kev"] is False
 
     def test_annotate_sets_flags_by_cve_field(self):
         from src.enrichment.kev import annotate_records_with_kev

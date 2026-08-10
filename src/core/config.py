@@ -110,6 +110,9 @@ class CollectorConfig:
     )
     kev_timeout_seconds: int = 15
     kev_max_retries: int = 1
+    # The catalog is fetched once and memoized for the run; every KEV consumer (OT tables,
+    # IT Exploited section, CVE enricher) shares that single download. Cache TTL in hours.
+    kev_cache_hours: int = 6
 
     # News-search (GDELT) collector — used mainly for historical/prior-quarter backfill,
     # where RSS feeds can no longer serve articles from a past window.

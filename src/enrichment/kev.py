@@ -19,6 +19,7 @@ becomes a no-op, so KEV enrichment never blocks report generation.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 from typing import Any
 
 from src.collectors.http_utils import HTTPClient
@@ -26,21 +27,44 @@ from src.core.config import collector_config
 
 logger = logging.getLogger(__name__)
 
+# Run-scoped memo: the catalog is downloaded once and reused by every consumer (OT tables,
+# IT Exploited section, CVE enricher). Only successful fetches are cached, so a transient
+# failure is retried on the next call rather than poisoning the whole run.
+_kev_cache: dict[str, dict[str, Any]] | None = None
+_kev_cache_at: datetime | None = None
 
-async def fetch_kev_map() -> dict[str, dict[str, Any]]:
+
+def reset_kev_cache() -> None:
+    """Clear the memoized catalog. For tests and forced refreshes."""
+    global _kev_cache, _kev_cache_at
+    _kev_cache = None
+    _kev_cache_at = None
+
+
+async def fetch_kev_map(force_refresh: bool = False) -> dict[str, dict[str, Any]]:
     """Fetch the CISA KEV catalog once as a lookup keyed by upper-cased CVE id.
 
     Each entry carries every field the report's consumers need::
 
         {"ransomware": bool, "due_date": str, "date_added": str,
-         "vendor": str, "product": str, "name": str}
+         "vendor": str, "product": str, "name": str, "required_action": str}
 
-    ``ransomware`` is normalized to a bool from ``knownRansomwareCampaignUse``. Keyless
-    public feed. Best-effort: returns ``{}`` when disabled or on any failure so KEV
-    enrichment never blocks report generation.
+    ``ransomware`` is normalized to a bool from ``knownRansomwareCampaignUse``. The result
+    is memoized for ``kev_cache_hours`` so repeated calls within a run reuse one download;
+    pass ``force_refresh=True`` to bypass the memo. Keyless public feed. Best-effort:
+    returns ``{}`` when disabled or on any failure so KEV enrichment never blocks report
+    generation (failures are not cached).
     """
+    global _kev_cache, _kev_cache_at
     if not collector_config.kev_enrich_enabled:
         return {}
+    if (
+        not force_refresh
+        and _kev_cache is not None
+        and _kev_cache_at is not None
+        and datetime.now() - _kev_cache_at < timedelta(hours=collector_config.kev_cache_hours)
+    ):
+        return _kev_cache
     url = collector_config.kev_feed_url
     try:
         async with HTTPClient(
@@ -60,9 +84,12 @@ async def fetch_kev_map() -> dict[str, dict[str, Any]]:
                 "vendor": vuln.get("vendorProject", ""),
                 "product": vuln.get("product", ""),
                 "name": vuln.get("vulnerabilityName", ""),
+                "required_action": vuln.get("requiredAction", ""),
             }
         ransomware_count = sum(1 for v in out.values() if v["ransomware"])
         logger.info(f"CISA KEV: loaded {len(out)} known-exploited CVEs ({ransomware_count} ransomware-linked)")
+        _kev_cache = out
+        _kev_cache_at = datetime.now()
         return out
     except Exception as e:  # best-effort: a KEV failure never breaks report generation
         logger.warning(f"CISA KEV fetch failed ({type(e).__name__}: {e!r}); ransomware flags unavailable this run")
