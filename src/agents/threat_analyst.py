@@ -33,10 +33,10 @@ from src.agents.exploit_enrichment import (
     build_affected_product_from_kev,
     build_exploited_by,
     fetch_epss_scores,
-    fetch_kev_cves,
     get_recently_added_kev,
 )
 from src.core.config import analysis_config, customer_profile, industry_filter_config
+from src.enrichment.kev import fetch_kev_map
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +215,7 @@ class ThreatAnalystAgent:
 
             # Fetch public exploit intelligence (CISA KEV + EPSS)
             all_cve_ids = collect_all_cve_ids(cve_data)
-            kev_lookup = await fetch_kev_cves()
+            kev_lookup = await fetch_kev_map()
             epss_lookup = await fetch_epss_scores(list(all_cve_ids))
 
             # Prepare data for analysis
@@ -318,7 +318,7 @@ class ThreatAnalystAgent:
 
             # Fetch public exploit intelligence (CISA KEV + EPSS)
             all_cve_ids = collect_all_cve_ids(cve_data)
-            kev_lookup = await fetch_kev_cves()
+            kev_lookup = await fetch_kev_map()
             epss_lookup = await fetch_epss_scores(list(all_cve_ids))
 
             # Prepare data for analysis (with smart truncation)

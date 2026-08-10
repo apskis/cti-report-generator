@@ -1759,9 +1759,11 @@ class TestKevEnrichment:
     _FEED = {
         "vulnerabilities": [
             {"cveID": "CVE-2026-18019", "knownRansomwareCampaignUse": "Known",
-             "dueDate": "2026-09-01", "dateAdded": "2026-08-01"},
+             "dueDate": "2026-09-01", "dateAdded": "2026-08-01",
+             "vendorProject": "Acme", "product": "PLC", "vulnerabilityName": "RCE in PLC"},
             {"cveID": "CVE-2026-18015", "knownRansomwareCampaignUse": "Unknown",
-             "dueDate": "2026-09-15", "dateAdded": "2026-08-02"},
+             "dueDate": "2026-09-15", "dateAdded": "2026-08-02",
+             "vendorProject": "Acme", "product": "HMI", "vulnerabilityName": "Info leak"},
         ]
     }
 
@@ -1788,6 +1790,12 @@ class TestKevEnrichment:
         assert m["CVE-2026-18019"]["ransomware"] is True
         assert m["CVE-2026-18015"]["ransomware"] is False
         assert m["CVE-2026-18019"]["due_date"] == "2026-09-01"
+        # Unified schema also carries the fields the IT Exploited section needs, so the
+        # catalog is fetched once and both consumers read this one map.
+        assert m["CVE-2026-18019"]["vendor"] == "Acme"
+        assert m["CVE-2026-18019"]["product"] == "PLC"
+        assert m["CVE-2026-18019"]["name"] == "RCE in PLC"
+        assert m["CVE-2026-18019"]["date_added"] == "2026-08-01"
 
     @pytest.mark.asyncio
     async def test_fetch_kev_map_disabled_returns_empty(self, monkeypatch):

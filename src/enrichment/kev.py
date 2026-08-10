@@ -1,10 +1,16 @@
-"""CISA KEV (Known Exploited Vulnerabilities) enrichment for the OT section.
+"""CISA KEV (Known Exploited Vulnerabilities) — the single fetch of the catalog.
 
-The CISA KEV catalog is a free, keyless JSON feed. Claroty already flags whether a
-vulnerability is in KEV (``is_known_exploited``), but it does not carry the catalog's
-``knownRansomwareCampaignUse`` marker — the signal that matters most for OT/manufacturing,
-where ransomware is the dominant threat. This module fetches the catalog once per run and
-lets the report flag which exposed/advisory CVEs are used in ransomware campaigns.
+The CISA KEV catalog is a free, keyless JSON feed. It is the source of truth for two
+things in the report:
+
+- **OT tables** (this module's ``annotate_records_with_kev``): Claroty already flags KEV
+  membership (``is_known_exploited``) but not the catalog's ``knownRansomwareCampaignUse``
+  marker — the signal that matters most for OT/manufacturing, where ransomware dominates.
+- **IT Exploited Vulnerabilities section** (``src/agents/exploit_enrichment.py``): recently
+  added KEV CVEs, ``exploited_by`` strings, and vendor/product backfill.
+
+Both consumers read the one map returned by :func:`fetch_kev_map`, so the catalog is
+downloaded once per run. Each entry carries every field either consumer needs.
 
 Best-effort: any failure (or a disabled toggle) degrades to an empty map, and annotation
 becomes a no-op, so KEV enrichment never blocks report generation.
@@ -22,9 +28,15 @@ logger = logging.getLogger(__name__)
 
 
 async def fetch_kev_map() -> dict[str, dict[str, Any]]:
-    """Fetch the CISA KEV catalog as ``{CVE (upper): {ransomware, due_date, date_added}}``.
+    """Fetch the CISA KEV catalog once as a lookup keyed by upper-cased CVE id.
 
-    Keyless public feed. Best-effort: returns ``{}`` when disabled or on any failure so KEV
+    Each entry carries every field the report's consumers need::
+
+        {"ransomware": bool, "due_date": str, "date_added": str,
+         "vendor": str, "product": str, "name": str}
+
+    ``ransomware`` is normalized to a bool from ``knownRansomwareCampaignUse``. Keyless
+    public feed. Best-effort: returns ``{}`` when disabled or on any failure so KEV
     enrichment never blocks report generation.
     """
     if not collector_config.kev_enrich_enabled:
@@ -45,6 +57,9 @@ async def fetch_kev_map() -> dict[str, dict[str, Any]]:
                 "ransomware": (vuln.get("knownRansomwareCampaignUse") or "").strip().lower() == "known",
                 "due_date": vuln.get("dueDate", ""),
                 "date_added": vuln.get("dateAdded", ""),
+                "vendor": vuln.get("vendorProject", ""),
+                "product": vuln.get("product", ""),
+                "name": vuln.get("vulnerabilityName", ""),
             }
         ransomware_count = sum(1 for v in out.values() if v["ransomware"])
         logger.info(f"CISA KEV: loaded {len(out)} known-exploited CVEs ({ransomware_count} ransomware-linked)")
