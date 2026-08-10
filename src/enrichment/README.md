@@ -73,10 +73,10 @@ class EnrichmentConfig:
     # Web search settings
     web_search_timeout_seconds: int = 5
     max_web_searches_per_run: int = 10
-    
-    # CISA KEV cache duration (hours)
-    kev_cache_duration_hours: int = 24
 ```
+
+The CISA KEV catalog is fetched by the shared, run-memoized
+`src.enrichment.kev.fetch_kev_map`; its cache TTL is `collector_config.kev_cache_hours`.
 
 **To disable web search**, edit `src/core/config.py` and set:
 
@@ -148,9 +148,6 @@ class EnrichmentConfig:
     # Web search settings
     web_search_timeout_seconds: int = 5
     max_web_searches_per_run: int = 10
-    
-    # CISA KEV cache duration (hours)
-    kev_cache_duration_hours: int = 24
 ```
 
 **To disable web search entirely**:

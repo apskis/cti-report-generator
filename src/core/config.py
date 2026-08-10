@@ -216,9 +216,6 @@ class EnrichmentConfig:
     web_search_timeout_seconds: int = 5
     max_web_searches_per_run: int = 10  # Limit to avoid excessive API calls
 
-    # CISA KEV cache duration (hours)
-    kev_cache_duration_hours: int = 24
-
     # OSINT full-text extraction (opt-in). When enabled, each OSINT article URL is
     # fetched and its body extracted with trafilatura (stored as `full_text`) so the
     # AI analyst sees the full article instead of the short RSS summary. Off by
