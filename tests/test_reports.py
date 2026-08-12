@@ -1051,17 +1051,45 @@ class TestOTAdvisoryRansomwareMarker:
         text = "\n".join(c.text for t in gen.doc.tables for row in t.rows for c in row.cells)
         assert "Known ransomware (CISA KEV)" in text
 
-    def test_no_marker_when_not_ransomware(self):
+    def test_no_marker_when_owned_but_not_exploited(self):
         gen = self._gen()
         gen._add_ot_advisories({
             "ot_advisories": [
                 {"advisory_id": "ICSA-26-002", "title": "HMI flaw", "cves": ["CVE-2026-18015"],
-                 "severity": "high", "cvss": 7.1, "affected_assets": 0,
-                 "claroty_status": "ok", "known_ransomware": False},
+                 "severity": "high", "cvss": 7.1, "affected_assets": 4,  # owned -> shown
+                 "claroty_status": "ok", "known_ransomware": False, "in_cisa_kev": False},
             ]
         })
         text = "\n".join(c.text for t in gen.doc.tables for row in t.rows for c in row.cells)
+        assert "ICSA-26-002" in text          # owned advisory is rendered
         assert "ransomware" not in text.lower()
+        assert "Known-exploited" not in text  # not KEV -> no exploited marker
+
+    def test_only_owned_advisories_are_shown(self):
+        gen = self._gen()
+        gen._add_ot_advisories({
+            "ot_advisories": [
+                {"advisory_id": "ICSA-OWNED", "title": "owned", "cves": ["CVE-2026-1"],
+                 "severity": "high", "cvss": 7.5, "affected_assets": 2, "claroty_status": "ok"},
+                {"advisory_id": "ICSA-NOT-OWNED", "title": "not owned", "cves": ["CVE-2026-2"],
+                 "severity": "critical", "cvss": 9.8, "affected_assets": 0, "claroty_status": "ok"},
+            ]
+        })
+        text = "\n".join(c.text for t in gen.doc.tables for row in t.rows for c in row.cells)
+        assert "ICSA-OWNED" in text
+        assert "ICSA-NOT-OWNED" not in text  # advisory for gear you don't own is excluded
+
+    def test_no_owned_advisories_shows_note_not_table(self):
+        gen = self._gen()
+        gen._add_ot_advisories({
+            "ot_advisories": [
+                {"advisory_id": "ICSA-X", "title": "x", "cves": ["CVE-2026-3"],
+                 "severity": "high", "cvss": 7.0, "affected_assets": 0, "claroty_status": "ok"},
+            ]
+        })
+        assert gen.doc.tables == []  # nothing owned -> no table
+        body = "\n".join(p.text for p in gen.doc.paragraphs)
+        assert "No recent ICS/OT advisories affect products in your environment" in body
 
 
 class TestOTTwoLensStructure:
@@ -1096,7 +1124,7 @@ class TestOTTwoLensStructure:
         assert "Lens 2 — New Advisories" in body
         assert body.index("Lens 1") < body.index("Lens 2")
 
-    def test_advisory_error_caption_disambiguates_from_fleet_table(self):
+    def test_advisory_match_failure_shows_note_not_empty_match(self):
         gen = self._gen()
         gen._add_ot_advisories({
             "ot_environment_exposure": [],
@@ -1105,8 +1133,9 @@ class TestOTTwoLensStructure:
                  "severity": "critical", "cvss": 9.8, "affected_assets": 0, "claroty_status": "error"},
             ],
         })
+        assert gen.doc.tables == []  # no table when the match could not run
         body = "\n".join(p.text for p in gen.doc.paragraphs)
-        # The per-advisory match failure points to the Fleet Exposure table instead of
-        # reading as a blanket "Claroty failed" that would contradict a working fleet table.
-        assert "per-advisory device match" in body
+        # A failed match says "could not check", not a false "nothing affects you".
+        assert "did not complete this run" in body
         assert "Fleet Exposure table above" in body
+        assert "No recent ICS/OT advisories affect products" not in body

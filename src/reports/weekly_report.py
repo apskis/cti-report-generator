@@ -1022,8 +1022,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
         lens2.font.bold = True
         lens2.font.color.rgb = BrandColors.TEXT_DARK
         tail = frame.add_run(
-            " is what CISA recently published for ICS/OT products (watch and assess). "
-            "The two rarely overlap — the first is your estate, the second is the wider landscape."
+            " is what CISA recently published for ICS/OT products you operate (patch ahead of "
+            "exploitation). Both are scoped to your environment — advisories for products you do "
+            "not own are excluded."
         )
         tail.font.size = FontSizes.BODY_SMALL
         tail.font.italic = True
@@ -1033,34 +1034,51 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Lens 1: Claroty-first view of the estate's real exposure (skipped when unavailable).
         self._add_ot_environment_exposure(analysis_result)
 
-        advisories = analysis_result.get("ot_advisories", []) or []
+        all_advisories = analysis_result.get("ot_advisories", []) or []
+        claroty_status = next(
+            (a.get("claroty_status") for a in all_advisories if a.get("claroty_status")), None
+        )
+        # Only advisories that affect products in the environment (Env. Assets > 0). An advisory
+        # for gear you do not own — and that is not exploited — is noise, so it is excluded.
+        advisories = [a for a in all_advisories if (a.get("affected_assets", 0) or 0) > 0]
 
         # Lens 2 heading + intro. Deliberately "recent" rather than "this week": the ICS[AP]
         # free tier serves advisories ~1 month stale, so this is a rolling awareness view.
-        self._add_ot_subheading("Lens 2 — New Advisories: recently published for ICS/OT products")
+        self._add_ot_subheading("Lens 2 — New Advisories affecting products you operate")
         intro = self.doc.add_paragraph()
         intro_run = intro.add_run(
-            "Recently published industrial control system (ICS) and operational technology "
-            "advisories affecting manufacturing, laboratory instrumentation, and plant-floor "
-            "environments (source: CISA ICS advisories). "
+            "Recently published CISA ICS/OT advisories, filtered to products present in your "
+            "environment (Claroty xDome). These are worth patching ahead of exploitation. "
         )
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-
         action_run = intro.add_run(
-            "Verify IT/OT network segmentation and prioritize patching for affected devices in "
-            "production and lab networks."
+            "Verify IT/OT network segmentation and prioritize patching for the affected products."
         )
         action_run.font.size = FontSizes.BODY_SMALL
         action_run.font.bold = True
         action_run.font.color.rgb = BrandColors.TEXT_DARK
-
         self.doc.add_paragraph()
+
+        # When the environment match did not run, we cannot say which advisories apply — so say
+        # that, rather than showing an empty "nothing matched" that would overstate certainty.
+        if claroty_status in ("error", "disabled") and not advisories:
+            note = (
+                "Advisory-to-product matching did not complete this run (Claroty xDome query "
+                "unavailable), so new advisories could not be checked against your environment. "
+                "See the Fleet Exposure table above for confirmed OT-device exposure."
+                if claroty_status == "error"
+                else "Advisory-to-product matching is not configured (Claroty xDome), so new "
+                "advisories could not be checked against your environment."
+            )
+            self._add_ot_caption(note)
+            self.doc.add_paragraph()
+            return
 
         if not advisories:
             self.doc.add_paragraph(
-                "No recent ICS/OT advisories affecting relevant environments were identified."
+                "No recent ICS/OT advisories affect products in your environment this week."
             )
             self.doc.add_paragraph()
             return
@@ -1133,14 +1151,19 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 cve_text = "—"
             cells[3].text = cve_text
 
-            # CISA KEV ransomware marker: the advisory table has no dedicated exploited
-            # column, so flag ransomware-linked CVEs inline beneath the CVE list. This is
-            # the "patch now" signal for OT — ransomware is a subset of KEV, so it also
-            # implies active exploitation.
+            # CISA KEV exploited marker beneath the CVE list (the advisory table has no
+            # dedicated exploited column). Ransomware is the strongest "patch now" signal;
+            # plain KEV membership still means active exploitation.
             if advisory.get("known_ransomware"):
+                exploited_tag = "Known ransomware (CISA KEV)"
+            elif advisory.get("in_cisa_kev"):
+                exploited_tag = "Known-exploited (CISA KEV)"
+            else:
+                exploited_tag = ""
+            if exploited_tag:
                 rw_para = cells[3].add_paragraph()
                 rw_para.paragraph_format.space_before = Pt(0)
-                rw_run = rw_para.add_run("Known ransomware (CISA KEV)")
+                rw_run = rw_para.add_run(exploited_tag)
                 rw_run.font.size = FontSizes.FOOTNOTE
                 rw_run.font.bold = True
                 rw_run.font.color.rgb = BrandColors.RED_HIGH_RISK
@@ -1192,24 +1215,15 @@ class WeeklyReportGenerator(BaseReportGenerator):
         self._keep_table_together(table)
 
         # Caption
-        matched = sum(1 for a in advisories if a.get("affected_assets", 0))
-        claroty_status = next((a.get("claroty_status") for a in advisories if a.get("claroty_status")), None)
-        caption_text = f"Table: {len(advisories)} ICS/OT advisories from CISA ICS advisories (ICS[AP] API)."
-        if claroty_status == "error":
-            # Env. Assets is a *separate* per-advisory Claroty match, distinct from the Fleet
-            # Exposure table above — spell that out so a failure here does not appear to
-            # contradict a successful Fleet Exposure table on the same run.
-            caption_text += (
-                " Env. Assets (per-advisory device match) could not be determined this run; "
-                "see the Fleet Exposure table above for confirmed Claroty exposure."
-            )
-        elif claroty_status == "ok":
-            caption_text += (
-                f" Env. Assets = devices affected in your environment (Claroty xDome); {matched} advisory(ies) matched."
-            )
-        rw_advisories = sum(1 for a in advisories if a.get("known_ransomware"))
-        if rw_advisories:
-            caption_text += f" {rw_advisories} advisory(ies) reference CISA KEV ransomware-linked CVEs."
+        exploited_advisories = sum(
+            1 for a in advisories if a.get("in_cisa_kev") or a.get("known_ransomware")
+        )
+        caption_text = (
+            f"Table: {len(advisories)} recent CISA ICS/OT advisory(ies) affecting products in your "
+            f"environment (Env. Assets = matched devices, Claroty xDome)."
+        )
+        if exploited_advisories:
+            caption_text += f" {exploited_advisories} reference CISA KEV known-exploited CVEs."
         self._add_ot_caption(caption_text)
 
         self.doc.add_paragraph()
