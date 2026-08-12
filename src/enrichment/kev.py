@@ -107,6 +107,8 @@ def annotate_records_with_kev(
       - ``kev_ransomware_cves``: the specific CVEs driving the ransomware flag (only when present)
       - ``kev_due_date``: the earliest CISA KEV remediation deadline across the record's KEV
         CVEs (only when at least one is set) — a concrete "remediate by" signal
+      - ``kev_affected_product``: "Vendor Product" from the first KEV CVE that carries them
+        (only when present) — the affected product for records without their own product field
 
     ``cve_field`` is the record key holding the CVE list ("cves" for advisories, "cve_ids" for
     Claroty vulnerabilities). No-op when ``kev_map`` is empty (fetch failed / disabled).
@@ -127,3 +129,8 @@ def annotate_records_with_kev(
         due_dates = sorted(d for c in in_kev if (d := kev_map[c].get("due_date")))
         if due_dates:
             rec["kev_due_date"] = due_dates[0]
+        for c in in_kev:
+            product = f"{kev_map[c].get('vendor', '')} {kev_map[c].get('product', '')}".strip()
+            if product:
+                rec["kev_affected_product"] = product
+                break

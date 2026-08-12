@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 # Fields requested from the vulnerabilities endpoint (must be valid field-enum names).
 _VULN_FIELDS = [
     "name",
+    "description",
     "cve_ids",
     "cvss_v3_score",
     "is_known_exploited",
@@ -106,6 +107,7 @@ class ClarotyCollector(BaseCollector):
             "source": "Claroty",
             "record_type": "vulnerability",
             "name": row.get("name", ""),
+            "description": row.get("description", ""),
             "cve_ids": cve_ids,
             "cvss": cvss,
             "affected_devices_count": _int(row.get("affected_devices_count")),

@@ -956,61 +956,57 @@ class TestOTEnvironmentExposure:
         gen.doc = Document()
         return gen
 
-    def test_renders_action_queue(self):
+    def test_renders_descriptive_table(self):
         gen = self._gen()
         gen._add_ot_environment_exposure({
             "ot_environment_exposure": [
-                {"name": "Remote code execution", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
+                {"name": "RCE", "description": "Remote code execution in the runtime.",
+                 "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
                  "affected_devices_count": 4088, "affected_ot_devices_count": 3000,
-                 "is_known_exploited": True, "kev_due_date": "2026-09-15"},
-                {"name": "Info disclosure", "cve_ids": ["CVE-2026-18015"], "cvss": 5.3,
-                 "affected_devices_count": 120, "affected_ot_devices_count": 40,
-                 "is_known_exploited": False},
+                 "is_known_exploited": True, "kev_affected_product": "Acme PLC"},
+                {"name": "Info disclosure", "description": "Sensitive info exposure.",
+                 "cve_ids": ["CVE-2026-18015"], "cvss": 5.3,
+                 "affected_ot_devices_count": 40, "is_known_exploited": False},
             ]
         })
         tables = gen.doc.tables
         assert len(tables) == 1
         assert len(tables[0].rows) == 3  # header + 2 data rows
-        # 5-col action layout: Priority | CVE(s) | OT Devices | CVSS | Remediate by
+        # 5-col descriptive layout: CVE(s) | Description | Product | OT Devices | CVSS
         assert len(tables[0].columns) == 5
         hdr = [c.text for c in tables[0].rows[0].cells]
-        assert hdr == ["Priority", "CVE(s)", "OT Devices", "CVSS", "Remediate by"]
+        assert hdr == ["CVE(s)", "Description", "Product", "OT Devices", "CVSS"]
         text = "\n".join(c.text for row in tables[0].rows for c in row.cells)
         assert "CVE-2026-18019" in text
-        assert "3,000" in text          # OT devices is the headline number
-        assert "of 4,088 total" in text  # total demoted to context
-        assert "Act now" in text and "Monitor" in text
-        assert "2026-09-15" in text      # CISA KEV remediate-by deadline
+        assert "Remote code execution in the runtime." in text  # description column
+        assert "Acme PLC" in text                                # product column (from KEV)
+        assert "3,000" in text                                   # OT devices detected in env
+        # No priority / remediate-by anymore.
+        assert "Act now" not in text and "Remediate by" not in text
 
-    def test_priority_orders_rows_over_ot_count(self):
-        # An exploited/critical vuln (Act now) with FEWER OT devices still sorts above a
-        # non-exploited one (Monitor) with more — priority first, OT count within tier.
+    def test_ranks_by_ot_device_count(self):
         gen = self._gen()
         gen._add_ot_environment_exposure({
             "ot_environment_exposure": [
-                {"name": "monitor", "cve_ids": ["CVE-2026-1"], "cvss": 4.0,
-                 "affected_ot_devices_count": 500},
-                {"name": "act", "cve_ids": ["CVE-2026-2"], "cvss": 9.0,
-                 "affected_ot_devices_count": 5, "is_known_exploited": True},
+                {"name": "few", "cve_ids": ["CVE-2026-1"], "cvss": 9.0, "affected_ot_devices_count": 5},
+                {"name": "many", "cve_ids": ["CVE-2026-2"], "cvss": 4.0, "affected_ot_devices_count": 500},
             ]
         })
         first_data_row = gen.doc.tables[0].rows[1]
-        assert "Act now" in first_data_row.cells[0].text
-        assert "CVE-2026-2" in first_data_row.cells[1].text
+        assert "CVE-2026-2" in first_data_row.cells[0].text  # most OT devices first
 
-    def test_needs_attention_callout_names_deadline(self):
+    def test_description_falls_back_to_name(self):
         gen = self._gen()
         gen._add_ot_environment_exposure({
             "ot_environment_exposure": [
-                {"name": "RCE", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
-                 "affected_ot_devices_count": 195, "is_known_exploited": True,
-                 "known_ransomware": True, "kev_due_date": "2026-09-15"},
+                {"name": "Buffer overflow in HMI", "cve_ids": ["CVE-2026-3"],
+                 "cvss": 7.1, "affected_ot_devices_count": 12},
             ]
         })
-        body = "\n".join(p.text for p in gen.doc.paragraphs)
-        assert "Needs attention" in body
-        assert "1 need action now" in body
-        assert "2026-09-15" in body and "CVE-2026-18019" in body
+        desc_cell = gen.doc.tables[0].rows[1].cells[1]
+        assert "Buffer overflow in HMI" in desc_cell.text  # name used when no description
+        product_cell = gen.doc.tables[0].rows[1].cells[2]
+        assert product_cell.text.strip() == "—"  # not KEV-listed -> no product
 
     def test_empty_exposure_renders_nothing(self):
         gen = self._gen()
@@ -1019,31 +1015,17 @@ class TestOTEnvironmentExposure:
         # No heading/intro either — the whole subsection is skipped when unavailable.
         assert gen.doc.paragraphs == [] or all(not p.text.strip() for p in gen.doc.paragraphs)
 
-    def test_ransomware_drives_act_now_priority(self):
+    def test_known_exploited_kept_as_small_tag(self):
         gen = self._gen()
         gen._add_ot_environment_exposure({
             "ot_environment_exposure": [
-                {"name": "RCE", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
+                {"name": "RCE", "description": "d", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
                  "affected_ot_devices_count": 10, "is_known_exploited": True,
                  "known_ransomware": True},
             ]
         })
-        priority_cell = gen.doc.tables[0].rows[1].cells[0]
-        assert "Act now" in priority_cell.text
-        assert "ransomware" in priority_cell.text  # the reason line justifies the priority
-
-    def test_kev_fallback_flags_act_now_without_claroty_flag(self):
-        # in_cisa_kev alone (Claroty flag absent) + critical CVSS still escalates to Act now.
-        gen = self._gen()
-        gen._add_ot_environment_exposure({
-            "ot_environment_exposure": [
-                {"name": "RCE", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
-                 "affected_ot_devices_count": 5, "is_known_exploited": False,
-                 "in_cisa_kev": True, "known_ransomware": False},
-            ]
-        })
-        priority_cell = gen.doc.tables[0].rows[1].cells[0]
-        assert "Act now" in priority_cell.text
+        cve_cell = gen.doc.tables[0].rows[1].cells[0]
+        assert "known-exploited · ransomware" in cve_cell.text
 
 
 class TestOTAdvisoryRansomwareMarker:

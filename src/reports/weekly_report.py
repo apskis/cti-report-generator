@@ -851,84 +851,37 @@ class WeeklyReportGenerator(BaseReportGenerator):
         caption_run.font.name = "Arial"
         caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-    def _ot_priority(self, vuln: dict[str, Any]) -> tuple[int, str, RGBColor, str]:
-        """Return (rank, label, color, reason) for a vulnerability's action priority.
-
-        Lower rank = more urgent. Drives both the sort order and the Priority column so the
-        table reads as an action queue: known exploitation (CISA KEV) plus ransomware or a
-        critical score means act now; any exploitation or a high score means plan; else
-        monitor.
-        """
-        exploited = bool(vuln.get("is_known_exploited") or vuln.get("in_cisa_kev"))
-        ransomware = bool(vuln.get("known_ransomware"))
-        try:
-            cvss = float(vuln.get("cvss")) if vuln.get("cvss") is not None else 0.0
-        except (TypeError, ValueError):
-            cvss = 0.0
-        if exploited and (ransomware or cvss >= 9.0):
-            return (0, "Act now", BrandColors.RED_HIGH_RISK, "ransomware" if ransomware else "exploited, critical")
-        if exploited or cvss >= 7.0:
-            return (1, "Plan", BrandColors.ORANGE_DESIGN, "exploited" if exploited else "high severity")
-        return (2, "Monitor", BrandColors.GRAY_MEDIUM, "")
-
     def _add_ot_environment_exposure(self, analysis_result: dict[str, Any]) -> None:
-        """Add the Claroty-first "Fleet Exposure" action queue for OT devices.
+        """Add the Claroty-first "Fleet Exposure" table of OT-device vulnerabilities.
 
-        Lists the vulnerabilities that affect OT devices the organization actually operates
-        (from Claroty xDome), as a prioritized list of what to address — Act now / Plan /
-        Monitor — with the CISA KEV remediation deadline where one exists. Ordered by
-        priority, then by OT-device footprint. Best-effort: the whole subsection is skipped
-        when no exposure data is available (Claroty not configured or the query did not
-        complete), keeping the section clean.
+        Lists the vulnerabilities detected on OT devices the organization actually operates
+        (from Claroty xDome): what the CVE is, the product it affects, and how many of your OT
+        devices it touches. Ordered by the number of affected OT devices. Best-effort: the
+        whole subsection is skipped when no exposure data is available (Claroty not configured
+        or the query did not complete), keeping the section clean.
         """
         exposure = analysis_result.get("ot_environment_exposure", []) or []
         if not exposure:
             return
 
-        # Action queue: most-urgent first, then widest OT footprint within a tier.
-        exposure = sorted(
-            exposure,
-            key=lambda v: (self._ot_priority(v)[0], -(v.get("affected_ot_devices_count", 0) or 0)),
-        )
+        # Widest OT footprint first.
+        exposure = sorted(exposure, key=lambda v: v.get("affected_ot_devices_count", 0) or 0, reverse=True)
 
-        self._add_ot_subheading("Lens 1 — Fleet Exposure: what to address on OT devices you operate")
-
-        # "Needs attention" callout — the plain-English so-what, above the table.
-        act_now = [v for v in exposure if self._ot_priority(v)[0] == 0]
-        exploited_ct = sum(1 for v in exposure if v.get("is_known_exploited") or v.get("in_cisa_kev"))
-        rw_ct = sum(1 for v in exposure if v.get("known_ransomware"))
-        due = sorted(
-            (v.get("kev_due_date"), (v.get("cve_ids") or ["—"])[0]) for v in exposure if v.get("kev_due_date")
-        )
-        callout = self.doc.add_paragraph()
-        lead = callout.add_run("Needs attention: ")
-        lead.font.size = FontSizes.BODY_SMALL
-        lead.font.bold = True
-        lead.font.color.rgb = BrandColors.RED_HIGH_RISK
-        summary = (
-            f"{len(exposure)} vulnerabilities affect OT devices you operate — "
-            f"{exploited_ct} known-exploited"
-            + (f", {rw_ct} ransomware-linked" if rw_ct else "")
-            + f". {len(act_now)} need action now"
-            + (f"; nearest CISA remediation deadline {due[0][0]} ({due[0][1]})." if due else ".")
-        )
-        summary_run = callout.add_run(summary)
-        summary_run.font.size = FontSizes.BODY_SMALL
-        summary_run.font.color.rgb = BrandColors.TEXT_DARK
+        self._add_ot_subheading("Lens 1 — Fleet Exposure: vulnerabilities on OT devices you operate")
 
         intro = self.doc.add_paragraph()
         intro_run = intro.add_run(
-            "Vulnerabilities present on the OT devices in your environment (source: Claroty xDome "
-            "asset inventory), ordered by priority. Address the Act-now items first."
+            "Vulnerabilities detected on the OT devices in your environment (source: Claroty xDome "
+            "asset inventory), with the number of your OT devices each affects."
         )
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
         self.doc.add_paragraph()
 
-        # Table: Priority | CVE(s) | OT Devices | CVSS | Remediate by
+        # Table: CVE(s) | Description | Product | OT Devices | CVSS
         table = self.doc.add_table(rows=1, cols=5)
-        headers = ["Priority", "CVE(s)", "OT Devices", "CVSS", "Remediate by"]
+        headers = ["CVE(s)", "Description", "Product", "OT Devices", "CVSS"]
         header_cells = table.rows[0].cells
         for i, header in enumerate(headers):
             cell = header_cells[i]
@@ -945,25 +898,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
         for vuln in exposure:
             row = table.add_row()
             cells = row.cells
-            _rank, label, color, reason = self._ot_priority(vuln)
 
-            # Column 0: Priority (Act now / Plan / Monitor) with the driving reason beneath.
-            cells[0].text = ""
-            pr_para = cells[0].paragraphs[0]
-            pr_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            pr_run = pr_para.add_run(label)
-            pr_run.font.bold = True
-            pr_run.font.size = FontSizes.SUBTITLE
-            pr_run.font.color.rgb = color
-            if reason:
-                reason_para = cells[0].add_paragraph()
-                reason_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                reason_para.paragraph_format.space_before = Pt(0)
-                reason_run = reason_para.add_run(reason)
-                reason_run.font.size = FontSizes.FOOTNOTE
-                reason_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-
-            # Column 1: CVE(s), with the vulnerability name on a small second line.
+            # Column 0: CVE(s). Known-exploited / ransomware kept as a small factual tag.
             cve_ids = vuln.get("cve_ids", []) or []
             if isinstance(cve_ids, list) and cve_ids:
                 cve_text = ", ".join(cve_ids[:3])
@@ -971,72 +907,79 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     cve_text += f" (+{len(cve_ids) - 3})"
             else:
                 cve_text = "—"
-            cells[1].text = ""
-            cve_para = cells[1].paragraphs[0]
+            cells[0].text = ""
+            cve_para = cells[0].paragraphs[0]
             cve_run = cve_para.add_run(cve_text)
             cve_run.font.bold = True
             cve_run.font.size = FontSizes.SUBTITLE
             cve_run.font.color.rgb = BrandColors.TEXT_DARK
-            name = (vuln.get("name") or "").strip()
-            if name and name.upper() not in cve_text.upper():
-                name_para = cells[1].add_paragraph()
-                name_para.paragraph_format.space_before = Pt(0)
-                name_run = name_para.add_run(name[:80])
-                name_run.font.size = FontSizes.FOOTNOTE
-                name_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+            if vuln.get("known_ransomware"):
+                tag = "known-exploited · ransomware"
+            elif vuln.get("is_known_exploited") or vuln.get("in_cisa_kev"):
+                tag = "known-exploited"
+            else:
+                tag = ""
+            if tag:
+                tag_para = cells[0].add_paragraph()
+                tag_para.paragraph_format.space_before = Pt(0)
+                tag_run = tag_para.add_run(tag)
+                tag_run.font.size = FontSizes.FOOTNOTE
+                tag_run.font.bold = True
+                tag_run.font.color.rgb = BrandColors.RED_HIGH_RISK
 
-            # Column 2: OT devices (the number you care about, bold) with total as context.
+            # Column 1: Description of the CVE (Claroty text; fall back to the vuln name).
+            desc = (vuln.get("description") or vuln.get("name") or "").strip()
+            desc = (desc[:200] + "…") if len(desc) > 200 else (desc or "—")
+            cells[1].text = ""
+            desc_para = cells[1].paragraphs[0]
+            desc_run = desc_para.add_run(desc)
+            desc_run.font.size = FontSizes.FOOTNOTE
+            desc_run.font.color.rgb = BrandColors.TEXT_DARK
+
+            # Column 2: Product affected (from CISA KEV vendor/product where the CVE is KEV-listed).
+            product = (vuln.get("kev_affected_product") or "").strip() or "—"
             cells[2].text = ""
-            ot_para = cells[2].paragraphs[0]
+            prod_para = cells[2].paragraphs[0]
+            prod_run = prod_para.add_run(product)
+            prod_run.font.size = FontSizes.FOOTNOTE
+            prod_run.font.color.rgb = (
+                BrandColors.TEXT_DARK if product != "—" else BrandColors.GRAY_MEDIUM
+            )
+
+            # Column 3: OT devices detected in the environment (the number that matters, bold).
+            cells[3].text = ""
+            ot_para = cells[3].paragraphs[0]
             ot_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             ot_run = ot_para.add_run(f"{vuln.get('affected_ot_devices_count', 0):,}")
             ot_run.font.bold = True
             ot_run.font.size = FontSizes.SUBTITLE
             ot_run.font.color.rgb = BrandColors.RED_HIGH_RISK
-            total = vuln.get("affected_devices_count", 0) or 0
-            if total:
-                tot_para = cells[2].add_paragraph()
-                tot_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                tot_para.paragraph_format.space_before = Pt(0)
-                tot_run = tot_para.add_run(f"of {total:,} total")
-                tot_run.font.size = FontSizes.FOOTNOTE
-                tot_run.font.color.rgb = BrandColors.GRAY_MEDIUM
 
-            # Column 3: CVSS (colored by severity band)
+            # Column 4: CVSS (colored by severity band)
             cvss = vuln.get("cvss")
-            cells[3].text = ""
-            cvss_para = cells[3].paragraphs[0]
+            cells[4].text = ""
+            cvss_para = cells[4].paragraphs[0]
             cvss_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             cvss_run = cvss_para.add_run(f"{cvss:g}" if isinstance(cvss, (int, float)) else "—")
             cvss_run.font.bold = True
             cvss_run.font.size = FontSizes.SUBTITLE
             cvss_run.font.color.rgb = self._cvss_color(cvss)
 
-            # Column 4: Remediate by — CISA KEV deadline where one exists (else a dash).
-            cells[4].text = ""
-            due_para = cells[4].paragraphs[0]
-            due_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            due_date = vuln.get("kev_due_date")
-            due_run = due_para.add_run(due_date if due_date else "—")
-            due_run.font.size = FontSizes.SUBTITLE
-            due_run.font.bold = bool(due_date)
-            due_run.font.color.rgb = BrandColors.TEXT_DARK if due_date else BrandColors.GRAY_MEDIUM
-
             for idx in range(5):
                 self._clear_cell_shading(cells[idx])
                 self._set_cell_borders(cells[idx], "CCCCCC")
 
-        table.columns[0].width = Inches(1.1)
-        table.columns[1].width = Inches(2.3)
-        table.columns[2].width = Inches(1.1)
-        table.columns[3].width = Inches(0.8)
-        table.columns[4].width = Inches(1.2)
+        table.columns[0].width = Inches(1.3)
+        table.columns[1].width = Inches(2.4)
+        table.columns[2].width = Inches(1.3)
+        table.columns[3].width = Inches(0.9)
+        table.columns[4].width = Inches(0.6)
         self._keep_table_together(table)
 
         caption_text = (
-            f"Table: {len(exposure)} vulnerabilities affecting OT devices in your environment "
-            f"(Claroty xDome), ordered by priority then OT-device count. "
-            f"'Remediate by' is the CISA KEV benchmark deadline where the CVE is KEV-listed."
+            f"Table: {len(exposure)} vulnerabilities detected on OT devices in your environment "
+            f"(Claroty xDome), ranked by number of affected OT devices. "
+            f"Product shown from CISA KEV where the CVE is KEV-listed."
         )
         self._add_ot_caption(caption_text)
 
