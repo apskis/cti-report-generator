@@ -984,16 +984,17 @@ class TestOTEnvironmentExposure:
         # No priority / remediate-by anymore.
         assert "Act now" not in text and "Remediate by" not in text
 
-    def test_ranks_by_ot_device_count(self):
+    def test_ranks_by_cvss(self):
+        # Highest CVSS first, regardless of OT-device count.
         gen = self._gen()
         gen._add_ot_environment_exposure({
             "ot_environment_exposure": [
-                {"name": "few", "cve_ids": ["CVE-2026-1"], "cvss": 9.0, "affected_ot_devices_count": 5},
-                {"name": "many", "cve_ids": ["CVE-2026-2"], "cvss": 4.0, "affected_ot_devices_count": 500},
+                {"name": "lower", "cve_ids": ["CVE-2026-1"], "cvss": 7.5, "affected_ot_devices_count": 500},
+                {"name": "higher", "cve_ids": ["CVE-2026-2"], "cvss": 9.8, "affected_ot_devices_count": 5},
             ]
         })
         first_data_row = gen.doc.tables[0].rows[1]
-        assert "CVE-2026-2" in first_data_row.cells[0].text  # most OT devices first
+        assert "CVE-2026-2" in first_data_row.cells[0].text  # CVSS 9.8 outranks 7.5
 
     def test_description_falls_back_to_name(self):
         gen = self._gen()

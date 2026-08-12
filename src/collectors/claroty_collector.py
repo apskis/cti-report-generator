@@ -247,19 +247,20 @@ def _tag_status(ot_advisories: list[dict[str, Any]], status: str) -> list[dict[s
 async def fetch_environment_exposure(
     credentials: dict[str, str], limit: int | None = None
 ) -> list[dict[str, Any]]:
-    """Return the top OT vulnerabilities by affected OT-device count, from Claroty.
+    """Return the High/Critical OT vulnerabilities in the environment, ranked by CVSS.
 
     This is the real exposure on the OT devices the organization operates — the actionable
-    view — independent of whether any ICS advisory covers it. Filtered to vulnerabilities
-    that affect at least one OT device (so fleet-wide IT CVEs that merely appear in the
-    inventory are excluded) and server-side sorted by ``affected_ot_devices_count``
-    descending, so a single page is the true top N by OT footprint. Best-effort: returns []
-    on missing token or any failure.
+    view — independent of whether any ICS advisory covers it. Filtered server-side to
+    vulnerabilities that affect at least one OT device AND score High or Critical
+    (CVSS >= threshold), then sorted by CVSS descending, so the table is short and
+    severity-ranked rather than a long device-count dump. Best-effort: returns [] on missing
+    token or any failure.
     """
     token = (credentials or {}).get("claroty_token", "")
     if not token:
         return []
     limit = limit or collector_config.claroty_env_exposure_limit
+    min_cvss = collector_config.claroty_env_exposure_min_cvss
     base_url = (credentials.get("claroty_base_url") or collector_config.claroty_base_url).rstrip("/")
     headers = {
         "Authorization": f"Bearer {token}",
@@ -267,8 +268,14 @@ async def fetch_environment_exposure(
         "Accept": "application/json",
     }
     body = {
-        "filter_by": {"field": "affected_ot_devices_count", "operation": "greater", "value": 0},
-        "sort_by": [{"field": "affected_ot_devices_count", "order": "desc"}],
+        "filter_by": {
+            "operation": "and",
+            "operands": [
+                {"field": "affected_ot_devices_count", "operation": "greater", "value": 0},
+                {"field": "cvss_v3_score", "operation": "greater_or_equal", "value": min_cvss},
+            ],
+        },
+        "sort_by": [{"field": "cvss_v3_score", "order": "desc"}],
         "fields": _VULN_FIELDS,
         "offset": 0,
         "limit": limit,
@@ -282,7 +289,7 @@ async def fetch_environment_exposure(
             data = await client.post(url, headers=headers, json_data=body, expected_status=(200,))
         rows = data.get("vulnerabilities", []) if isinstance(data, dict) else []
         out = [v for v in (ClarotyCollector._parse_vuln(r) for r in rows) if v]
-        logger.info(f"Claroty OT exposure: top {len(out)} vulnerabilities by affected OT-device count")
+        logger.info(f"Claroty OT exposure: {len(out)} High/Critical (CVSS>={min_cvss}) OT vulnerabilities by CVSS")
         return out
     except Exception as e:
         logger.warning(f"Claroty environment-exposure query failed ({type(e).__name__}: {e!r})")

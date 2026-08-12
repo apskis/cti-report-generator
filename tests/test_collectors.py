@@ -1601,8 +1601,8 @@ class TestClarotyCollector:
         assert c._parse_vuln({"cve_ids": ["CVE-2026-1"], "cvss_v3_score": "n/a"})["cvss"] is None
 
     @pytest.mark.asyncio
-    async def test_fetch_environment_exposure_sorts_by_ot_device_count(self, claroty_credentials):
-        """Env-exposure query filters to OT devices>0, sorts by OT device count desc."""
+    async def test_fetch_environment_exposure_filters_high_critical_by_cvss(self, claroty_credentials):
+        """Env-exposure query filters to OT devices>0 AND High/Critical CVSS, sorts by CVSS desc."""
         from src.collectors import claroty_collector as mod
         from src.collectors.claroty_collector import fetch_environment_exposure
 
@@ -1629,8 +1629,13 @@ class TestClarotyCollector:
             out = await fetch_environment_exposure(claroty_credentials, limit=5)
 
         assert seen["url"].endswith("/vulnerabilities/")
-        assert seen["body"]["filter_by"] == {"field": "affected_ot_devices_count", "operation": "greater", "value": 0}
-        assert seen["body"]["sort_by"] == [{"field": "affected_ot_devices_count", "order": "desc"}]
+        # Compound filter: affects an OT device AND scores High/Critical.
+        operands = seen["body"]["filter_by"]["operands"]
+        assert seen["body"]["filter_by"]["operation"] == "and"
+        assert {"field": "affected_ot_devices_count", "operation": "greater", "value": 0} in operands
+        assert {"field": "cvss_v3_score", "operation": "greater_or_equal", "value": 7.0} in operands
+        # Ranked by CVSS descending.
+        assert seen["body"]["sort_by"] == [{"field": "cvss_v3_score", "order": "desc"}]
         assert seen["body"]["limit"] == 5
         # Row without a usable CVE is dropped; the real one is parsed with cvss + KEV.
         assert len(out) == 1

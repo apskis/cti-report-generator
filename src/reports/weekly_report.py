@@ -864,15 +864,17 @@ class WeeklyReportGenerator(BaseReportGenerator):
         if not exposure:
             return
 
-        # Widest OT footprint first.
-        exposure = sorted(exposure, key=lambda v: v.get("affected_ot_devices_count", 0) or 0, reverse=True)
+        # Highest severity first (the query already filters to High/Critical and sorts by CVSS;
+        # re-sort defensively).
+        exposure = sorted(exposure, key=lambda v: v.get("cvss") or 0, reverse=True)
 
-        self._add_ot_subheading("Lens 1 — Fleet Exposure: vulnerabilities on OT devices you operate")
+        self._add_ot_subheading("Lens 1 — Fleet Exposure: High/Critical vulnerabilities on OT devices you operate")
 
         intro = self.doc.add_paragraph()
         intro_run = intro.add_run(
-            "Vulnerabilities detected on the OT devices in your environment (source: Claroty xDome "
-            "asset inventory), with the number of your OT devices each affects."
+            "High and Critical vulnerabilities detected on the OT devices in your environment "
+            "(source: Claroty xDome asset inventory), ranked by CVSS, with the number of your OT "
+            "devices each affects."
         )
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
@@ -977,8 +979,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
         self._keep_table_together(table)
 
         caption_text = (
-            f"Table: {len(exposure)} vulnerabilities detected on OT devices in your environment "
-            f"(Claroty xDome), ranked by number of affected OT devices. "
+            f"Table: {len(exposure)} High/Critical vulnerabilities detected on OT devices in your "
+            f"environment (Claroty xDome), ranked by CVSS. "
             f"Product shown from CISA KEV where the CVE is KEV-listed."
         )
         self._add_ot_caption(caption_text)
