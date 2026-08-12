@@ -1601,8 +1601,8 @@ class TestClarotyCollector:
         assert c._parse_vuln({"cve_ids": ["CVE-2026-1"], "cvss_v3_score": "n/a"})["cvss"] is None
 
     @pytest.mark.asyncio
-    async def test_fetch_environment_exposure_sorts_by_device_count(self, claroty_credentials):
-        """Env-exposure query filters affected>0, sorts by device count desc, returns parsed rows."""
+    async def test_fetch_environment_exposure_sorts_by_ot_device_count(self, claroty_credentials):
+        """Env-exposure query filters to OT devices>0, sorts by OT device count desc."""
         from src.collectors import claroty_collector as mod
         from src.collectors.claroty_collector import fetch_environment_exposure
 
@@ -1629,8 +1629,8 @@ class TestClarotyCollector:
             out = await fetch_environment_exposure(claroty_credentials, limit=5)
 
         assert seen["url"].endswith("/vulnerabilities/")
-        assert seen["body"]["filter_by"] == {"field": "affected_devices_count", "operation": "greater", "value": 0}
-        assert seen["body"]["sort_by"] == [{"field": "affected_devices_count", "order": "desc"}]
+        assert seen["body"]["filter_by"] == {"field": "affected_ot_devices_count", "operation": "greater", "value": 0}
+        assert seen["body"]["sort_by"] == [{"field": "affected_ot_devices_count", "order": "desc"}]
         assert seen["body"]["limit"] == 5
         # Row without a usable CVE is dropped; the real one is parsed with cvss + KEV.
         assert len(out) == 1
@@ -1880,8 +1880,8 @@ class TestKevEnrichment:
         from src.enrichment.kev import annotate_records_with_kev
 
         kev_map = {
-            "CVE-2026-18019": {"ransomware": True},
-            "CVE-2026-18015": {"ransomware": False},
+            "CVE-2026-18019": {"ransomware": True, "due_date": "2026-09-15"},
+            "CVE-2026-18015": {"ransomware": False, "due_date": "2026-09-01"},
         }
         # Advisory uses "cves"; env-exposure uses "cve_ids". Case-insensitive matching.
         advisories = [
@@ -1893,12 +1893,16 @@ class TestKevEnrichment:
         assert advisories[0]["known_ransomware"] is True
         assert advisories[0]["in_cisa_kev"] is True
         assert advisories[0]["kev_ransomware_cves"] == ["CVE-2026-18019"]
+        assert advisories[0]["kev_due_date"] == "2026-09-15"
         assert advisories[1]["known_ransomware"] is False and advisories[1]["in_cisa_kev"] is True
         assert advisories[2]["known_ransomware"] is False and advisories[2]["in_cisa_kev"] is False
+        assert "kev_due_date" not in advisories[2]  # not in KEV -> no deadline
 
-        vulns = [{"cve_ids": ["CVE-2026-18019"]}]
+        # Earliest deadline wins when a record spans multiple KEV CVEs.
+        vulns = [{"cve_ids": ["CVE-2026-18019", "CVE-2026-18015"]}]
         annotate_records_with_kev(vulns, kev_map, "cve_ids")
         assert vulns[0]["known_ransomware"] is True
+        assert vulns[0]["kev_due_date"] == "2026-09-01"
 
     def test_annotate_empty_map_is_noop(self):
         from src.enrichment.kev import annotate_records_with_kev

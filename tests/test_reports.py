@@ -956,13 +956,13 @@ class TestOTEnvironmentExposure:
         gen.doc = Document()
         return gen
 
-    def test_renders_exposure_table(self):
+    def test_renders_action_queue(self):
         gen = self._gen()
         gen._add_ot_environment_exposure({
             "ot_environment_exposure": [
                 {"name": "Remote code execution", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
                  "affected_devices_count": 4088, "affected_ot_devices_count": 3000,
-                 "is_known_exploited": True},
+                 "is_known_exploited": True, "kev_due_date": "2026-09-15"},
                 {"name": "Info disclosure", "cve_ids": ["CVE-2026-18015"], "cvss": 5.3,
                  "affected_devices_count": 120, "affected_ot_devices_count": 40,
                  "is_known_exploited": False},
@@ -970,27 +970,47 @@ class TestOTEnvironmentExposure:
         })
         tables = gen.doc.tables
         assert len(tables) == 1
-        # Header + 2 data rows.
-        assert len(tables[0].rows) == 3
+        assert len(tables[0].rows) == 3  # header + 2 data rows
+        # 5-col action layout: Priority | CVE(s) | OT Devices | CVSS | Remediate by
+        assert len(tables[0].columns) == 5
+        hdr = [c.text for c in tables[0].rows[0].cells]
+        assert hdr == ["Priority", "CVE(s)", "OT Devices", "CVSS", "Remediate by"]
         text = "\n".join(c.text for row in tables[0].rows for c in row.cells)
         assert "CVE-2026-18019" in text
-        assert "4,088" in text  # thousands-formatted total device count
-        assert "3,000 OT" in text  # OT subset shown beneath the total in the merged cell
-        assert "Yes" in text  # known-exploited flag
-        # Merged 4-column layout with the OT subset labeled in the header.
-        assert len(tables[0].columns) == 4
-        assert "Devices (OT subset)" in tables[0].rows[0].cells[1].text
+        assert "3,000" in text          # OT devices is the headline number
+        assert "of 4,088 total" in text  # total demoted to context
+        assert "Act now" in text and "Monitor" in text
+        assert "2026-09-15" in text      # CISA KEV remediate-by deadline
 
-    def test_higher_device_count_sorts_first(self):
+    def test_priority_orders_rows_over_ot_count(self):
+        # An exploited/critical vuln (Act now) with FEWER OT devices still sorts above a
+        # non-exploited one (Monitor) with more — priority first, OT count within tier.
         gen = self._gen()
         gen._add_ot_environment_exposure({
             "ot_environment_exposure": [
-                {"name": "small", "cve_ids": ["CVE-2026-1"], "cvss": 4.0, "affected_devices_count": 10},
-                {"name": "big", "cve_ids": ["CVE-2026-2"], "cvss": 9.0, "affected_devices_count": 9000},
+                {"name": "monitor", "cve_ids": ["CVE-2026-1"], "cvss": 4.0,
+                 "affected_ot_devices_count": 500},
+                {"name": "act", "cve_ids": ["CVE-2026-2"], "cvss": 9.0,
+                 "affected_ot_devices_count": 5, "is_known_exploited": True},
             ]
         })
         first_data_row = gen.doc.tables[0].rows[1]
-        assert "CVE-2026-2" in first_data_row.cells[0].text
+        assert "Act now" in first_data_row.cells[0].text
+        assert "CVE-2026-2" in first_data_row.cells[1].text
+
+    def test_needs_attention_callout_names_deadline(self):
+        gen = self._gen()
+        gen._add_ot_environment_exposure({
+            "ot_environment_exposure": [
+                {"name": "RCE", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
+                 "affected_ot_devices_count": 195, "is_known_exploited": True,
+                 "known_ransomware": True, "kev_due_date": "2026-09-15"},
+            ]
+        })
+        body = "\n".join(p.text for p in gen.doc.paragraphs)
+        assert "Needs attention" in body
+        assert "1 need action now" in body
+        assert "2026-09-15" in body and "CVE-2026-18019" in body
 
     def test_empty_exposure_renders_nothing(self):
         gen = self._gen()
@@ -999,31 +1019,31 @@ class TestOTEnvironmentExposure:
         # No heading/intro either — the whole subsection is skipped when unavailable.
         assert gen.doc.paragraphs == [] or all(not p.text.strip() for p in gen.doc.paragraphs)
 
-    def test_ransomware_flag_marks_env_exposure_row(self):
+    def test_ransomware_drives_act_now_priority(self):
         gen = self._gen()
         gen._add_ot_environment_exposure({
             "ot_environment_exposure": [
                 {"name": "RCE", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
-                 "affected_devices_count": 4088, "is_known_exploited": True,
+                 "affected_ot_devices_count": 10, "is_known_exploited": True,
                  "known_ransomware": True},
             ]
         })
-        text = "\n".join(c.text for row in gen.doc.tables[0].rows for c in row.cells)
-        assert "Ransomware" in text
+        priority_cell = gen.doc.tables[0].rows[1].cells[0]
+        assert "Act now" in priority_cell.text
+        assert "ransomware" in priority_cell.text  # the reason line justifies the priority
 
-    def test_kev_fallback_marks_known_exploited_without_claroty_flag(self):
-        # in_cisa_kev alone (Claroty flag absent) still renders "Yes" in Known Exploited.
+    def test_kev_fallback_flags_act_now_without_claroty_flag(self):
+        # in_cisa_kev alone (Claroty flag absent) + critical CVSS still escalates to Act now.
         gen = self._gen()
         gen._add_ot_environment_exposure({
             "ot_environment_exposure": [
                 {"name": "RCE", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
-                 "affected_devices_count": 500, "is_known_exploited": False,
+                 "affected_ot_devices_count": 5, "is_known_exploited": False,
                  "in_cisa_kev": True, "known_ransomware": False},
             ]
         })
-        # 4-col layout: CVE(s) | Devices (OT subset) | CVSS | Known Exploited
-        kev_cell = gen.doc.tables[0].rows[1].cells[3]
-        assert "Yes" in kev_cell.text
+        priority_cell = gen.doc.tables[0].rows[1].cells[0]
+        assert "Act now" in priority_cell.text
 
 
 class TestOTAdvisoryRansomwareMarker:
