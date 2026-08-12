@@ -974,8 +974,12 @@ class TestOTEnvironmentExposure:
         assert len(tables[0].rows) == 3
         text = "\n".join(c.text for row in tables[0].rows for c in row.cells)
         assert "CVE-2026-18019" in text
-        assert "4,088" in text  # thousands-formatted device count
+        assert "4,088" in text  # thousands-formatted total device count
+        assert "3,000 OT" in text  # OT subset shown beneath the total in the merged cell
         assert "Yes" in text  # known-exploited flag
+        # Merged 4-column layout with the OT subset labeled in the header.
+        assert len(tables[0].columns) == 4
+        assert "Devices (OT subset)" in tables[0].rows[0].cells[1].text
 
     def test_higher_device_count_sorts_first(self):
         gen = self._gen()
@@ -1017,7 +1021,8 @@ class TestOTEnvironmentExposure:
                  "in_cisa_kev": True, "known_ransomware": False},
             ]
         })
-        kev_cell = gen.doc.tables[0].rows[1].cells[4]
+        # 4-col layout: CVE(s) | Devices (OT subset) | CVSS | Known Exploited
+        kev_cell = gen.doc.tables[0].rows[1].cells[3]
         assert "Yes" in kev_cell.text
 
 
@@ -1055,3 +1060,51 @@ class TestOTAdvisoryRansomwareMarker:
         })
         text = "\n".join(c.text for t in gen.doc.tables for row in t.rows for c in row.cells)
         assert "ransomware" not in text.lower()
+
+
+class TestOTTwoLensStructure:
+    """The OT section frames its two lenses and labels each sub-section consistently."""
+
+    def _gen(self):
+        from docx import Document
+
+        gen = WeeklyReportGenerator.__new__(WeeklyReportGenerator)
+        gen.doc = Document()
+        return gen
+
+    def test_frames_both_lenses_with_parallel_headings(self):
+        gen = self._gen()
+        gen._add_ot_advisories({
+            "ot_environment_exposure": [
+                {"name": "RCE", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
+                 "affected_devices_count": 4088, "affected_ot_devices_count": 195,
+                 "is_known_exploited": True},
+            ],
+            "ot_advisories": [
+                {"advisory_id": "ICSA-26-190-02", "title": "PowerChute", "cves": ["CVE-2026-2399"],
+                 "severity": "medium", "cvss": 6.1, "affected_assets": 2, "claroty_status": "ok"},
+            ],
+        })
+        body = "\n".join(p.text for p in gen.doc.paragraphs)
+        # Framing sentence names both lenses...
+        assert "Fleet Exposure" in body
+        assert "New Advisories" in body
+        # ...and both sub-headings render, in order.
+        assert "Lens 1 — Fleet Exposure" in body
+        assert "Lens 2 — New Advisories" in body
+        assert body.index("Lens 1") < body.index("Lens 2")
+
+    def test_advisory_error_caption_disambiguates_from_fleet_table(self):
+        gen = self._gen()
+        gen._add_ot_advisories({
+            "ot_environment_exposure": [],
+            "ot_advisories": [
+                {"advisory_id": "ICSA-26-188-01", "title": "Charger", "cves": ["CVE-2026-20744"],
+                 "severity": "critical", "cvss": 9.8, "affected_assets": 0, "claroty_status": "error"},
+            ],
+        })
+        body = "\n".join(p.text for p in gen.doc.paragraphs)
+        # The per-advisory match failure points to the Fleet Exposure table instead of
+        # reading as a blanket "Claroty failed" that would contradict a working fleet table.
+        assert "per-advisory device match" in body
+        assert "Fleet Exposure table above" in body

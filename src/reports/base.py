@@ -279,6 +279,22 @@ class BaseReportGenerator(ABC):
     # Common styling utilities
     # =========================================================================
 
+    def _keep_table_together(self, table) -> None:
+        """Repeat the header row on each page and stop rows from splitting mid-cell.
+
+        Improves readability when a table lands near a page break: the header re-prints
+        at the top of the continuation and no single row is torn across the boundary.
+        """
+        rows = table.rows
+        for i, row in enumerate(rows):
+            tr_pr = row._tr.get_or_add_trPr()
+            # No row splits across a page break.
+            if tr_pr.find(qn("w:cantSplit")) is None:
+                tr_pr.append(OxmlElement("w:cantSplit"))
+            # First row repeats as a header on every page.
+            if i == 0 and tr_pr.find(qn("w:tblHeader")) is None:
+                tr_pr.append(OxmlElement("w:tblHeader"))
+
     def _set_cell_shading(self, cell, color_hex: str) -> None:
         """Apply background shading to a table cell using w:fill color."""
         tc_pr = cell._element.get_or_add_tcPr()

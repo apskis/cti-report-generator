@@ -831,6 +831,26 @@ class WeeklyReportGenerator(BaseReportGenerator):
             return BrandColors.ORANGE_DESIGN
         return BrandColors.TEXT_DARK
 
+    def _add_ot_subheading(self, text: str) -> None:
+        """Consistent level-2 sub-heading for the OT section's two lenses."""
+        sub = self.doc.add_heading(text, level=2)
+        for run in sub.runs:
+            run.font.color.rgb = BrandColors.ORANGE_DESIGN
+            run.font.size = FontSizes.HEADING_2
+            run.font.name = "Arial"
+
+    def _add_ot_caption(self, text: str) -> None:
+        """Consistent small-italic caption beneath an OT table."""
+        caption = self.doc.add_paragraph()
+        caption.space_before = Pt(4)
+        caption.space_after = Pt(8)
+        caption_run = caption.add_run(text)
+        caption_run.font.size = Pt(7)
+        caption_run.font.italic = True
+        caption_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+        caption_run.font.name = "Arial"
+        caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
     def _add_ot_environment_exposure(self, analysis_result: dict[str, Any]) -> None:
         """Add the Claroty-first "Environment OT Exposure" subsection.
 
@@ -848,26 +868,24 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Highest-impact first (the API already sorts, but be defensive).
         exposure = sorted(exposure, key=lambda v: v.get("affected_devices_count", 0) or 0, reverse=True)
 
-        sub = self.doc.add_heading("Environment OT Exposure — Top Affected Vulnerabilities", level=2)
-        for run in sub.runs:
-            run.font.color.rgb = BrandColors.ORANGE_DESIGN
-            run.font.size = FontSizes.HEADING_2
-            run.font.name = "Arial"
+        self._add_ot_subheading("Lens 1 — Fleet Exposure: vulnerabilities on devices you operate")
 
         intro = self.doc.add_paragraph()
         intro_run = intro.add_run(
-            "Vulnerabilities present in the monitored OT environment, ranked by the number of "
-            "affected devices (source: Claroty xDome asset inventory). This reflects current "
-            "exposure in the estate regardless of ICS advisory coverage."
+            "Vulnerabilities already present in the monitored OT environment, ranked by the number "
+            "of affected devices (source: Claroty xDome asset inventory). This is current exposure "
+            "in the estate — what to prioritize for remediation — regardless of ICS advisory coverage."
         )
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
         self.doc.add_paragraph()
 
-        # Table: CVE(s) | Devices | OT Devices | CVSS | Known Exploited
-        table = self.doc.add_table(rows=1, cols=5)
-        headers = ["CVE(s)", "Devices", "OT Devices", "CVSS", "Known Exploited"]
+        # Table: CVE(s) | Devices (OT) | CVSS | Known Exploited
+        # Device count and its OT subset are merged into one cell so the OT-relevant figure
+        # sits next to the total footprint instead of in a separate, easily-confused column.
+        table = self.doc.add_table(rows=1, cols=4)
+        headers = ["CVE(s)", "Devices (OT subset)", "CVSS", "Known Exploited"]
         header_cells = table.rows[0].cells
         for i, header in enumerate(headers):
             cell = header_cells[i]
@@ -907,38 +925,38 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 name_run.font.size = FontSizes.FOOTNOTE
                 name_run.font.color.rgb = BrandColors.GRAY_MEDIUM
 
-            # Column 1: Affected devices (bold — the ranking signal)
+            # Column 1: total affected devices (bold, the ranking signal) with the OT subset
+            # on a small orange second line so the OT-relevant number reads as a subset.
             cells[1].text = ""
             dev_para = cells[1].paragraphs[0]
             dev_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             dev_run = dev_para.add_run(f"{vuln.get('affected_devices_count', 0):,}")
             dev_run.font.bold = True
             dev_run.font.size = FontSizes.SUBTITLE
-            dev_run.font.color.rgb = BrandColors.RED_HIGH_RISK
-
-            # Column 2: Affected OT devices
-            cells[2].text = ""
-            ot_para = cells[2].paragraphs[0]
+            dev_run.font.color.rgb = BrandColors.TEXT_DARK
+            ot_para = cells[1].add_paragraph()
             ot_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            ot_run = ot_para.add_run(f"{vuln.get('affected_ot_devices_count', 0):,}")
-            ot_run.font.size = FontSizes.SUBTITLE
-            ot_run.font.color.rgb = BrandColors.TEXT_DARK
+            ot_para.paragraph_format.space_before = Pt(0)
+            ot_run = ot_para.add_run(f"{vuln.get('affected_ot_devices_count', 0):,} OT")
+            ot_run.font.size = FontSizes.FOOTNOTE
+            ot_run.font.bold = True
+            ot_run.font.color.rgb = BrandColors.ORANGE_DESIGN
 
-            # Column 3: CVSS (colored by severity band)
+            # Column 2: CVSS (colored by severity band)
             cvss = vuln.get("cvss")
-            cells[3].text = ""
-            cvss_para = cells[3].paragraphs[0]
+            cells[2].text = ""
+            cvss_para = cells[2].paragraphs[0]
             cvss_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             cvss_run = cvss_para.add_run(f"{cvss:g}" if isinstance(cvss, (int, float)) else "—")
             cvss_run.font.bold = True
             cvss_run.font.size = FontSizes.SUBTITLE
             cvss_run.font.color.rgb = self._cvss_color(cvss)
 
-            # Column 4: Known Exploited (bold red "Yes" is the escalation signal).
+            # Column 3: Known Exploited (bold red "Yes" is the escalation signal).
             # Claroty's is_known_exploited already reflects CISA KEV; in_cisa_kev is a
             # belt-and-braces fallback from our own KEV fetch.
-            cells[4].text = ""
-            kev_para = cells[4].paragraphs[0]
+            cells[3].text = ""
+            kev_para = cells[3].paragraphs[0]
             kev_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             if vuln.get("is_known_exploited") or vuln.get("in_cisa_kev"):
                 kev_run = kev_para.add_run("Yes")
@@ -951,7 +969,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
             # Ransomware escalation (CISA KEV knownRansomwareCampaignUse) on a second line.
             if vuln.get("known_ransomware"):
-                rw_para = cells[4].add_paragraph()
+                rw_para = cells[3].add_paragraph()
                 rw_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 rw_para.paragraph_format.space_before = Pt(0)
                 rw_run = rw_para.add_run("Ransomware")
@@ -959,34 +977,26 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 rw_run.font.bold = True
                 rw_run.font.color.rgb = BrandColors.RED_HIGH_RISK
 
-            for idx in range(5):
+            for idx in range(4):
                 self._clear_cell_shading(cells[idx])
                 self._set_cell_borders(cells[idx], "CCCCCC")
 
-        table.columns[0].width = Inches(2.3)
-        table.columns[1].width = Inches(1.0)
-        table.columns[2].width = Inches(1.0)
-        table.columns[3].width = Inches(0.8)
-        table.columns[4].width = Inches(1.2)
+        table.columns[0].width = Inches(2.7)
+        table.columns[1].width = Inches(1.5)
+        table.columns[2].width = Inches(0.9)
+        table.columns[3].width = Inches(1.3)
+        self._keep_table_together(table)
 
         kev_count = sum(1 for v in exposure if v.get("is_known_exploited") or v.get("in_cisa_kev"))
         rw_count = sum(1 for v in exposure if v.get("known_ransomware"))
-        caption = self.doc.add_paragraph()
-        caption.space_before = Pt(4)
-        caption.space_after = Pt(8)
         caption_text = (
-            f"Table: top {len(exposure)} environment vulnerabilities by affected device count "
-            f"(Claroty xDome)."
+            f"Table: top {len(exposure)} environment vulnerabilities by total affected device count "
+            f"(Claroty xDome); the OT subset is shown beneath each total."
         )
         if kev_count:
             caption_text += f" {kev_count} known-exploited (CISA KEV)"
             caption_text += f", {rw_count} ransomware-linked." if rw_count else "."
-        caption_run = caption.add_run(caption_text)
-        caption_run.font.size = Pt(7)
-        caption_run.font.italic = True
-        caption_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-        caption_run.font.name = "Arial"
-        caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        self._add_ot_caption(caption_text)
 
         self.doc.add_paragraph()
 
@@ -1000,18 +1010,49 @@ class WeeklyReportGenerator(BaseReportGenerator):
         """
         logger.info("Adding Operational Technology (OT) section")
 
-        h = self.doc.add_heading("Operational Technology (OT) Advisories", level=1)
+        h = self.doc.add_heading("Operational Technology (OT)", level=1)
         self._style_heading_1(h)
 
-        # Claroty-first view of the estate's real exposure (skipped when unavailable),
-        # rendered above the advisory feed.
+        # Frame the two lenses up front so the reader knows why there are two tables and
+        # how they relate: what you already run (Claroty) vs what CISA just published.
+        frame = self.doc.add_paragraph()
+        frame_run = frame.add_run(
+            "OT risk is shown through two lenses. "
+        )
+        frame_run.font.size = FontSizes.BODY_SMALL
+        frame_run.font.italic = True
+        frame_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+        lens1 = frame.add_run("Fleet Exposure")
+        lens1.font.size = FontSizes.BODY_SMALL
+        lens1.font.bold = True
+        lens1.font.color.rgb = BrandColors.TEXT_DARK
+        mid = frame.add_run(
+            " is what already affects devices you operate (remediate now); "
+        )
+        mid.font.size = FontSizes.BODY_SMALL
+        mid.font.italic = True
+        mid.font.color.rgb = BrandColors.GRAY_MEDIUM
+        lens2 = frame.add_run("New Advisories")
+        lens2.font.size = FontSizes.BODY_SMALL
+        lens2.font.bold = True
+        lens2.font.color.rgb = BrandColors.TEXT_DARK
+        tail = frame.add_run(
+            " is what CISA recently published for ICS/OT products (watch and assess). "
+            "The two rarely overlap — the first is your estate, the second is the wider landscape."
+        )
+        tail.font.size = FontSizes.BODY_SMALL
+        tail.font.italic = True
+        tail.font.color.rgb = BrandColors.GRAY_MEDIUM
+        self.doc.add_paragraph()
+
+        # Lens 1: Claroty-first view of the estate's real exposure (skipped when unavailable).
         self._add_ot_environment_exposure(analysis_result)
 
         advisories = analysis_result.get("ot_advisories", []) or []
 
-        # Intro with actionable context. Deliberately "recent" rather than "this week":
-        # the ICS[AP] free tier serves advisories ~1 month stale, so this is a rolling
-        # awareness view of recently published advisories, not a strictly-this-week list.
+        # Lens 2 heading + intro. Deliberately "recent" rather than "this week": the ICS[AP]
+        # free tier serves advisories ~1 month stale, so this is a rolling awareness view.
+        self._add_ot_subheading("Lens 2 — New Advisories: recently published for ICS/OT products")
         intro = self.doc.add_paragraph()
         intro_run = intro.add_run(
             "Recently published industrial control system (ICS) and operational technology "
@@ -1163,17 +1204,20 @@ class WeeklyReportGenerator(BaseReportGenerator):
         table.columns[2].width = Inches(1.0)
         table.columns[3].width = Inches(1.1)
         table.columns[4].width = Inches(1.5)
+        self._keep_table_together(table)
 
         # Caption
         matched = sum(1 for a in advisories if a.get("affected_assets", 0))
         claroty_status = next((a.get("claroty_status") for a in advisories if a.get("claroty_status")), None)
-        caption = self.doc.add_paragraph()
-        caption.space_before = Pt(4)
-        caption.space_after = Pt(8)
         caption_text = f"Table: {len(advisories)} ICS/OT advisories from CISA ICS advisories (ICS[AP] API)."
         if claroty_status == "error":
-            # Distinguish "we could not check" from "we checked and found nothing".
-            caption_text += " Env. Assets could not be determined this run (Claroty xDome query did not complete)."
+            # Env. Assets is a *separate* per-advisory Claroty match, distinct from the Fleet
+            # Exposure table above — spell that out so a failure here does not appear to
+            # contradict a successful Fleet Exposure table on the same run.
+            caption_text += (
+                " Env. Assets (per-advisory device match) could not be determined this run; "
+                "see the Fleet Exposure table above for confirmed Claroty exposure."
+            )
         elif claroty_status == "ok":
             caption_text += (
                 f" Env. Assets = devices affected in your environment (Claroty xDome); {matched} advisory(ies) matched."
@@ -1181,12 +1225,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
         rw_advisories = sum(1 for a in advisories if a.get("known_ransomware"))
         if rw_advisories:
             caption_text += f" {rw_advisories} advisory(ies) reference CISA KEV ransomware-linked CVEs."
-        caption_run = caption.add_run(caption_text)
-        caption_run.font.size = Pt(7)
-        caption_run.font.italic = True
-        caption_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-        caption_run.font.name = "Arial"
-        caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        self._add_ot_caption(caption_text)
 
         self.doc.add_paragraph()
 
