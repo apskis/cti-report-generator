@@ -959,7 +959,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
         intro_run = intro.add_run(
             "OT vulnerabilities scoped to your environment: those detected on OT devices you "
             "operate (Claroty xDome) plus recent CISA advisories for products you own. "
-            "Vulnerabilities exploited in the wild (CISA KEV) are listed first. "
+            "Vulnerabilities exploited in the wild (CISA KEV) are listed first, then by the "
+            "number of your devices affected. "
         )
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
@@ -990,8 +991,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self.doc.add_paragraph()
             return
 
-        # Exploited-in-the-wild first, then by CVSS.
-        rows.sort(key=lambda r: (r["exploited"], r["cvss"] or 0), reverse=True)
+        # Exploited-in-the-wild first, then by the number of your devices affected.
+        rows.sort(key=lambda r: (r["exploited"], r["devices"] or 0), reverse=True)
 
         # Table: Vulnerability | Product | Description | Devices | CVSS | Exploited
         table = self.doc.add_table(rows=1, cols=6)

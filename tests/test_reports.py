@@ -997,6 +997,21 @@ class TestOTUnifiedTable:
         assert "CVE-B" in first.cells[0].text    # exploited outranks higher CVSS
         assert "Yes" in first.cells[5].text      # Exploited column
 
+    def test_ranked_by_device_count_within_exploited_group(self):
+        # Same exploited status -> the one on more of your devices ranks higher.
+        gen = self._gen()
+        gen._add_ot_advisories({
+            "ot_environment_exposure": [
+                {"cve_ids": ["CVE-FEW"], "cvss": 10.0, "affected_ot_devices_count": 3,
+                 "is_known_exploited": True, "in_cisa_kev": True, "description": "few devices"},
+                {"cve_ids": ["CVE-MANY"], "cvss": 7.5, "affected_ot_devices_count": 40,
+                 "is_known_exploited": True, "in_cisa_kev": True, "description": "many devices"},
+            ],
+        })
+        rows = gen.doc.tables[0].rows
+        assert "CVE-MANY" in rows[1].cells[0].text   # 40 devices outranks 3, despite lower CVSS
+        assert "CVE-FEW" in rows[2].cells[0].text
+
     def test_product_parsed_from_description(self):
         gen = self._gen()
         gen._add_ot_advisories({
