@@ -946,8 +946,8 @@ class TestCitationSubscripts:
         assert "CrowdStrike" in "".join(r.text for r in cell_para.runs)
 
 
-class TestOTEnvironmentExposure:
-    """Tests for the Claroty-first Environment OT Exposure subsection."""
+class TestOTUnifiedTable:
+    """The OT section is one table combining asset-detected vulns and owned advisories."""
 
     def _gen(self):
         from docx import Document
@@ -956,187 +956,127 @@ class TestOTEnvironmentExposure:
         gen.doc = Document()
         return gen
 
-    def test_renders_descriptive_table(self):
+    def test_combines_assets_and_advisories_in_one_table(self):
         gen = self._gen()
-        gen._add_ot_environment_exposure({
+        gen._add_ot_advisories({
             "ot_environment_exposure": [
-                {"name": "RCE", "description": "Remote code execution in the runtime.",
-                 "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
-                 "affected_devices_count": 4088, "affected_ot_devices_count": 3000,
-                 "is_known_exploited": True, "kev_affected_product": "Acme PLC"},
-                {"name": "Info disclosure", "description": "Sensitive info exposure.",
-                 "cve_ids": ["CVE-2026-18015"], "cvss": 5.3,
-                 "affected_ot_devices_count": 40, "is_known_exploited": False},
-            ]
+                {"cve_ids": ["CVE-2020-1467"], "cvss": 10.0, "affected_ot_devices_count": 13,
+                 "is_known_exploited": True, "in_cisa_kev": True,
+                 "description": "An elevation of privilege vulnerability exists when Windows "
+                                "improperly handles hard links."},
+            ],
+            "ot_advisories": [
+                {"advisory_id": "ICSA-26-190-02", "title": "Schneider PowerChute",
+                 "products_affected": "PowerChute Serial Shutdown <=1.4",
+                 "cves": ["CVE-2026-2399", "CVE-2026-2404"], "severity": "medium", "cvss": 6.1,
+                 "affected_assets": 2, "claroty_status": "ok"},
+            ],
         })
         tables = gen.doc.tables
-        assert len(tables) == 1
-        assert len(tables[0].rows) == 3  # header + 2 data rows
-        # 5-col descriptive layout: CVE(s) | Description | Product | OT Devices | CVSS
-        assert len(tables[0].columns) == 5
+        assert len(tables) == 1                    # ONE table, no lens split
+        assert len(tables[0].columns) == 6
         hdr = [c.text for c in tables[0].rows[0].cells]
-        assert hdr == ["CVE(s)", "Description", "Product", "OT Devices", "CVSS"]
+        assert hdr == ["Vulnerability", "Product", "Description", "Devices", "CVSS", "Exploited"]
         text = "\n".join(c.text for row in tables[0].rows for c in row.cells)
-        assert "CVE-2026-18019" in text
-        assert "Remote code execution in the runtime." in text  # description column
-        assert "Acme PLC" in text                                # product column (from KEV)
-        assert "3,000" in text                                   # OT devices detected in env
-        # No priority / remediate-by anymore.
-        assert "Act now" not in text and "Remediate by" not in text
+        assert "CVE-2020-1467" in text and "ICSA-26-190-02" in text  # both sources present
+        assert "Windows" in text                                     # product parsed from description
+        assert "PowerChute Serial Shutdown <=1.4" in text            # advisory product
+        assert "CVE-2026-2399" in text                               # advisory CVE list shown
 
-    def test_ranks_by_cvss(self):
-        # Highest CVSS first, regardless of OT-device count.
+    def test_exploited_sorts_first(self):
         gen = self._gen()
-        gen._add_ot_environment_exposure({
+        gen._add_ot_advisories({
             "ot_environment_exposure": [
-                {"name": "lower", "cve_ids": ["CVE-2026-1"], "cvss": 7.5, "affected_ot_devices_count": 500},
-                {"name": "higher", "cve_ids": ["CVE-2026-2"], "cvss": 9.8, "affected_ot_devices_count": 5},
-            ]
+                {"cve_ids": ["CVE-A"], "cvss": 10.0, "affected_ot_devices_count": 1,
+                 "is_known_exploited": False, "description": "not exploited but CVSS 10"},
+                {"cve_ids": ["CVE-B"], "cvss": 8.0, "affected_ot_devices_count": 1,
+                 "is_known_exploited": True, "in_cisa_kev": True, "description": "exploited"},
+            ],
         })
-        first_data_row = gen.doc.tables[0].rows[1]
-        assert "CVE-2026-2" in first_data_row.cells[0].text  # CVSS 9.8 outranks 7.5
+        first = gen.doc.tables[0].rows[1]
+        assert "CVE-B" in first.cells[0].text    # exploited outranks higher CVSS
+        assert "Yes" in first.cells[5].text      # Exploited column
 
-    def test_description_falls_back_to_name(self):
+    def test_product_parsed_from_description(self):
         gen = self._gen()
-        gen._add_ot_environment_exposure({
+        gen._add_ot_advisories({
             "ot_environment_exposure": [
-                {"name": "Buffer overflow in HMI", "cve_ids": ["CVE-2026-3"],
-                 "cvss": 7.1, "affected_ot_devices_count": 12},
-            ]
+                {"cve_ids": ["CVE-1"], "cvss": 9.0, "affected_ot_devices_count": 1,
+                 "description": "Unspecified vulnerability in Oracle Java SE 7u67 and 8u20."},
+                {"cve_ids": ["CVE-2"], "cvss": 9.0, "affected_ot_devices_count": 1,
+                 "description": "Sandbox escape fixed in Firefox 148 and Thunderbird 148."},
+            ],
         })
-        desc_cell = gen.doc.tables[0].rows[1].cells[1]
-        assert "Buffer overflow in HMI" in desc_cell.text  # name used when no description
-        product_cell = gen.doc.tables[0].rows[1].cells[2]
-        assert product_cell.text.strip() == "—"  # not KEV-listed -> no product
+        text = "\n".join(c.text for row in gen.doc.tables[0].rows for c in row.cells)
+        assert "Oracle Java SE" in text
+        assert "Firefox" in text
 
-    def test_empty_exposure_renders_nothing(self):
+    def test_product_prefers_kev_and_falls_back_to_dash(self):
         gen = self._gen()
-        gen._add_ot_environment_exposure({"ot_environment_exposure": []})
-        assert gen.doc.tables == []
-        # No heading/intro either — the whole subsection is skipped when unavailable.
-        assert gen.doc.paragraphs == [] or all(not p.text.strip() for p in gen.doc.paragraphs)
-
-    def test_known_exploited_kept_as_small_tag(self):
-        gen = self._gen()
-        gen._add_ot_environment_exposure({
+        gen._add_ot_advisories({
             "ot_environment_exposure": [
-                {"name": "RCE", "description": "d", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
-                 "affected_ot_devices_count": 10, "is_known_exploited": True,
-                 "known_ransomware": True},
-            ]
+                {"cve_ids": ["CVE-1"], "cvss": 9.0, "affected_ot_devices_count": 1,
+                 "description": "obscure issue", "kev_affected_product": "Acme PLC"},
+                {"cve_ids": ["CVE-2"], "cvss": 9.0, "affected_ot_devices_count": 1,
+                 "description": "totally unrecognizable phrasing here"},
+            ],
         })
-        cve_cell = gen.doc.tables[0].rows[1].cells[0]
-        assert "known-exploited · ransomware" in cve_cell.text
+        by_cve = {r.cells[0].text.split()[0]: r for r in gen.doc.tables[0].rows[1:]}
+        assert by_cve["CVE-1"].cells[1].text.strip() == "Acme PLC"   # KEV product wins
+        assert by_cve["CVE-2"].cells[1].text.strip() == "—"          # nothing recognizable
 
+    def test_exploited_column_shows_ransomware(self):
+        gen = self._gen()
+        gen._add_ot_advisories({
+            "ot_environment_exposure": [
+                {"cve_ids": ["CVE-1"], "cvss": 9.0, "affected_ot_devices_count": 1,
+                 "is_known_exploited": True, "known_ransomware": True, "description": "d"},
+            ],
+        })
+        exploited_cell = gen.doc.tables[0].rows[1].cells[5]
+        assert "Yes" in exploited_cell.text
+        assert "Ransomware" in exploited_cell.text
 
-class TestOTAdvisoryRansomwareMarker:
-    """The ICS advisory table gains a CISA KEV ransomware marker (its only exploited signal)."""
-
-    def _gen(self):
-        from docx import Document
-
-        gen = WeeklyReportGenerator.__new__(WeeklyReportGenerator)
-        gen.doc = Document()
-        return gen
-
-    def test_advisory_cve_cell_shows_ransomware_marker(self):
+    def test_only_owned_advisories_included(self):
         gen = self._gen()
         gen._add_ot_advisories({
             "ot_advisories": [
-                {"advisory_id": "ICSA-26-001", "title": "PLC flaw", "cves": ["CVE-2026-18019"],
-                 "severity": "critical", "cvss": 9.8, "affected_assets": 3,
-                 "claroty_status": "ok", "known_ransomware": True},
-            ]
+                {"advisory_id": "ICSA-OWNED", "title": "owned", "cves": ["CVE-1"], "cvss": 7.5,
+                 "affected_assets": 2, "claroty_status": "ok"},
+                {"advisory_id": "ICSA-NOT-OWNED", "title": "not owned", "cves": ["CVE-2"], "cvss": 9.8,
+                 "affected_assets": 0, "claroty_status": "ok"},
+            ],
         })
-        # The advisory table is the last table rendered in the section.
-        text = "\n".join(c.text for t in gen.doc.tables for row in t.rows for c in row.cells)
-        assert "Known ransomware (CISA KEV)" in text
-
-    def test_no_marker_when_owned_but_not_exploited(self):
-        gen = self._gen()
-        gen._add_ot_advisories({
-            "ot_advisories": [
-                {"advisory_id": "ICSA-26-002", "title": "HMI flaw", "cves": ["CVE-2026-18015"],
-                 "severity": "high", "cvss": 7.1, "affected_assets": 4,  # owned -> shown
-                 "claroty_status": "ok", "known_ransomware": False, "in_cisa_kev": False},
-            ]
-        })
-        text = "\n".join(c.text for t in gen.doc.tables for row in t.rows for c in row.cells)
-        assert "ICSA-26-002" in text          # owned advisory is rendered
-        assert "ransomware" not in text.lower()
-        assert "Known-exploited" not in text  # not KEV -> no exploited marker
-
-    def test_only_owned_advisories_are_shown(self):
-        gen = self._gen()
-        gen._add_ot_advisories({
-            "ot_advisories": [
-                {"advisory_id": "ICSA-OWNED", "title": "owned", "cves": ["CVE-2026-1"],
-                 "severity": "high", "cvss": 7.5, "affected_assets": 2, "claroty_status": "ok"},
-                {"advisory_id": "ICSA-NOT-OWNED", "title": "not owned", "cves": ["CVE-2026-2"],
-                 "severity": "critical", "cvss": 9.8, "affected_assets": 0, "claroty_status": "ok"},
-            ]
-        })
-        text = "\n".join(c.text for t in gen.doc.tables for row in t.rows for c in row.cells)
+        text = "\n".join(c.text for row in gen.doc.tables[0].rows for c in row.cells)
         assert "ICSA-OWNED" in text
-        assert "ICSA-NOT-OWNED" not in text  # advisory for gear you don't own is excluded
+        assert "ICSA-NOT-OWNED" not in text
 
-    def test_no_owned_advisories_shows_note_not_table(self):
+    def test_advisory_devices_uses_env_assets(self):
         gen = self._gen()
         gen._add_ot_advisories({
             "ot_advisories": [
-                {"advisory_id": "ICSA-X", "title": "x", "cves": ["CVE-2026-3"],
-                 "severity": "high", "cvss": 7.0, "affected_assets": 0, "claroty_status": "ok"},
-            ]
+                {"advisory_id": "ICSA-1", "title": "t", "cves": ["CVE-1"], "cvss": 8.0,
+                 "affected_assets": 7, "claroty_status": "ok"},
+            ],
         })
-        assert gen.doc.tables == []  # nothing owned -> no table
-        body = "\n".join(p.text for p in gen.doc.paragraphs)
-        assert "No recent ICS/OT advisories affect products in your environment" in body
+        assert gen.doc.tables[0].rows[1].cells[3].text.strip() == "7"  # Env. Assets -> Devices
 
-
-class TestOTTwoLensStructure:
-    """The OT section frames its two lenses and labels each sub-section consistently."""
-
-    def _gen(self):
-        from docx import Document
-
-        gen = WeeklyReportGenerator.__new__(WeeklyReportGenerator)
-        gen.doc = Document()
-        return gen
-
-    def test_frames_both_lenses_with_parallel_headings(self):
+    def test_empty_shows_note_no_table(self):
         gen = self._gen()
-        gen._add_ot_advisories({
-            "ot_environment_exposure": [
-                {"name": "RCE", "cve_ids": ["CVE-2026-18019"], "cvss": 9.8,
-                 "affected_devices_count": 4088, "affected_ot_devices_count": 195,
-                 "is_known_exploited": True},
-            ],
-            "ot_advisories": [
-                {"advisory_id": "ICSA-26-190-02", "title": "PowerChute", "cves": ["CVE-2026-2399"],
-                 "severity": "medium", "cvss": 6.1, "affected_assets": 2, "claroty_status": "ok"},
-            ],
-        })
+        gen._add_ot_advisories({"ot_environment_exposure": [], "ot_advisories": []})
+        assert gen.doc.tables == []
         body = "\n".join(p.text for p in gen.doc.paragraphs)
-        # Framing sentence names both lenses...
-        assert "Fleet Exposure" in body
-        assert "New Advisories" in body
-        # ...and both sub-headings render, in order.
-        assert "Lens 1 — Fleet Exposure" in body
-        assert "Lens 2 — New Advisories" in body
-        assert body.index("Lens 1") < body.index("Lens 2")
+        assert "No High/Critical OT vulnerabilities or matching advisories" in body
 
-    def test_advisory_match_failure_shows_note_not_empty_match(self):
+    def test_claroty_error_note_when_nothing_rendered(self):
         gen = self._gen()
         gen._add_ot_advisories({
             "ot_environment_exposure": [],
             "ot_advisories": [
-                {"advisory_id": "ICSA-26-188-01", "title": "Charger", "cves": ["CVE-2026-20744"],
-                 "severity": "critical", "cvss": 9.8, "affected_assets": 0, "claroty_status": "error"},
+                {"advisory_id": "ICSA-1", "title": "t", "cves": ["CVE-1"], "cvss": 9.8,
+                 "affected_assets": 0, "claroty_status": "error"},
             ],
         })
-        assert gen.doc.tables == []  # no table when the match could not run
+        assert gen.doc.tables == []
         body = "\n".join(p.text for p in gen.doc.paragraphs)
-        # A failed match says "could not check", not a false "nothing affects you".
         assert "did not complete this run" in body
-        assert "Fleet Exposure table above" in body
-        assert "No recent ICS/OT advisories affect products" not in body

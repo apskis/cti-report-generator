@@ -5,6 +5,7 @@ Generates weekly threat intelligence reports matching the branded template.
 """
 
 import logging
+import re
 from datetime import timedelta
 from typing import Any
 
@@ -16,6 +17,27 @@ from docx.shared import Inches, Pt, RGBColor
 from src.core.config import customer_profile
 from src.reports.base import BaseReportGenerator, BrandColors, FontSizes
 from src.reports.registry import register_report_generator
+
+# Known product/vendor names used to recover an affected product from a Claroty vulnerability
+# description (the vulnerability record has no product field of its own). Order matters — the
+# first substring match wins, so list more specific names before broader ones.
+_OT_PRODUCT_KEYWORDS = [
+    # Mozilla
+    "Firefox", "Thunderbird",
+    # Microsoft
+    "Windows Server", "Microsoft Exchange", "Internet Explorer", "Microsoft Edge",
+    "SharePoint", "Microsoft Office", ".NET", "Windows",
+    # Oracle / Java
+    "Oracle Java SE", "Oracle WebLogic", "Oracle Database", "JavaFX", "Java SE", "Java",
+    # Browsers / desktop
+    "Google Chrome", "Chromium", "Adobe Acrobat", "Adobe Reader", "Adobe Flash",
+    # OT / ICS vendors
+    "Schneider Electric", "Siemens", "Rockwell Automation", "Mitsubishi Electric",
+    "Hitachi Energy", "Honeywell", "Emerson", "Yokogawa", "Phoenix Contact", "Omron",
+    "Moxa", "CODESYS", "OpenPLC", "WAGO", "Beckhoff", "ABB",
+    # Common infrastructure
+    "OpenSSL", "Apache", "VMware", "Fortinet", "Cisco", "Ivanti", "Citrix",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -831,13 +853,25 @@ class WeeklyReportGenerator(BaseReportGenerator):
             return BrandColors.ORANGE_DESIGN
         return BrandColors.TEXT_DARK
 
-    def _add_ot_subheading(self, text: str) -> None:
-        """Consistent level-2 sub-heading for the OT section's two lenses."""
-        sub = self.doc.add_heading(text, level=2)
-        for run in sub.runs:
-            run.font.color.rgb = BrandColors.ORANGE_DESIGN
-            run.font.size = FontSizes.HEADING_2
-            run.font.name = "Arial"
+    def _extract_product(self, vuln: dict[str, Any]) -> str:
+        """Best-effort affected-product name for a vulnerability.
+
+        Claroty's vulnerability record has no product field, so prefer the CISA KEV
+        vendor/product, then recover a known product name from the description/name text,
+        then fall back to a "fixed in <Name>" pattern. Returns "" when nothing is recognizable.
+        """
+        kev = (vuln.get("kev_affected_product") or "").strip()
+        if kev:
+            return kev
+        text = f"{vuln.get('name', '')} {vuln.get('description', '')}"
+        low = text.lower()
+        for name in _OT_PRODUCT_KEYWORDS:
+            if name.lower() in low:
+                return name
+        m = re.search(r"fixed in\s+([A-Z][A-Za-z][\w.+-]*)", text)
+        if m:
+            return m.group(1)
+        return ""
 
     def _add_ot_caption(self, text: str) -> None:
         """Consistent small-italic caption beneath an OT table."""
@@ -851,39 +885,117 @@ class WeeklyReportGenerator(BaseReportGenerator):
         caption_run.font.name = "Arial"
         caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-    def _add_ot_environment_exposure(self, analysis_result: dict[str, Any]) -> None:
-        """Add the Claroty-first "Fleet Exposure" table of OT-device vulnerabilities.
+    def _ot_row_from_asset(self, v: dict[str, Any]) -> dict[str, Any]:
+        """Normalize a Claroty OT-device vulnerability into a unified OT-table row."""
+        cve_ids = v.get("cve_ids") or []
+        if isinstance(cve_ids, list) and cve_ids:
+            id_text = ", ".join(cve_ids[:2]) + (f" (+{len(cve_ids) - 2})" if len(cve_ids) > 2 else "")
+        else:
+            id_text = "—"
+        return {
+            "kind": "asset",
+            "id_text": id_text,
+            "url": "",
+            "sub": "",
+            "source": "Detected on your OT devices",
+            "product": self._extract_product(v),
+            "description": (v.get("description") or v.get("name") or "").strip(),
+            "devices": v.get("affected_ot_devices_count", 0) or 0,
+            "cvss": v.get("cvss"),
+            "exploited": bool(v.get("is_known_exploited") or v.get("in_cisa_kev")),
+            "ransomware": bool(v.get("known_ransomware")),
+        }
 
-        Lists the vulnerabilities detected on OT devices the organization actually operates
-        (from Claroty xDome): what the CVE is, the product it affects, and how many of your OT
-        devices it touches. Ordered by the number of affected OT devices. Best-effort: the
-        whole subsection is skipped when no exposure data is available (Claroty not configured
-        or the query did not complete), keeping the section clean.
+    def _ot_row_from_advisory(self, a: dict[str, Any]) -> dict[str, Any]:
+        """Normalize a CISA advisory (for a product you own) into a unified OT-table row."""
+        cves = a.get("cves") or []
+        sub = ""
+        if isinstance(cves, list) and cves:
+            sub = ", ".join(cves[:3]) + (f" (+{len(cves) - 3})" if len(cves) > 3 else "")
+        product = a.get("products_affected") or a.get("product") or ""
+        if product == "Unknown":
+            product = ""
+        return {
+            "kind": "advisory",
+            "id_text": a.get("advisory_id", "N/A"),
+            "url": a.get("url", ""),
+            "sub": sub,
+            "source": "CISA advisory (product you own)",
+            "product": product or a.get("title", ""),
+            "description": a.get("title", ""),
+            "devices": a.get("affected_assets", 0) or 0,
+            "cvss": a.get("cvss"),
+            "exploited": bool(a.get("in_cisa_kev") or a.get("known_ransomware")),
+            "ransomware": bool(a.get("known_ransomware")),
+        }
+
+    def _add_ot_advisories(self, analysis_result: dict[str, Any]) -> None:
+        """Add the consolidated Operational Technology (OT) section — one table.
+
+        Merges two environment-scoped sources into a single, severity-ranked list:
+        vulnerabilities detected on OT devices you operate (Claroty xDome, High/Critical) and
+        recent CISA ICS/OT advisories for products you own. Each row carries the affected
+        product (from CISA KEV, or parsed from the description), a short description, how many
+        of your devices are affected, CVSS, and whether the CVE is exploited in the wild
+        (CISA KEV). Sorted exploited-first, then by CVSS.
         """
+        logger.info("Adding Operational Technology (OT) section")
+
+        h = self.doc.add_heading("Operational Technology (OT)", level=1)
+        self._style_heading_1(h)
+
         exposure = analysis_result.get("ot_environment_exposure", []) or []
-        if not exposure:
-            return
+        all_advisories = analysis_result.get("ot_advisories", []) or []
+        claroty_status = next(
+            (a.get("claroty_status") for a in all_advisories if a.get("claroty_status")), None
+        )
+        # Advisories are kept only for products you own (matched to devices in the environment).
+        owned_advisories = [a for a in all_advisories if (a.get("affected_assets", 0) or 0) > 0]
 
-        # Highest severity first (the query already filters to High/Critical and sorts by CVSS;
-        # re-sort defensively).
-        exposure = sorted(exposure, key=lambda v: v.get("cvss") or 0, reverse=True)
-
-        self._add_ot_subheading("Lens 1 — Fleet Exposure: High/Critical vulnerabilities on OT devices you operate")
+        rows = [self._ot_row_from_asset(v) for v in exposure]
+        rows += [self._ot_row_from_advisory(a) for a in owned_advisories]
 
         intro = self.doc.add_paragraph()
         intro_run = intro.add_run(
-            "High and Critical vulnerabilities detected on the OT devices in your environment "
-            "(source: Claroty xDome asset inventory), ranked by CVSS, with the number of your OT "
-            "devices each affects."
+            "OT vulnerabilities scoped to your environment: those detected on OT devices you "
+            "operate (Claroty xDome) plus recent CISA advisories for products you own. "
+            "Vulnerabilities exploited in the wild (CISA KEV) are listed first. "
         )
         intro_run.font.size = FontSizes.BODY_SMALL
         intro_run.font.italic = True
         intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+        action_run = intro.add_run("Prioritize the exploited items and verify IT/OT segmentation.")
+        action_run.font.size = FontSizes.BODY_SMALL
+        action_run.font.bold = True
+        action_run.font.color.rgb = BrandColors.TEXT_DARK
         self.doc.add_paragraph()
 
-        # Table: CVE(s) | Description | Product | OT Devices | CVSS
-        table = self.doc.add_table(rows=1, cols=5)
-        headers = ["CVE(s)", "Description", "Product", "OT Devices", "CVSS"]
+        if not rows:
+            if claroty_status == "error":
+                note = (
+                    "Claroty xDome query did not complete this run, so OT device exposure and "
+                    "advisory matching are unavailable."
+                )
+            elif claroty_status == "disabled":
+                note = (
+                    "Claroty xDome is not configured, so OT device exposure and advisory matching "
+                    "are unavailable."
+                )
+            else:
+                note = (
+                    "No High/Critical OT vulnerabilities or matching advisories were identified in "
+                    "your environment this week."
+                )
+            self._add_ot_caption(note)
+            self.doc.add_paragraph()
+            return
+
+        # Exploited-in-the-wild first, then by CVSS.
+        rows.sort(key=lambda r: (r["exploited"], r["cvss"] or 0), reverse=True)
+
+        # Table: Vulnerability | Product | Description | Devices | CVSS | Exploited
+        table = self.doc.add_table(rows=1, cols=6)
+        headers = ["Vulnerability", "Product", "Description", "Devices", "CVSS", "Exploited"]
         header_cells = table.rows[0].cells
         for i, header in enumerate(headers):
             cell = header_cells[i]
@@ -897,68 +1009,60 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._set_cell_shading(cell, BrandColors.TABLE_HEADER_BG)
             self._set_cell_borders(cell, "CCCCCC")
 
-        for vuln in exposure:
+        for r in rows:
             row = table.add_row()
             cells = row.cells
 
-            # Column 0: CVE(s). Known-exploited / ransomware kept as a small factual tag.
-            cve_ids = vuln.get("cve_ids", []) or []
-            if isinstance(cve_ids, list) and cve_ids:
-                cve_text = ", ".join(cve_ids[:3])
-                if len(cve_ids) > 3:
-                    cve_text += f" (+{len(cve_ids) - 3})"
-            else:
-                cve_text = "—"
+            # Column 0: identifier (CVE or linked advisory ID), its CVE list (advisory), and a
+            # small source line so asset-detected vs advisory rows are distinguishable.
             cells[0].text = ""
-            cve_para = cells[0].paragraphs[0]
-            cve_run = cve_para.add_run(cve_text)
-            cve_run.font.bold = True
-            cve_run.font.size = FontSizes.SUBTITLE
-            cve_run.font.color.rgb = BrandColors.TEXT_DARK
-            if vuln.get("known_ransomware"):
-                tag = "known-exploited · ransomware"
-            elif vuln.get("is_known_exploited") or vuln.get("in_cisa_kev"):
-                tag = "known-exploited"
+            id_para = cells[0].paragraphs[0]
+            if r["url"]:
+                self._add_hyperlink(id_para, r["id_text"], r["url"])
             else:
-                tag = ""
-            if tag:
-                tag_para = cells[0].add_paragraph()
-                tag_para.paragraph_format.space_before = Pt(0)
-                tag_run = tag_para.add_run(tag)
-                tag_run.font.size = FontSizes.FOOTNOTE
-                tag_run.font.bold = True
-                tag_run.font.color.rgb = BrandColors.RED_HIGH_RISK
+                id_run = id_para.add_run(r["id_text"])
+                id_run.font.bold = True
+                id_run.font.size = FontSizes.SUBTITLE
+                id_run.font.color.rgb = BrandColors.TEXT_DARK
+            if r["sub"]:
+                sub_para = cells[0].add_paragraph()
+                sub_para.paragraph_format.space_before = Pt(0)
+                sub_run = sub_para.add_run(r["sub"])
+                sub_run.font.size = FontSizes.FOOTNOTE
+                sub_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+            src_para = cells[0].add_paragraph()
+            src_para.paragraph_format.space_before = Pt(0)
+            src_run = src_para.add_run(r["source"])
+            src_run.font.size = FontSizes.FOOTNOTE
+            src_run.font.italic = True
+            src_run.font.color.rgb = BrandColors.GRAY_MEDIUM
 
-            # Column 1: Description of the CVE (Claroty text; fall back to the vuln name).
-            desc = (vuln.get("description") or vuln.get("name") or "").strip()
-            desc = (desc[:200] + "…") if len(desc) > 200 else (desc or "—")
+            # Column 1: Product affected (KEV or parsed from the description).
+            product = r["product"] or "—"
             cells[1].text = ""
-            desc_para = cells[1].paragraphs[0]
-            desc_run = desc_para.add_run(desc)
+            prod_run = cells[1].paragraphs[0].add_run(product[:60])
+            prod_run.font.size = FontSizes.FOOTNOTE
+            prod_run.font.color.rgb = BrandColors.TEXT_DARK if product != "—" else BrandColors.GRAY_MEDIUM
+
+            # Column 2: Description
+            desc = (r["description"] or "").strip() or "—"
+            desc = (desc[:160] + "…") if len(desc) > 160 else desc
+            cells[2].text = ""
+            desc_run = cells[2].paragraphs[0].add_run(desc)
             desc_run.font.size = FontSizes.FOOTNOTE
             desc_run.font.color.rgb = BrandColors.TEXT_DARK
 
-            # Column 2: Product affected (from CISA KEV vendor/product where the CVE is KEV-listed).
-            product = (vuln.get("kev_affected_product") or "").strip() or "—"
-            cells[2].text = ""
-            prod_para = cells[2].paragraphs[0]
-            prod_run = prod_para.add_run(product)
-            prod_run.font.size = FontSizes.FOOTNOTE
-            prod_run.font.color.rgb = (
-                BrandColors.TEXT_DARK if product != "—" else BrandColors.GRAY_MEDIUM
-            )
-
-            # Column 3: OT devices detected in the environment (the number that matters, bold).
+            # Column 3: Devices affected in your environment (bold red).
             cells[3].text = ""
-            ot_para = cells[3].paragraphs[0]
-            ot_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            ot_run = ot_para.add_run(f"{vuln.get('affected_ot_devices_count', 0):,}")
-            ot_run.font.bold = True
-            ot_run.font.size = FontSizes.SUBTITLE
-            ot_run.font.color.rgb = BrandColors.RED_HIGH_RISK
+            dev_para = cells[3].paragraphs[0]
+            dev_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            dev_run = dev_para.add_run(f"{r['devices']:,}")
+            dev_run.font.bold = True
+            dev_run.font.size = FontSizes.SUBTITLE
+            dev_run.font.color.rgb = BrandColors.RED_HIGH_RISK
 
             # Column 4: CVSS (colored by severity band)
-            cvss = vuln.get("cvss")
+            cvss = r["cvss"]
             cells[4].text = ""
             cvss_para = cells[4].paragraphs[0]
             cvss_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -967,267 +1071,51 @@ class WeeklyReportGenerator(BaseReportGenerator):
             cvss_run.font.size = FontSizes.SUBTITLE
             cvss_run.font.color.rgb = self._cvss_color(cvss)
 
-            for idx in range(5):
-                self._clear_cell_shading(cells[idx])
-                self._set_cell_borders(cells[idx], "CCCCCC")
-
-        table.columns[0].width = Inches(1.3)
-        table.columns[1].width = Inches(2.4)
-        table.columns[2].width = Inches(1.3)
-        table.columns[3].width = Inches(0.9)
-        table.columns[4].width = Inches(0.6)
-        self._keep_table_together(table)
-
-        caption_text = (
-            f"Table: {len(exposure)} High/Critical vulnerabilities detected on OT devices in your "
-            f"environment (Claroty xDome), ranked by CVSS. "
-            f"Product shown from CISA KEV where the CVE is KEV-listed."
-        )
-        self._add_ot_caption(caption_text)
-
-        self.doc.add_paragraph()
-
-    def _add_ot_advisories(self, analysis_result: dict[str, Any]) -> None:
-        """Add Operational Technology (OT) section from ICS/OT advisories.
-
-        Sourced from the ICS[AP] API (republished CISA ICS advisories). Covers
-        vulnerabilities in industrial/manufacturing control systems (SCADA, PLC, HMI,
-        lab instrumentation) that sit outside the IT CVE feed. Rendered directly from
-        the collector's structured data — no AI summarization.
-        """
-        logger.info("Adding Operational Technology (OT) section")
-
-        h = self.doc.add_heading("Operational Technology (OT)", level=1)
-        self._style_heading_1(h)
-
-        # Frame the two lenses up front so the reader knows why there are two tables and
-        # how they relate: what you already run (Claroty) vs what CISA just published.
-        frame = self.doc.add_paragraph()
-        frame_run = frame.add_run(
-            "OT risk is shown through two lenses. "
-        )
-        frame_run.font.size = FontSizes.BODY_SMALL
-        frame_run.font.italic = True
-        frame_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-        lens1 = frame.add_run("Fleet Exposure")
-        lens1.font.size = FontSizes.BODY_SMALL
-        lens1.font.bold = True
-        lens1.font.color.rgb = BrandColors.TEXT_DARK
-        mid = frame.add_run(
-            " is what already affects devices you operate (remediate now); "
-        )
-        mid.font.size = FontSizes.BODY_SMALL
-        mid.font.italic = True
-        mid.font.color.rgb = BrandColors.GRAY_MEDIUM
-        lens2 = frame.add_run("New Advisories")
-        lens2.font.size = FontSizes.BODY_SMALL
-        lens2.font.bold = True
-        lens2.font.color.rgb = BrandColors.TEXT_DARK
-        tail = frame.add_run(
-            " is what CISA recently published for ICS/OT products you operate (patch ahead of "
-            "exploitation). Both are scoped to your environment — advisories for products you do "
-            "not own are excluded."
-        )
-        tail.font.size = FontSizes.BODY_SMALL
-        tail.font.italic = True
-        tail.font.color.rgb = BrandColors.GRAY_MEDIUM
-        self.doc.add_paragraph()
-
-        # Lens 1: Claroty-first view of the estate's real exposure (skipped when unavailable).
-        self._add_ot_environment_exposure(analysis_result)
-
-        all_advisories = analysis_result.get("ot_advisories", []) or []
-        claroty_status = next(
-            (a.get("claroty_status") for a in all_advisories if a.get("claroty_status")), None
-        )
-        # Only advisories that affect products in the environment (Env. Assets > 0). An advisory
-        # for gear you do not own — and that is not exploited — is noise, so it is excluded.
-        advisories = [a for a in all_advisories if (a.get("affected_assets", 0) or 0) > 0]
-
-        # Lens 2 heading + intro. Deliberately "recent" rather than "this week": the ICS[AP]
-        # free tier serves advisories ~1 month stale, so this is a rolling awareness view.
-        self._add_ot_subheading("Lens 2 — New Advisories affecting products you operate")
-        intro = self.doc.add_paragraph()
-        intro_run = intro.add_run(
-            "Recently published CISA ICS/OT advisories, filtered to products present in your "
-            "environment (Claroty xDome). These are worth patching ahead of exploitation. "
-        )
-        intro_run.font.size = FontSizes.BODY_SMALL
-        intro_run.font.italic = True
-        intro_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-        action_run = intro.add_run(
-            "Verify IT/OT network segmentation and prioritize patching for the affected products."
-        )
-        action_run.font.size = FontSizes.BODY_SMALL
-        action_run.font.bold = True
-        action_run.font.color.rgb = BrandColors.TEXT_DARK
-        self.doc.add_paragraph()
-
-        # When the environment match did not run, we cannot say which advisories apply — so say
-        # that, rather than showing an empty "nothing matched" that would overstate certainty.
-        if claroty_status in ("error", "disabled") and not advisories:
-            note = (
-                "Advisory-to-product matching did not complete this run (Claroty xDome query "
-                "unavailable), so new advisories could not be checked against your environment. "
-                "See the Fleet Exposure table above for confirmed OT-device exposure."
-                if claroty_status == "error"
-                else "Advisory-to-product matching is not configured (Claroty xDome), so new "
-                "advisories could not be checked against your environment."
-            )
-            self._add_ot_caption(note)
-            self.doc.add_paragraph()
-            return
-
-        if not advisories:
-            self.doc.add_paragraph(
-                "No recent ICS/OT advisories affect products in your environment this week."
-            )
-            self.doc.add_paragraph()
-            return
-
-        # Table: Advisory | Advisory / Affected | Severity (CVSS) | CVEs | Env. Assets
-        table = self.doc.add_table(rows=1, cols=5)
-        headers = ["Advisory", "Advisory / Affected", "Severity (CVSS)", "CVEs", "Env. Assets"]
-        header_cells = table.rows[0].cells
-        for i, header in enumerate(headers):
-            cell = header_cells[i]
-            cell.text = header
-            para = cell.paragraphs[0]
-            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = para.runs[0]
-            run.font.bold = True
-            run.font.size = FontSizes.SUBTITLE
-            run.font.color.rgb = BrandColors.WHITE
-            self._set_cell_shading(cell, BrandColors.TABLE_HEADER_BG)
-            self._set_cell_borders(cell, "CCCCCC")
-
-        for advisory in advisories:
-            row = table.add_row()
-            cells = row.cells
-
-            # Column 0: Advisory ID (bold), linked to CISA advisory when a URL is present
-            cells[0].text = ""
-            adv_para = cells[0].paragraphs[0]
-            advisory_id = advisory.get("advisory_id", "N/A")
-            url = advisory.get("url", "")
-            if url:
-                self._add_hyperlink(adv_para, advisory_id, url)
+            # Column 5: Exploited in the wild (CISA KEV) — the signal that matters most.
+            cells[5].text = ""
+            exp_para = cells[5].paragraphs[0]
+            exp_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            if r["exploited"]:
+                exp_run = exp_para.add_run("Yes")
+                exp_run.font.bold = True
+                exp_run.font.color.rgb = BrandColors.RED_HIGH_RISK
             else:
-                adv_run = adv_para.add_run(advisory_id)
-                adv_run.font.bold = True
-                adv_run.font.size = FontSizes.SUBTITLE
-                adv_run.font.color.rgb = BrandColors.TEXT_DARK
-
-            # Column 1: Advisory title, plus affected products/versions when available.
-            # The title is always present (even on the free-tier list feed); the affected
-            # product/version detail comes from the enriched per-advisory record. Append
-            # it only when it adds information beyond the title, to avoid duplication.
-            title = advisory.get("title", "")
-            affected = advisory.get("products_affected") or advisory.get("product") or ""
-            if affected == "Unknown":
-                affected = ""
-            if title and affected and affected.lower() not in title.lower():
-                col1 = f"{title} — {affected}"
-            else:
-                col1 = title or affected or "—"
-            cells[1].text = col1[:100]
-
-            # Column 2: Severity (CVSS)
-            severity = advisory.get("severity", "") or "N/A"
-            cvss = advisory.get("cvss")
-            sev_text = f"{severity.title()} ({cvss})" if cvss is not None else severity.title()
-            cells[2].text = ""
-            sev_para = cells[2].paragraphs[0]
-            sev_run = sev_para.add_run(sev_text)
-            sev_run.font.size = FontSizes.SUBTITLE
-            sev_run.font.bold = True
-            sev_run.font.color.rgb = self._severity_color(severity)
-
-            # Column 3: CVEs (cap the list so the cell stays readable)
-            cves = advisory.get("cves", []) or []
-            if isinstance(cves, list) and cves:
-                cve_text = ", ".join(cves[:4])
-                if len(cves) > 4:
-                    cve_text += f" (+{len(cves) - 4})"
-            else:
-                cve_text = "—"
-            cells[3].text = cve_text
-
-            # CISA KEV exploited marker beneath the CVE list (the advisory table has no
-            # dedicated exploited column). Ransomware is the strongest "patch now" signal;
-            # plain KEV membership still means active exploitation.
-            if advisory.get("known_ransomware"):
-                exploited_tag = "Known ransomware (CISA KEV)"
-            elif advisory.get("in_cisa_kev"):
-                exploited_tag = "Known-exploited (CISA KEV)"
-            else:
-                exploited_tag = ""
-            if exploited_tag:
-                rw_para = cells[3].add_paragraph()
+                exp_run = exp_para.add_run("—")
+                exp_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+            exp_run.font.size = FontSizes.SUBTITLE
+            if r["ransomware"]:
+                rw_para = cells[5].add_paragraph()
+                rw_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 rw_para.paragraph_format.space_before = Pt(0)
-                rw_run = rw_para.add_run(exploited_tag)
+                rw_run = rw_para.add_run("Ransomware")
                 rw_run.font.size = FontSizes.FOOTNOTE
                 rw_run.font.bold = True
                 rw_run.font.color.rgb = BrandColors.RED_HIGH_RISK
 
-            # Column 4: Env. Assets — count of real environment assets whose CVEs match
-            # this advisory (from Claroty). A non-zero count is the key "this affects us"
-            # signal, so it is bold red; unmatched advisories show a gray dash.
-            assets = advisory.get("affected_assets", 0) or 0
-            cells[4].text = ""
-            assets_para = cells[4].paragraphs[0]
-            assets_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            if assets > 0:
-                assets_run = assets_para.add_run(str(assets))
-                assets_run.font.bold = True
-                assets_run.font.color.rgb = BrandColors.RED_HIGH_RISK
-            else:
-                assets_run = assets_para.add_run("—")
-                assets_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-            assets_run.font.size = FontSizes.SUBTITLE
-
-            # Site breakdown of the matched (vendor) devices, on a second line in small gray.
-            sites = advisory.get("sites") or []
-            if assets > 0 and sites:
-                site_para = cells[4].add_paragraph()
-                site_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                site_para.paragraph_format.space_before = Pt(0)
-                site_text = ", ".join(f"{name} ({count})" for name, count in sites)
-                site_run = site_para.add_run(site_text)
-                site_run.font.size = FontSizes.FOOTNOTE
-                site_run.font.color.rgb = BrandColors.GRAY_MEDIUM
-
-            # Uniform styling / borders for the row
-            for idx in range(5):
+            for idx in range(6):
                 self._clear_cell_shading(cells[idx])
                 self._set_cell_borders(cells[idx], "CCCCCC")
-                for para in cells[idx].paragraphs:
-                    for run in para.runs:
-                        if run.font.size is None:
-                            run.font.size = FontSizes.SUBTITLE
-                        if run.font.color.rgb is None:
-                            run.font.color.rgb = BrandColors.TEXT_DARK
 
-        # Column widths (Env. Assets wider to fit the site breakdown line)
-        table.columns[0].width = Inches(1.0)
-        table.columns[1].width = Inches(2.0)
-        table.columns[2].width = Inches(1.0)
-        table.columns[3].width = Inches(1.1)
-        table.columns[4].width = Inches(1.5)
+        table.columns[0].width = Inches(1.2)
+        table.columns[1].width = Inches(1.15)
+        table.columns[2].width = Inches(1.75)
+        table.columns[3].width = Inches(0.7)
+        table.columns[4].width = Inches(0.5)
+        table.columns[5].width = Inches(0.9)
         self._keep_table_together(table)
 
-        # Caption
-        exploited_advisories = sum(
-            1 for a in advisories if a.get("in_cisa_kev") or a.get("known_ransomware")
-        )
+        exploited_ct = sum(1 for r in rows if r["exploited"])
+        n_assets = sum(1 for r in rows if r["kind"] == "asset")
+        n_adv = len(rows) - n_assets
         caption_text = (
-            f"Table: {len(advisories)} recent CISA ICS/OT advisory(ies) affecting products in your "
-            f"environment (Env. Assets = matched devices, Claroty xDome)."
+            f"Table: {len(rows)} OT vulnerabilities in your environment "
+            f"({n_assets} detected on OT devices, {n_adv} from CISA advisories for products you "
+            f"own; Claroty xDome + CISA). 'Exploited' = listed in CISA KEV ({exploited_ct} here). "
+            f"Product from CISA KEV or parsed from the description."
         )
-        if exploited_advisories:
-            caption_text += f" {exploited_advisories} reference CISA KEV known-exploited CVEs."
+        if claroty_status == "error":
+            caption_text += " Advisory-to-product matching did not complete this run."
         self._add_ot_caption(caption_text)
-
         self.doc.add_paragraph()
 
     def _add_sector_threat_activity(self, analysis_result: dict[str, Any]) -> None:
