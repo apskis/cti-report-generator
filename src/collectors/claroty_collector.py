@@ -34,6 +34,8 @@ _VULN_FIELDS = [
     "cve_ids",
     "cvss_v3_score",
     "is_known_exploited",
+    "exploits_count",
+    "epss_score",
     "affected_devices_count",
     "affected_ot_devices_count",
     "affected_confirmed_devices_count",
@@ -103,6 +105,11 @@ class ClarotyCollector(BaseCollector):
         except (TypeError, ValueError):
             cvss = None
 
+        try:
+            epss = float(row.get("epss_score")) if row.get("epss_score") is not None else None
+        except (TypeError, ValueError):
+            epss = None
+
         return {
             "source": "Claroty",
             "record_type": "vulnerability",
@@ -110,10 +117,14 @@ class ClarotyCollector(BaseCollector):
             "description": row.get("description", ""),
             "cve_ids": cve_ids,
             "cvss": cvss,
+            # Exploitation signals: KEV (in the wild), ExploitDB count (public exploit exists),
+            # and EPSS probability — the report grades the "Exploited" column from these.
+            "is_known_exploited": bool(row.get("is_known_exploited")),
+            "exploits_count": _int(row.get("exploits_count")),
+            "epss": epss,
             "affected_devices_count": _int(row.get("affected_devices_count")),
             "affected_ot_devices_count": _int(row.get("affected_ot_devices_count")),
             "affected_confirmed_devices_count": _int(row.get("affected_confirmed_devices_count")),
-            "is_known_exploited": bool(row.get("is_known_exploited")),
         }
 
     @staticmethod

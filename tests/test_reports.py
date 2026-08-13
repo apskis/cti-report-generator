@@ -994,8 +994,8 @@ class TestOTUnifiedTable:
             ],
         })
         first = gen.doc.tables[0].rows[1]
-        assert "CVE-B" in first.cells[0].text    # exploited outranks higher CVSS
-        assert "Yes" in first.cells[5].text      # Exploited column
+        assert "CVE-B" in first.cells[0].text          # exploited outranks higher CVSS
+        assert "In the wild (KEV)" in first.cells[5].text  # Exploited column
 
     def test_ranked_by_device_count_within_exploited_group(self):
         # Same exploited status -> the one on more of your devices ranks higher.
@@ -1040,7 +1040,7 @@ class TestOTUnifiedTable:
         assert by_cve["CVE-1"].cells[1].text.strip() == "Acme PLC"   # KEV product wins
         assert by_cve["CVE-2"].cells[1].text.strip() == "—"          # nothing recognizable
 
-    def test_exploited_column_shows_ransomware(self):
+    def test_exploited_column_shows_kev_and_ransomware(self):
         gen = self._gen()
         gen._add_ot_advisories({
             "ot_environment_exposure": [
@@ -1049,8 +1049,28 @@ class TestOTUnifiedTable:
             ],
         })
         exploited_cell = gen.doc.tables[0].rows[1].cells[5]
-        assert "Yes" in exploited_cell.text
+        assert "In the wild (KEV)" in exploited_cell.text
         assert "Ransomware" in exploited_cell.text
+
+    def test_exploited_column_grades_exploitdb_and_epss(self):
+        gen = self._gen()
+        gen._add_ot_advisories({
+            "ot_environment_exposure": [
+                # public exploit exists (ExploitDB) but not KEV -> "Exploit public"
+                {"cve_ids": ["CVE-PUB"], "cvss": 9.0, "affected_ot_devices_count": 3,
+                 "is_known_exploited": False, "exploits_count": 2, "epss": 0.1, "description": "d"},
+                # high EPSS, no KEV, no public exploit -> "Likely (EPSS xx%)"
+                {"cve_ids": ["CVE-EPSS"], "cvss": 9.0, "affected_ot_devices_count": 2,
+                 "is_known_exploited": False, "exploits_count": 0, "epss": 0.74, "description": "d"},
+                # nothing -> dash
+                {"cve_ids": ["CVE-NONE"], "cvss": 9.0, "affected_ot_devices_count": 1,
+                 "is_known_exploited": False, "exploits_count": 0, "epss": 0.02, "description": "d"},
+            ],
+        })
+        by_cve = {r.cells[0].text.split()[0]: r for r in gen.doc.tables[0].rows[1:]}
+        assert "Exploit public" in by_cve["CVE-PUB"].cells[5].text
+        assert "Likely (EPSS 74%)" in by_cve["CVE-EPSS"].cells[5].text
+        assert by_cve["CVE-NONE"].cells[5].text.strip() == "—"
 
     def test_only_owned_advisories_included(self):
         gen = self._gen()

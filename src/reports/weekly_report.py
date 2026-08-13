@@ -39,6 +39,9 @@ _OT_PRODUCT_KEYWORDS = [
     "OpenSSL", "Apache", "VMware", "Fortinet", "Cisco", "Ivanti", "Citrix",
 ]
 
+# EPSS probability at or above which a CVE is labeled "Likely" in the OT Exploited column.
+_EPSS_LIKELY_THRESHOLD = 0.5
+
 logger = logging.getLogger(__name__)
 
 
@@ -904,6 +907,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
             "cvss": v.get("cvss"),
             "exploited": bool(v.get("is_known_exploited") or v.get("in_cisa_kev")),
             "ransomware": bool(v.get("known_ransomware")),
+            "exploits_count": v.get("exploits_count", 0) or 0,
+            "epss": v.get("epss"),
         }
 
     def _ot_row_from_advisory(self, a: dict[str, Any]) -> dict[str, Any]:
@@ -927,6 +932,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
             "cvss": a.get("cvss"),
             "exploited": bool(a.get("in_cisa_kev") or a.get("known_ransomware")),
             "ransomware": bool(a.get("known_ransomware")),
+            # Advisory rows come from the CISA feed, not Claroty vuln records, so no ExploitDB/EPSS.
+            "exploits_count": 0,
+            "epss": None,
         }
 
     def _add_ot_advisories(self, analysis_result: dict[str, Any]) -> None:
@@ -1072,18 +1080,24 @@ class WeeklyReportGenerator(BaseReportGenerator):
             cvss_run.font.size = FontSizes.SUBTITLE
             cvss_run.font.color.rgb = self._cvss_color(cvss)
 
-            # Column 5: Exploited in the wild (CISA KEV) — the signal that matters most.
+            # Column 5: graded exploitation signal — CISA KEV (in the wild) is strongest, then a
+            # public exploit (ExploitDB), then a high EPSS probability. Ransomware on a 2nd line.
+            epss = r.get("epss")
+            if r["exploited"]:
+                exp_label, exp_color = "In the wild (KEV)", BrandColors.RED_HIGH_RISK
+            elif (r.get("exploits_count") or 0) > 0:
+                exp_label, exp_color = "Exploit public", BrandColors.ORANGE_DESIGN
+            elif isinstance(epss, (int, float)) and epss >= _EPSS_LIKELY_THRESHOLD:
+                exp_label, exp_color = f"Likely (EPSS {epss:.0%})", BrandColors.ORANGE_DESIGN
+            else:
+                exp_label, exp_color = "—", BrandColors.GRAY_MEDIUM
             cells[5].text = ""
             exp_para = cells[5].paragraphs[0]
             exp_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            if r["exploited"]:
-                exp_run = exp_para.add_run("Yes")
-                exp_run.font.bold = True
-                exp_run.font.color.rgb = BrandColors.RED_HIGH_RISK
-            else:
-                exp_run = exp_para.add_run("—")
-                exp_run.font.color.rgb = BrandColors.GRAY_MEDIUM
+            exp_run = exp_para.add_run(exp_label)
             exp_run.font.size = FontSizes.SUBTITLE
+            exp_run.font.bold = exp_color != BrandColors.GRAY_MEDIUM
+            exp_run.font.color.rgb = exp_color
             if r["ransomware"]:
                 rw_para = cells[5].add_paragraph()
                 rw_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1097,21 +1111,22 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 self._clear_cell_shading(cells[idx])
                 self._set_cell_borders(cells[idx], "CCCCCC")
 
-        table.columns[0].width = Inches(1.2)
-        table.columns[1].width = Inches(1.15)
-        table.columns[2].width = Inches(1.75)
+        table.columns[0].width = Inches(1.15)
+        table.columns[1].width = Inches(1.05)
+        table.columns[2].width = Inches(1.55)
         table.columns[3].width = Inches(0.7)
         table.columns[4].width = Inches(0.5)
-        table.columns[5].width = Inches(0.9)
+        table.columns[5].width = Inches(1.15)
         self._keep_table_together(table)
 
-        exploited_ct = sum(1 for r in rows if r["exploited"])
         n_assets = sum(1 for r in rows if r["kind"] == "asset")
         n_adv = len(rows) - n_assets
+        pct = int(_EPSS_LIKELY_THRESHOLD * 100)
         caption_text = (
             f"Table: {len(rows)} OT vulnerabilities in your environment "
             f"({n_assets} detected on OT devices, {n_adv} from CISA advisories for products you "
-            f"own; Claroty xDome + CISA). 'Exploited' = listed in CISA KEV ({exploited_ct} here). "
+            f"own; Claroty xDome + CISA). Exploited: 'In the wild (KEV)', 'Exploit public' "
+            f"(public exploit exists, ExploitDB), or 'Likely (EPSS ≥ {pct}%)'. "
             f"Product from CISA KEV or parsed from the description."
         )
         if claroty_status == "error":

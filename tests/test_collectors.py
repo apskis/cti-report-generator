@@ -1508,6 +1508,19 @@ class TestClarotyCollector:
         assert c._parse_vuln({"cve_ids": "CVE-2026-9, CVE-2026-8"})["cve_ids"] == ["CVE-2026-9", "CVE-2026-8"]
         assert c._parse_vuln({"cve_ids": []}) is None
 
+    def test_parse_vuln_reads_exploitation_signals(self, claroty_credentials):
+        from src.collectors.claroty_collector import ClarotyCollector
+
+        c = ClarotyCollector(claroty_credentials)
+        v = c._parse_vuln({"cve_ids": ["CVE-2026-1"], "is_known_exploited": True,
+                           "exploits_count": 3, "epss_score": "0.87"})
+        assert v["is_known_exploited"] is True
+        assert v["exploits_count"] == 3
+        assert v["epss"] == 0.87
+        # Missing / unparseable signals degrade to safe defaults.
+        m = c._parse_vuln({"cve_ids": ["CVE-2026-2"], "epss_score": "n/a"})
+        assert m["exploits_count"] == 0 and m["epss"] is None
+
     @pytest.mark.asyncio
     async def test_collect_is_noop(self, claroty_credentials):
         """The parallel collector does no bulk pull; matching is a targeted enrichment."""
