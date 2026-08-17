@@ -34,6 +34,7 @@ ADMIRALTY_CONFIDENCE_MAP = {
 _BREACH_RELEVANT_KEYWORDS = [
     "health", "pharma", "biotech", "medical", "life scien", "laborator", "manufactur",
     "genom", "diagnostic", "clinical", "hospital", "drug", "therapeut", "biolog", "vaccine",
+    "immun", "oncolog", "molecul", "bioscien", "medtech",
 ]
 
 
@@ -510,13 +511,30 @@ class Intel471Collector(BaseCollector):
             data = await response.json()
             alerts = data.get("breach_alerts", [])
             total = data.get("breach_alerts_total_count", len(alerts))
+            min_rank = self._confidence_rank(collector_config.intel471_breach_min_confidence)
+            dropped_window = dropped_conf = 0
             for alert in alerts:
                 record = self._parse_breach_alert(alert)
-                if record.get("organization") and self._breach_is_relevant(record):
-                    threats.append(record)
+                if not record.get("organization") or not self._breach_is_relevant(record):
+                    continue
+                # Scope to the report window by the incident's own date. The API window
+                # filters on feed-publication time, but a freshly published alert can carry
+                # an older disclosure date; drop those so the table only shows this period's
+                # incidents.
+                if not self._breach_in_window(record.get("date", ""), start_date, end_date):
+                    dropped_window += 1
+                    continue
+                # Optional confidence gate. Unknown/unparseable confidence is kept.
+                if min_rank:
+                    rank = self._confidence_rank(record.get("confidence", ""))
+                    if rank and rank < min_rank:
+                        dropped_conf += 1
+                        continue
+                threats.append(record)
             logger.info(
                 f"Intel471 breach alerts: {len(threats)} relevant of {len(alerts)} fetched "
-                f"({total} in window)"
+                f"({total} in window; dropped {dropped_window} out-of-window, "
+                f"{dropped_conf} below confidence)"
             )
         except Exception as e:
             logger.warning(f"Error fetching Intel471 breach alerts: {e}")
@@ -566,6 +584,37 @@ class Intel471Collector(BaseCollector):
             [record.get("organization", ""), *record.get("industries", []), *record.get("sectors", [])]
         ).lower()
         return any(keyword in hay for keyword in _BREACH_RELEVANT_KEYWORDS)
+
+    @staticmethod
+    def _breach_in_window(date_iso: str, start_date: datetime, end_date: datetime) -> bool:
+        """True if the breach's disclosure date falls within the report window.
+
+        Records with no parseable date are kept (the API already scoped them to the window
+        by publication time; only an out-of-window disclosure date is a reason to drop).
+        """
+        if not date_iso:
+            return True
+        try:
+            d = datetime.fromisoformat(date_iso).date()
+        except (ValueError, TypeError):
+            return True
+        return start_date.date() <= d <= end_date.date()
+
+    @staticmethod
+    def _confidence_rank(level: str) -> int:
+        """Rank a breach-alert confidence to an ordinal (high=3, medium=2, low=1).
+
+        Accepts a word ("low"/"medium"/"high") or an Admiralty letter ("A"-"F").
+        Returns 0 for empty/unrecognized input so callers can treat it as "unknown".
+        """
+        text = (level or "").strip().lower()
+        if not text:
+            return 0
+        words = {"high": 3, "medium": 2, "moderate": 2, "low": 1}
+        if text in words:
+            return words[text]
+        letters = {"a": 3, "b": 3, "c": 2, "d": 2, "e": 1, "f": 1}
+        return letters.get(text[0], 0) if text[0].isalpha() and len(text) == 1 else 0
 
     async def _fetch_breach_alerts_from_reports(
         self, client: HTTPClient, auth: aiohttp.BasicAuth, start_date: datetime, end_date: datetime

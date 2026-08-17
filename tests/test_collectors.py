@@ -261,6 +261,35 @@ class TestIntel471Collector:
         assert c._breach_incident_type("X", "actor offers to sell access") == "Unauthorized Access"
         assert c._breach_incident_type("X", "unspecified compromise") == "Breach"
 
+    def test_breach_relevance_includes_biotech(self, mock_credentials):
+        c = Intel471Collector(mock_credentials)
+        biotech = c._parse_breach_alert(self._breach_record(
+            "UAB Biotecha", "Biotechnology research", "Biotech and life sciences sector"))
+        immuno = c._parse_breach_alert(self._breach_record(
+            "Acme Immunotherapeutics", "Immunology R&D", "Life sciences sector"))
+        assert c._breach_is_relevant(biotech) is True
+        assert c._breach_is_relevant(immuno) is True
+
+    def test_confidence_rank_words_and_letters(self, mock_credentials):
+        c = Intel471Collector(mock_credentials)
+        assert c._confidence_rank("high") == 3
+        assert c._confidence_rank("Medium") == 2
+        assert c._confidence_rank("low") == 1
+        assert c._confidence_rank("A") == 3 and c._confidence_rank("C") == 2 and c._confidence_rank("F") == 1
+        assert c._confidence_rank("") == 0          # empty -> unknown
+        assert c._confidence_rank("bogus") == 0     # unrecognized -> unknown (never filtered)
+
+    def test_breach_in_window_scopes_by_disclosure_date(self, mock_credentials):
+        from datetime import datetime
+
+        c = Intel471Collector(mock_credentials)
+        start, end = datetime(2026, 8, 10), datetime(2026, 8, 17)
+        assert c._breach_in_window("2026-08-14T00:00:00", start, end) is True    # in window
+        assert c._breach_in_window("2026-07-30T00:00:00", start, end) is False   # older disclosure -> dropped
+        assert c._breach_in_window("2026-08-10T00:00:00", start, end) is True    # boundary kept
+        assert c._breach_in_window("", start, end) is True                       # missing date -> kept
+        assert c._breach_in_window("not-a-date", start, end) is True             # unparseable -> kept
+
 
 # =============================================================================
 # CrowdStrike Collector Tests
