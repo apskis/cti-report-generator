@@ -511,8 +511,12 @@ class Intel471Collector(BaseCollector):
             data = await response.json()
             alerts = data.get("breach_alerts", [])
             total = data.get("breach_alerts_total_count", len(alerts))
-            min_rank = self._confidence_rank(collector_config.intel471_breach_min_confidence)
+            min_conf = collector_config.intel471_breach_min_confidence
+            min_rank = self._confidence_rank(min_conf)
             dropped_window = dropped_conf = 0
+            # Histogram of confidence among relevant, in-window alerts (before the gate), so
+            # the debug log shows how many would survive at each threshold (high/medium/low).
+            conf_hist: dict[str, int] = {"high": 0, "medium": 0, "low": 0, "unknown": 0}
             for alert in alerts:
                 record = self._parse_breach_alert(alert)
                 if not record.get("organization") or not self._breach_is_relevant(record):
@@ -524,17 +528,23 @@ class Intel471Collector(BaseCollector):
                 if not self._breach_in_window(record.get("date", ""), start_date, end_date):
                     dropped_window += 1
                     continue
+                rank = self._confidence_rank(record.get("confidence", ""))
+                conf_hist[{3: "high", 2: "medium", 1: "low", 0: "unknown"}[rank]] += 1
                 # Optional confidence gate. Unknown/unparseable confidence is kept.
-                if min_rank:
-                    rank = self._confidence_rank(record.get("confidence", ""))
-                    if rank and rank < min_rank:
-                        dropped_conf += 1
-                        continue
+                if min_rank and rank and rank < min_rank:
+                    dropped_conf += 1
+                    continue
                 threats.append(record)
             logger.info(
                 f"Intel471 breach alerts: {len(threats)} relevant of {len(alerts)} fetched "
                 f"({total} in window; dropped {dropped_window} out-of-window, "
-                f"{dropped_conf} below confidence)"
+                f"{dropped_conf} below confidence={min_conf or 'off'})"
+            )
+            logger.info(
+                "Intel471 breach-alert confidence breakdown (relevant, in-window): "
+                f"high={conf_hist['high']}, medium={conf_hist['medium']}, "
+                f"low={conf_hist['low']}, unknown={conf_hist['unknown']} "
+                f"(current threshold '{min_conf or 'off'}' keeps {len(threats)})"
             )
         except Exception as e:
             logger.warning(f"Error fetching Intel471 breach alerts: {e}")
