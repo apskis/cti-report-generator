@@ -297,11 +297,6 @@ def _scan_industry_incidents_quality(report: dict) -> tuple[list[str], list[str]
     vague_keywords = [
         "sector",
         "industry",
-        "healthcare",
-        "biotech",
-        "manufacturing",
-        "life sciences",
-        "health care",
         "companies",
         "organizations",
         "databreach+",
@@ -314,13 +309,26 @@ def _scan_industry_incidents_quality(report: dict) -> tuple[list[str], list[str]
         "no named",
         "not reported",
     ]
+    # These keywords are only vague when they ARE the entire org name (not part of a company name)
+    standalone_vague_keywords = [
+        "healthcare",
+        "biotech",
+        "manufacturing",
+        "life sciences",
+        "health care",
+    ]
 
     vague_incidents = []
     for inc in industry_incidents:
         if isinstance(inc, dict):
             org = inc.get("organization", "").lower()
-            # Check if organization name contains vague keywords
+            # Check if organization name contains vague keywords (substring match)
             if any(keyword in org for keyword in vague_keywords):
+                vague_incidents.append(inc.get("organization", "Unknown"))
+            # Check standalone keywords only when the org name IS that keyword (not part of a proper name)
+            elif org.strip() in standalone_vague_keywords or org.strip().startswith(("the ", "a ")) and any(
+                org.strip().removeprefix("the ").removeprefix("a ") == kw for kw in standalone_vague_keywords
+            ):
                 vague_incidents.append(inc.get("organization", "Unknown"))
             # Or if it's suspiciously generic (very long or contains parenthetical descriptions)
             elif len(org.split()) > 6 or ("(named" in org or "(site" in org):
