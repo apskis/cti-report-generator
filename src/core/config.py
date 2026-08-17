@@ -58,13 +58,15 @@ class CollectorConfig:
     intel471_indicators_limit: int = 20
     # Minimum confidence for a breach alert to appear as a peer incident. Intel471 grades
     # each breach alert's confidence; this drops low-confidence noise. Accepts a word
-    # ("low"/"medium"/"high") or an Admiralty letter ("A"-"F"). Defaults to "high" so only
-    # high-confidence sector-peer alerts surface; set INTEL471_BREACH_MIN_CONFIDENCE="medium"
-    # to widen, or "" to keep all. Records whose confidence can't be parsed are kept (never
-    # silently dropped). Note: the confidence floor does NOT apply to supply-chain / tech-stack
-    # watchlist matches (see peer_watch_orgs) — those are always relevant if the vendor is hit.
+    # ("low"/"medium"/"high") or an Admiralty letter ("A"-"F"). Defaults to "medium": Intel471
+    # grades breach alerts almost entirely "medium" (observed: high=0, medium=21, low=1 in a
+    # week), so a "high" floor zeroes the whole feed. Set INTEL471_BREACH_MIN_CONFIDENCE="high"
+    # only if you want near-zero breach alerts, or "" to keep all incl. low. Records whose
+    # confidence can't be parsed are kept (never silently dropped). Note: the confidence floor
+    # does NOT apply to supply-chain / tech-stack / competitor watchlist matches — those are
+    # always relevant if the org is hit.
     intel471_breach_min_confidence: str = field(
-        default_factory=lambda: os.environ.get("INTEL471_BREACH_MIN_CONFIDENCE", "high")
+        default_factory=lambda: os.environ.get("INTEL471_BREACH_MIN_CONFIDENCE", "medium")
     )
     # Supply-chain / tech-stack watchlist for Peer Incidents. Peer incidents come from three
     # relevance lenses: (1) sector peers — healthcare/pharma/biotech orgs, filtered by

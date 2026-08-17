@@ -1549,10 +1549,23 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Collect incidents from multiple sources:
         incidents = []
 
-        # 1. Get AI-identified incidents from OSINT (structured output)
-        ai_incidents = analysis_result.get("industry_incidents", [])
-        if ai_incidents:
-            logger.info(f"Found {len(ai_incidents)} incidents from AI analysis")
+        # 1. AI-identified incidents — OSINT-sourced only. Intel471 peer incidents come
+        #    exclusively from the structured breach-alert feed (step 2), NOT from the AI mining
+        #    organization names out of Intel471 report prose. Intel471 INTSUM/INFOREP narratives
+        #    namecheck third-party breaches from open-source reporting (e.g. an INTSUM mentioning
+        #    Amgen); the AI would extract those and mis-attribute them to Intel471 as if they were
+        #    breach alerts. Drop AI incidents attributed to Intel471 so only genuine, filtered
+        #    breach alerts carry the Intel471 label.
+        all_ai_incidents = analysis_result.get("industry_incidents") or []
+        ai_incidents = [
+            inc for inc in all_ai_incidents if "intel471" not in str(inc.get("source", "")).lower()
+        ]
+        dropped_ai = len(all_ai_incidents) - len(ai_incidents)
+        if all_ai_incidents:
+            logger.info(
+                f"AI peer incidents: {len(ai_incidents)} OSINT-sourced kept, {dropped_ai} "
+                f"Intel471-attributed dropped (Intel471 peers come from the breach-alert feed)"
+            )
             incidents.extend(ai_incidents)
 
         # 2. Add Intel471 breach alerts directly (may not be in AI output)

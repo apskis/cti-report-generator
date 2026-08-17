@@ -1210,15 +1210,37 @@ class TestPeerIncidentsFromIntel471:
         assert org_cells.count("Molina Healthcare") == 1  # not double-listed
         assert "Colla Health Inc." in org_cells
 
+    def test_ai_intel471_prose_mined_incidents_dropped(self):
+        # An AI incident attributed to Intel471 (e.g. Amgen scraped from an INTSUM narrative)
+        # must NOT render — Intel471 peers come only from the structured breach-alert feed.
+        gen = self._gen()
+        gen._add_industry_incidents({
+            "industry_incidents": [
+                {"organization": "Amgen", "incident_type": "Breach", "date": "2026-08-14",
+                 "source": "Intel471"},  # prose-mined -> dropped
+                {"organization": "Scottish Government", "incident_type": "Breach",
+                 "date": "2026-08-13", "source": "Dark Reading", "osint_citation_number": 1},
+            ],
+            "osint_sources_used": [
+                {"title": "Scottish Govt Data Breach", "url": "https://x", "citation_number": 1},
+            ],
+            "intel471_breaches": [],
+        })
+        org_cells = [t.rows[r].cells[0].text for t in gen.doc.tables for r in range(1, len(t.rows))]
+        assert "Amgen" not in org_cells                 # Intel471-attributed AI incident dropped
+        assert "Scottish Government" in org_cells        # OSINT-sourced AI incident kept
+
     def test_relevance_column_labels_each_lens(self):
         gen = self._gen()
         gen._add_industry_incidents({
-            # AI incident with no explicit lens -> classified from the org name (competitor list)
+            # OSINT-sourced AI incident with no explicit lens -> classified from the org name
             "industry_incidents": [
                 {"organization": "Pacific Biosciences", "incident_type": "Breach",
-                 "date": "2026-08-12", "source": "Intel471"},
+                 "date": "2026-08-12", "source": "Dark Reading", "osint_citation_number": 1},
             ],
-            "osint_sources_used": [],
+            "osint_sources_used": [
+                {"title": "PacBio Breach", "url": "https://x", "citation_number": 1},
+            ],
             "intel471_breaches": [
                 {"organization": "Okta", "incident_type": "Unauthorized Access",
                  "date": "2026-08-14", "relevance": "supply-chain"},
