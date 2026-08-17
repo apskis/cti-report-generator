@@ -306,6 +306,25 @@ class TestIntel471Collector:
         assert c._confidence_rank("") == 0          # empty -> unknown
         assert c._confidence_rank("bogus") == 0     # unrecognized -> unknown (never filtered)
 
+    def test_breach_in_geo_filters_us_europe(self, mock_credentials):
+        c = Intel471Collector(mock_credentials)
+        assert c._breach_in_geo({"country": "United States"}) is True
+        assert c._breach_in_geo({"country": "Germany"}) is True
+        assert c._breach_in_geo({"country": "UK"}) is True
+        assert c._breach_in_geo({"country": "Brazil"}) is False
+        assert c._breach_in_geo({"country": "India"}) is False
+        assert c._breach_in_geo({"country": ""}) is True   # unknown country kept
+
+    def test_breach_in_geo_off_keeps_all(self, mock_credentials, monkeypatch):
+        import dataclasses
+
+        from src.core.config import collector_config
+
+        patched = dataclasses.replace(collector_config, intel471_breach_us_europe_only=False)
+        monkeypatch.setattr("src.collectors.intel471_collector.collector_config", patched)
+        c = Intel471Collector(mock_credentials)
+        assert c._breach_in_geo({"country": "Brazil"}) is True   # filter disabled -> keep
+
     def test_breach_in_window_scopes_by_disclosure_date(self, mock_credentials):
         from datetime import datetime
 

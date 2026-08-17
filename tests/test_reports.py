@@ -1230,6 +1230,28 @@ class TestPeerIncidentsFromIntel471:
         assert "Amgen" not in org_cells                 # Intel471-attributed AI incident dropped
         assert "Scottish Government" in org_cells        # OSINT-sourced AI incident kept
 
+    def test_watchlist_lenses_survive_cap_and_lead(self):
+        # 25 sector peers + 1 competitor + 1 supply-chain. The two watchlist hits must survive
+        # the 20-row cap and appear first (competitor before supply chain).
+        gen = self._gen()
+        breaches = [
+            {"organization": f"Sector Clinic {i}", "incident_type": "Ransomware",
+             "date": f"2026-08-{10 + (i % 6):02d}", "relevance": "sector"}
+            for i in range(25)
+        ]
+        breaches.append({"organization": "Qiagen NV", "incident_type": "Data Leak",
+                         "date": "2026-08-10", "relevance": "competitor"})
+        breaches.append({"organization": "Okta Inc.", "incident_type": "Unauthorized Access",
+                         "date": "2026-08-10", "relevance": "supply-chain"})
+        gen._add_industry_incidents({
+            "industry_incidents": [], "osint_sources_used": [], "intel471_breaches": breaches,
+        })
+        org_col = [t.rows[r].cells[0].text for t in gen.doc.tables for r in range(1, len(t.rows))]
+        assert len(org_col) == 20                         # capped
+        assert "Qiagen NV" in org_col and "Okta Inc." in org_col   # watchlist hits survived
+        assert org_col[0] == "Qiagen NV"                  # competitor leads
+        assert org_col[1] == "Okta Inc."                  # supply chain second
+
     def test_relevance_column_labels_each_lens(self):
         gen = self._gen()
         gen._add_industry_incidents({

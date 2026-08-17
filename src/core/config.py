@@ -39,6 +39,30 @@ _DEFAULT_PEER_COMPETITOR_ORGS = [
     "Guardant Health", "Natera", "Tempus", "Roche",
 ]
 
+# US + Europe victim countries used to geo-filter sector-peer breach alerts down to the regions
+# that matter (the global breach-alert feed is dominated by small international ransomware
+# victims). Matched case-insensitively against the breach alert's victim country, in both
+# full-name and ISO-2 forms. Competitor / supply-chain watchlist hits bypass this filter.
+_US_EUROPE_COUNTRIES = {
+    # United States
+    "united states", "united states of america", "usa", "us", "u.s.", "u.s.a.",
+    # UK & Ireland
+    "united kingdom", "uk", "u.k.", "great britain", "england", "scotland", "wales",
+    "northern ireland", "gb", "ireland", "ie",
+    # Western / Central Europe
+    "germany", "de", "france", "fr", "italy", "it", "spain", "es", "portugal", "pt",
+    "netherlands", "the netherlands", "nl", "belgium", "be", "luxembourg", "lu",
+    "switzerland", "ch", "austria", "at", "liechtenstein", "li", "monaco", "mc",
+    # Nordics
+    "denmark", "dk", "sweden", "se", "norway", "no", "finland", "fi", "iceland", "is",
+    # Southern Europe
+    "greece", "gr", "cyprus", "cy", "malta", "mt",
+    # Eastern Europe / Baltics / Balkans
+    "poland", "pl", "czech republic", "czechia", "cz", "slovakia", "sk", "hungary", "hu",
+    "romania", "ro", "bulgaria", "bg", "croatia", "hr", "slovenia", "si", "estonia", "ee",
+    "latvia", "lv", "lithuania", "lt", "serbia", "rs", "ukraine", "ua",
+}
+
 
 @dataclass(frozen=True)
 class CollectorConfig:
@@ -96,6 +120,15 @@ class CollectorConfig:
             if os.environ.get("PEER_COMPETITOR_ORGS")
             else list(_DEFAULT_PEER_COMPETITOR_ORGS)
         )
+    )
+    # Geo-filter sector-peer breach alerts to US + Europe victims (see _US_EUROPE_COUNTRIES).
+    # The global breach-alert feed is dominated by small non-US/EU ransomware victims; this cuts
+    # that noise. Applies to the SECTOR lens only — competitor / supply-chain hits are kept
+    # worldwide. Victims with no country are kept (not silently dropped). Disable with
+    # PEER_BREACH_US_EUROPE_ONLY=false.
+    intel471_breach_us_europe_only: bool = field(
+        default_factory=lambda: os.environ.get("PEER_BREACH_US_EUROPE_ONLY", "true").lower()
+        in {"1", "true", "yes"}
     )
     crowdstrike_actors_limit: int = 50
     crowdstrike_indicators_limit: int = 50

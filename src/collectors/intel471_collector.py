@@ -13,7 +13,7 @@ import aiohttp  # type: ignore
 
 from src.collectors.base import BaseCollector
 from src.collectors.http_utils import HTTPClient, NonRetryableHTTPError
-from src.core.config import collector_config
+from src.core.config import _US_EUROPE_COUNTRIES, collector_config
 from src.core.models import CollectorResult
 
 logger = logging.getLogger(__name__)
@@ -513,7 +513,7 @@ class Intel471Collector(BaseCollector):
             total = data.get("breach_alerts_total_count", len(alerts))
             min_conf = collector_config.intel471_breach_min_confidence
             min_rank = self._confidence_rank(min_conf)
-            dropped_window = dropped_conf = 0
+            dropped_window = dropped_conf = dropped_geo = 0
             n_supply = n_competitor = 0
             # Histogram of confidence among relevant, in-window alerts (before the gate), so
             # the debug log shows how many would survive at each threshold (high/medium/low).
@@ -534,21 +534,25 @@ class Intel471Collector(BaseCollector):
                     continue
                 rank = self._confidence_rank(record.get("confidence", ""))
                 conf_hist[{3: "high", 2: "medium", 1: "low", 0: "unknown"}[rank]] += 1
-                # Confidence gate applies to SECTOR peers only. Supply-chain / tech-stack and
-                # competitor watchlist hits are always relevant regardless of confidence.
+                # Confidence and geo gates apply to SECTOR peers only. Supply-chain / tech-stack
+                # and competitor watchlist hits are always relevant, worldwide and any confidence.
                 if relevance == "supply-chain":
                     n_supply += 1
                 elif relevance == "competitor":
                     n_competitor += 1
-                elif min_rank and rank and rank < min_rank:
-                    dropped_conf += 1
-                    continue
+                else:
+                    if not self._breach_in_geo(record):
+                        dropped_geo += 1
+                        continue
+                    if min_rank and rank and rank < min_rank:
+                        dropped_conf += 1
+                        continue
                 threats.append(record)
             logger.info(
                 f"Intel471 breach alerts: {len(threats)} relevant of {len(alerts)} fetched "
                 f"({total} in window; {n_supply} supply-chain/tech-stack, {n_competitor} competitor "
-                f"matches; dropped {dropped_window} out-of-window, {dropped_conf} below "
-                f"confidence={min_conf or 'off'})"
+                f"matches; dropped {dropped_window} out-of-window, {dropped_geo} outside US/EU, "
+                f"{dropped_conf} below confidence={min_conf or 'off'})"
             )
             logger.info(
                 "Intel471 breach-alert confidence breakdown (sector peers, in-window): "
@@ -645,6 +649,20 @@ class Intel471Collector(BaseCollector):
         if self._breach_is_relevant(record):
             return "sector"
         return None
+
+    @staticmethod
+    def _breach_in_geo(record: dict[str, Any]) -> bool:
+        """True if the victim is in US/Europe, or geo filtering is off, or the country is unknown.
+
+        Applies to sector peers only (callers skip this for watchlist hits). Unknown country is
+        kept so a missing field never silently drops a breach.
+        """
+        if not collector_config.intel471_breach_us_europe_only:
+            return True
+        country = (record.get("country") or "").strip().lower()
+        if not country:
+            return True
+        return country in _US_EUROPE_COUNTRIES
 
     @staticmethod
     def _breach_in_window(date_iso: str, start_date: datetime, end_date: datetime) -> bool:

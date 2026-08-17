@@ -1482,6 +1482,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
             "sector": "Sector Peer",
         }.get((relevance or "").lower(), "Sector Peer")
 
+    @staticmethod
+    def _lens_rank(relevance: str) -> int:
+        """Sort priority for a relevance lens: competitor first, then supply chain, then sector."""
+        return {"competitor": 0, "supply-chain": 1, "sector": 2}.get((relevance or "").lower(), 3)
+
     def _classify_relevance(self, incident: dict[str, Any]) -> str:
         """Relevance lens for a peer incident: 'competitor', 'supply-chain', or 'sector'.
 
@@ -1578,6 +1583,12 @@ class WeeklyReportGenerator(BaseReportGenerator):
         if not incidents:
             logger.warning("No industry_incidents from AI or Intel471, falling back to extraction from OSINT titles")
             incidents = self._extract_breach_incidents(osint_sources)
+
+        # Prioritize the lenses that matter (competitor first, then supply chain) so a watchlist
+        # hit survives the cap ahead of the sector-peer firehose. Two stable sorts give
+        # (lens ascending, date descending).
+        incidents.sort(key=lambda i: (i.get("date") or ""), reverse=True)
+        incidents.sort(key=lambda i: self._lens_rank(self._classify_relevance(i)))
 
         # De-duplicate by organization (AI and Intel471 can overlap) and cap the table.
         _seen_orgs: set[str] = set()
@@ -1737,7 +1748,10 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 "source": "Intel471",
                 "relevance": b.get("relevance", "sector"),
             })
+        # Prioritize competitor / supply-chain hits over the sector-peer firehose, then by date,
+        # so watchlist breaches survive this cap.
         incidents.sort(key=lambda i: i.get("date", ""), reverse=True)
+        incidents.sort(key=lambda i: self._lens_rank(i.get("relevance", "sector")))
         if incidents:
             logger.info(f"Intel471 breach alerts available for peer incidents: {len(incidents)}")
         return incidents[:_MAX_PEER_INCIDENTS]
