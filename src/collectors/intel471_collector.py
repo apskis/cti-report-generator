@@ -514,13 +514,17 @@ class Intel471Collector(BaseCollector):
             min_conf = collector_config.intel471_breach_min_confidence
             min_rank = self._confidence_rank(min_conf)
             dropped_window = dropped_conf = 0
+            n_supply = 0
             # Histogram of confidence among relevant, in-window alerts (before the gate), so
             # the debug log shows how many would survive at each threshold (high/medium/low).
             conf_hist: dict[str, int] = {"high": 0, "medium": 0, "low": 0, "unknown": 0}
             for alert in alerts:
                 record = self._parse_breach_alert(alert)
-                if not record.get("organization") or not self._breach_is_relevant(record):
+                # Relevance lens: sector peer, or a supply-chain / tech-stack watchlist org.
+                relevance = self._breach_relevance(record)
+                if not record.get("organization") or relevance is None:
                     continue
+                record["relevance"] = relevance
                 # Scope to the report window by the incident's own date. The API window
                 # filters on feed-publication time, but a freshly published alert can carry
                 # an older disclosure date; drop those so the table only shows this period's
@@ -530,21 +534,24 @@ class Intel471Collector(BaseCollector):
                     continue
                 rank = self._confidence_rank(record.get("confidence", ""))
                 conf_hist[{3: "high", 2: "medium", 1: "low", 0: "unknown"}[rank]] += 1
-                # Optional confidence gate. Unknown/unparseable confidence is kept.
-                if min_rank and rank and rank < min_rank:
+                # Confidence gate applies to SECTOR peers only. Supply-chain / tech-stack
+                # watchlist hits are always relevant regardless of confidence.
+                if relevance == "supply-chain":
+                    n_supply += 1
+                elif min_rank and rank and rank < min_rank:
                     dropped_conf += 1
                     continue
                 threats.append(record)
             logger.info(
                 f"Intel471 breach alerts: {len(threats)} relevant of {len(alerts)} fetched "
-                f"({total} in window; dropped {dropped_window} out-of-window, "
-                f"{dropped_conf} below confidence={min_conf or 'off'})"
+                f"({total} in window; {n_supply} supply-chain/tech-stack matches; dropped "
+                f"{dropped_window} out-of-window, {dropped_conf} below confidence={min_conf or 'off'})"
             )
             logger.info(
-                "Intel471 breach-alert confidence breakdown (relevant, in-window): "
+                "Intel471 breach-alert confidence breakdown (sector peers, in-window): "
                 f"high={conf_hist['high']}, medium={conf_hist['medium']}, "
                 f"low={conf_hist['low']}, unknown={conf_hist['unknown']} "
-                f"(current threshold '{min_conf or 'off'}' keeps {len(threats)})"
+                f"(current threshold '{min_conf or 'off'}' keeps {len(threats)} total)"
             )
         except Exception as e:
             logger.warning(f"Error fetching Intel471 breach alerts: {e}")
@@ -589,11 +596,33 @@ class Intel471Collector(BaseCollector):
         return "Breach"
 
     def _breach_is_relevant(self, record: dict[str, Any]) -> bool:
-        """Keep only breaches in the organization's relevant sectors (name + industry text)."""
+        """True if the breach is a sector peer (healthcare/pharma/biotech/manufacturing)."""
         hay = " ".join(
             [record.get("organization", ""), *record.get("industries", []), *record.get("sectors", [])]
         ).lower()
         return any(keyword in hay for keyword in _BREACH_RELEVANT_KEYWORDS)
+
+    @staticmethod
+    def _breach_watch_match(record: dict[str, Any]) -> bool:
+        """True if the victim is on the supply-chain / tech-stack watchlist (peer_watch_orgs)."""
+        org = (record.get("organization") or "").lower()
+        if not org:
+            return False
+        return any(w and w.lower() in org for w in collector_config.peer_watch_orgs)
+
+    def _breach_relevance(self, record: dict[str, Any]) -> str | None:
+        """Classify why a breach is a peer incident, or None if it is not relevant.
+
+        Returns "supply-chain" for a watchlist (supplier / tech-stack vendor) hit, "sector"
+        for a healthcare/pharma/biotech peer, or None. Watchlist wins so a supplier that also
+        happens to be a health company is still treated as supply-chain (bypasses the
+        confidence floor).
+        """
+        if self._breach_watch_match(record):
+            return "supply-chain"
+        if self._breach_is_relevant(record):
+            return "sector"
+        return None
 
     @staticmethod
     def _breach_in_window(date_iso: str, start_date: datetime, end_date: datetime) -> bool:

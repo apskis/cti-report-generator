@@ -32,12 +32,26 @@ class CollectorConfig:
     intel471_indicators_limit: int = 20
     # Minimum confidence for a breach alert to appear as a peer incident. Intel471 grades
     # each breach alert's confidence; this drops low-confidence noise. Accepts a word
-    # ("low"/"medium"/"high") or an Admiralty letter ("A"-"F"). Defaults to "medium" so only
-    # medium-and-up alerts surface; set INTEL471_BREACH_MIN_CONFIDENCE="" to keep all, or
-    # "high" to tighten further. Records whose confidence can't be parsed are kept (never
-    # silently dropped).
+    # ("low"/"medium"/"high") or an Admiralty letter ("A"-"F"). Defaults to "high" so only
+    # high-confidence sector-peer alerts surface; set INTEL471_BREACH_MIN_CONFIDENCE="medium"
+    # to widen, or "" to keep all. Records whose confidence can't be parsed are kept (never
+    # silently dropped). Note: the confidence floor does NOT apply to supply-chain / tech-stack
+    # watchlist matches (see peer_watch_orgs) — those are always relevant if the vendor is hit.
     intel471_breach_min_confidence: str = field(
-        default_factory=lambda: os.environ.get("INTEL471_BREACH_MIN_CONFIDENCE", "medium")
+        default_factory=lambda: os.environ.get("INTEL471_BREACH_MIN_CONFIDENCE", "high")
+    )
+    # Supply-chain / tech-stack watchlist for Peer Incidents. Peer incidents come from three
+    # relevance lenses: (1) sector peers — healthcare/pharma/biotech orgs, filtered by
+    # confidence above; (2) supply chain — our suppliers/partners; (3) tech stack — vendors
+    # whose technology we run. Lenses 2 and 3 are named companies: a breach of any org here is
+    # kept regardless of its sector or Intel471 confidence. Provide the real names via the
+    # PEER_WATCH_ORGS env var (comma-separated) or config so a supplier/vendor compromise
+    # surfaces even though the victim isn't a healthcare company. Matching is case-insensitive
+    # substring, so use the distinctive part of the name ("Okta", not "Okta, Inc.").
+    peer_watch_orgs: list[str] = field(
+        default_factory=lambda: [
+            o.strip() for o in os.environ.get("PEER_WATCH_ORGS", "").split(",") if o.strip()
+        ]
     )
     crowdstrike_actors_limit: int = 50
     crowdstrike_indicators_limit: int = 50

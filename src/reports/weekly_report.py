@@ -1675,6 +1675,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 "incident_type": b.get("incident_type", "Breach"),
                 "date": (b.get("date") or "")[:10],
                 "source": "Intel471",
+                "relevance": b.get("relevance", "sector"),
             })
         incidents.sort(key=lambda i: i.get("date", ""), reverse=True)
         if incidents:

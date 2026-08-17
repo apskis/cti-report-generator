@@ -270,6 +270,31 @@ class TestIntel471Collector:
         assert c._breach_is_relevant(biotech) is True
         assert c._breach_is_relevant(immuno) is True
 
+    def test_breach_relevance_lens_classification(self, mock_credentials, monkeypatch):
+        import dataclasses
+
+        from src.core.config import collector_config
+
+        patched = dataclasses.replace(collector_config, peer_watch_orgs=["Okta", "Thermo Fisher"])
+        monkeypatch.setattr("src.collectors.intel471_collector.collector_config", patched)
+        c = Intel471Collector(mock_credentials)
+        # Sector peer -> "sector"
+        sector = c._parse_breach_alert(self._breach_record(
+            "Colla Health Inc.", "Healthcare providers", "Healthcare and pharmaceutical sector"))
+        assert c._breach_relevance(sector) == "sector"
+        # Supply-chain / tech-stack vendor (non-health) -> "supply-chain"
+        vendor = c._parse_breach_alert(self._breach_record(
+            "Okta Inc.", "Identity software", "Technology sector"))
+        assert c._breach_relevance(vendor) == "supply-chain"
+        # Watchlist wins even when the victim is also a health company
+        both = c._parse_breach_alert(self._breach_record(
+            "Thermo Fisher Scientific", "Laboratory equipment", "Healthcare sector"))
+        assert c._breach_relevance(both) == "supply-chain"
+        # Neither lens -> None
+        off_topic = c._parse_breach_alert(self._breach_record(
+            "Random Bank SA", "Retail banking", "Financial sector", summary="<p>data leaked</p>"))
+        assert c._breach_relevance(off_topic) is None
+
     def test_confidence_rank_words_and_letters(self, mock_credentials):
         c = Intel471Collector(mock_credentials)
         assert c._confidence_rank("high") == 3
