@@ -13,6 +13,21 @@ from pathlib import Path
 
 import yaml
 
+# Default supply-chain / tech-stack watchlist for the Peer Incidents section. A breach of any
+# of these orgs is treated as a peer incident regardless of the victim's sector (see
+# CollectorConfig.peer_watch_orgs). Grouped by lens; override wholesale with PEER_WATCH_ORGS.
+_DEFAULT_PEER_WATCH_ORGS = [
+    # Tech stack — identity, cloud, data, SaaS, security (enterprise IT in use)
+    "Okta", "Microsoft", "Amazon Web Services", "AWS", "Google", "Snowflake",
+    "Salesforce", "Workday", "ServiceNow", "CrowdStrike", "Zscaler", "Palo Alto Networks",
+    # Cloud / compute / infrastructure partners (publicly reported)
+    "NVIDIA", "Pure Storage", "Equinix",
+    # Genomics informatics / research partners & lab software
+    "Broad Institute", "SOPHiA Genetics", "Microba", "Benchling",
+    # Diagnostics / pharma partners
+    "Roche", "Bristol Myers Squibb", "Merck", "Myriad Genetics", "Kura Oncology",
+]
+
 
 @dataclass(frozen=True)
 class CollectorConfig:
@@ -44,14 +59,18 @@ class CollectorConfig:
     # relevance lenses: (1) sector peers — healthcare/pharma/biotech orgs, filtered by
     # confidence above; (2) supply chain — our suppliers/partners; (3) tech stack — vendors
     # whose technology we run. Lenses 2 and 3 are named companies: a breach of any org here is
-    # kept regardless of its sector or Intel471 confidence. Provide the real names via the
-    # PEER_WATCH_ORGS env var (comma-separated) or config so a supplier/vendor compromise
-    # surfaces even though the victim isn't a healthcare company. Matching is case-insensitive
-    # substring, so use the distinctive part of the name ("Okta", not "Okta, Inc.").
+    # kept regardless of its sector or Intel471 confidence, so a supplier/vendor compromise
+    # surfaces even though the victim isn't a healthcare company. Matching is whole-word and
+    # case-insensitive, so use the distinctive part of the name ("Okta", not "Okta, Inc.").
+    # Override the whole list with the PEER_WATCH_ORGS env var (comma-separated); otherwise the
+    # curated default below is used. Curated from known IT/tech-stack vendors and publicly
+    # reported Illumina partners/suppliers — trim or extend to match reality.
     peer_watch_orgs: list[str] = field(
-        default_factory=lambda: [
-            o.strip() for o in os.environ.get("PEER_WATCH_ORGS", "").split(",") if o.strip()
-        ]
+        default_factory=lambda: (
+            [o.strip() for o in os.environ["PEER_WATCH_ORGS"].split(",") if o.strip()]
+            if os.environ.get("PEER_WATCH_ORGS")
+            else list(_DEFAULT_PEER_WATCH_ORGS)
+        )
     )
     crowdstrike_actors_limit: int = 50
     crowdstrike_indicators_limit: int = 50

@@ -604,11 +604,19 @@ class Intel471Collector(BaseCollector):
 
     @staticmethod
     def _breach_watch_match(record: dict[str, Any]) -> bool:
-        """True if the victim is on the supply-chain / tech-stack watchlist (peer_watch_orgs)."""
+        """True if the victim is on the supply-chain / tech-stack watchlist (peer_watch_orgs).
+
+        Matches on whole words (case-insensitive) so a short vendor name like "Roche" does
+        not match an unrelated victim like "Rochester ...".
+        """
         org = (record.get("organization") or "").lower()
         if not org:
             return False
-        return any(w and w.lower() in org for w in collector_config.peer_watch_orgs)
+        for w in collector_config.peer_watch_orgs:
+            term = (w or "").strip().lower()
+            if term and re.search(rf"\b{re.escape(term)}\b", org):
+                return True
+        return False
 
     def _breach_relevance(self, record: dict[str, Any]) -> str | None:
         """Classify why a breach is a peer incident, or None if it is not relevant.
