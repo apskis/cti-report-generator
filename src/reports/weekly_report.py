@@ -46,6 +46,9 @@ _EPSS_LIKELY_THRESHOLD = 0.5
 # (e.g. a batch of Firefox sandbox escapes) so they don't dominate the table.
 _OT_GROUP_MIN = 2
 
+# Cap on rows in the Peer Incidents table (Intel471 breach alerts can number in the hundreds).
+_MAX_PEER_INCIDENTS = 20
+
 logger = logging.getLogger(__name__)
 
 
@@ -1529,6 +1532,17 @@ class WeeklyReportGenerator(BaseReportGenerator):
             logger.warning("No industry_incidents from AI or Intel471, falling back to extraction from OSINT titles")
             incidents = self._extract_breach_incidents(osint_sources)
 
+        # De-duplicate by organization (AI and Intel471 can overlap) and cap the table.
+        _seen_orgs: set[str] = set()
+        _deduped: list[dict[str, Any]] = []
+        for inc in incidents:
+            org_key = (inc.get("organization") or "").strip().lower()
+            if not org_key or org_key in _seen_orgs:
+                continue
+            _seen_orgs.add(org_key)
+            _deduped.append(inc)
+        incidents = _deduped[:_MAX_PEER_INCIDENTS]
+
         if incidents:
             # Create table: Company | Incident Type | Date | Source
             table = self.doc.add_table(rows=1, cols=4)
@@ -1641,19 +1655,31 @@ class WeeklyReportGenerator(BaseReportGenerator):
         self.doc.add_paragraph()
 
     def _extract_intel471_breaches(self, analysis_result: dict[str, Any]) -> list[dict[str, Any]]:
-        """Extract breach incidents from raw Intel471 data.
+        """Peer incidents rendered directly from Intel471's breach-alert feed (no AI).
 
-        Intel471 breach alerts have threat_type='BREACH ALERT' or 'Breach Alert'.
-        We need to access the raw data, not the AI's analysis.
+        The pipeline attaches the collected, sector-filtered breach alerts as
+        ``intel471_breaches``. Each is mapped to a peer-incident row and de-duplicated by
+        organization; the most recent are returned, so real breaches (Shalina Healthcare,
+        Colla Health, …) appear without depending on the AI to extract them.
         """
-        incidents = []
-
-        # The analysis_result doesn't have raw Intel471 data
-        # We need to get it from somewhere else - for now, return empty
-        # TODO: Pass raw Intel471 data to the report generator
-
-        logger.debug("Intel471 breach extraction not yet implemented - raw data not available to report generator")
-        return incidents
+        breaches = analysis_result.get("intel471_breaches", []) or []
+        incidents: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for b in breaches:
+            org = (b.get("organization") or "").strip()
+            if not org or org.lower() in seen:
+                continue
+            seen.add(org.lower())
+            incidents.append({
+                "organization": org,
+                "incident_type": b.get("incident_type", "Breach"),
+                "date": (b.get("date") or "")[:10],
+                "source": "Intel471",
+            })
+        incidents.sort(key=lambda i: i.get("date", ""), reverse=True)
+        if incidents:
+            logger.info(f"Intel471 breach alerts available for peer incidents: {len(incidents)}")
+        return incidents[:_MAX_PEER_INCIDENTS]
 
     def _extract_breach_incidents(self, osint_sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Extract breach incidents from OSINT sources."""

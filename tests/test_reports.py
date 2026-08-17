@@ -1150,3 +1150,62 @@ class TestOTUnifiedTable:
         assert gen.doc.tables == []
         body = "\n".join(p.text for p in gen.doc.paragraphs)
         assert "did not complete this run" in body
+
+
+class TestPeerIncidentsFromIntel471:
+    """Peer Incidents render directly from the Intel471 breach-alert feed."""
+
+    def _gen(self):
+        from docx import Document
+
+        gen = WeeklyReportGenerator.__new__(WeeklyReportGenerator)
+        gen.doc = Document()
+        return gen
+
+    def test_extract_maps_dedups_and_caps(self):
+        gen = self._gen()
+        breaches = [
+            {"organization": "Shalina Healthcare", "incident_type": "Ransomware", "date": "2026-08-15T00:00:00"},
+            {"organization": "Colla Health Inc.", "incident_type": "Data Leak", "date": "2026-08-14T10:00:00"},
+            {"organization": "Shalina Healthcare", "incident_type": "Ransomware", "date": "2026-08-15"},  # dup org
+            {"organization": "", "incident_type": "Breach", "date": "2026-08-13"},  # no org -> skipped
+        ]
+        out = gen._extract_intel471_breaches({"intel471_breaches": breaches})
+        orgs = [i["organization"] for i in out]
+        assert orgs == ["Shalina Healthcare", "Colla Health Inc."]  # deduped, most-recent first
+        assert all(i["source"] == "Intel471" for i in out)
+        assert all(len(i["date"]) == 10 for i in out)  # YYYY-MM-DD
+
+    def test_section_renders_intel471_breach_orgs(self):
+        gen = self._gen()
+        gen._add_industry_incidents({
+            "industry_incidents": [],
+            "osint_sources_used": [],
+            "intel471_breaches": [
+                {"organization": "UAB Biotecha", "incident_type": "Data Leak", "date": "2026-08-12"},
+                {"organization": "Subra Pharmacies", "incident_type": "Ransomware", "date": "2026-08-12"},
+            ],
+        })
+        text = "\n".join(
+            c.text for t in gen.doc.tables for row in t.rows for c in row.cells
+        )
+        assert "UAB Biotecha" in text
+        assert "Subra Pharmacies" in text
+
+    def test_ai_and_intel471_incidents_deduped_by_org(self):
+        gen = self._gen()
+        gen._add_industry_incidents({
+            # AI already reported Molina; Intel471 also has it -> should appear once.
+            "industry_incidents": [
+                {"organization": "Molina Healthcare", "incident_type": "Unauthorized Access",
+                 "date": "2026-08-12", "source": "Intel471"},
+            ],
+            "osint_sources_used": [],
+            "intel471_breaches": [
+                {"organization": "Molina Healthcare", "incident_type": "Breach", "date": "2026-08-12"},
+                {"organization": "Colla Health Inc.", "incident_type": "Data Leak", "date": "2026-08-14"},
+            ],
+        })
+        org_cells = [t.rows[r].cells[0].text for t in gen.doc.tables for r in range(1, len(t.rows))]
+        assert org_cells.count("Molina Healthcare") == 1  # not double-listed
+        assert "Colla Health Inc." in org_cells

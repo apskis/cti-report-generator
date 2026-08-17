@@ -224,6 +224,43 @@ class TestIntel471Collector:
         assert parsed["confidence"] == "High"  # B = High
         assert "healthcare" in parsed["tags"]
 
+    def _breach_record(self, name, industry, sector, summary="<p>data leaked</p>", actor="BlackWater"):
+        return {"uid": "u1", "last_updated": 1786975181000, "data": {"breach_alert": {
+            "date_of_information": 1786665600000, "confidence": {"level": "medium"},
+            "title": f"{name} possibly compromised by actor/group {actor}",
+            "victim": {"name": name, "country": "UK",
+                       "industries": [{"industry": industry, "sector": sector}]},
+            "summary": summary, "actor_or_group": actor}}}
+
+    def test_parse_breach_alert_maps_nested_fields(self, mock_credentials):
+        c = Intel471Collector(mock_credentials)
+        rec = c._parse_breach_alert(self._breach_record(
+            "Shalina Healthcare", "Pharmaceutical manufacturing", "Healthcare and pharmaceutical sector",
+            summary="<p>Ransomware group <strong>BlackWater</strong> listed the victim.</p>"))
+        assert rec["organization"] == "Shalina Healthcare"
+        assert rec["threat_actor"] == "BlackWater"
+        assert rec["threat_type"] == "BREACH ALERT"
+        assert rec["incident_type"] == "Ransomware"       # derived from summary
+        assert rec["date"].startswith("2026-08")
+        assert "<strong>" not in rec["summary"]           # HTML stripped
+
+    def test_breach_relevance_filters_by_sector(self, mock_credentials):
+        c = Intel471Collector(mock_credentials)
+        healthcare = c._parse_breach_alert(self._breach_record(
+            "Colla Health Inc.", "Healthcare providers", "Healthcare and pharmaceutical sector"))
+        financial = c._parse_breach_alert(self._breach_record(
+            "Fisofo SA de CV", "Financial and investment consulting", "Professional services sector",
+            summary="<p>payroll data leaked</p>"))
+        assert c._breach_is_relevant(healthcare) is True   # pharma/healthcare -> kept
+        assert c._breach_is_relevant(financial) is False   # financial -> filtered out
+
+    def test_breach_incident_type_derivation(self, mock_credentials):
+        c = Intel471Collector(mock_credentials)
+        assert c._breach_incident_type("X compromised", "ransomware group listed X") == "Ransomware"
+        assert c._breach_incident_type("X", "full database dump leaked") == "Data Leak"
+        assert c._breach_incident_type("X", "actor offers to sell access") == "Unauthorized Access"
+        assert c._breach_incident_type("X", "unspecified compromise") == "Breach"
+
 
 # =============================================================================
 # CrowdStrike Collector Tests

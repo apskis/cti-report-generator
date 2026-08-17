@@ -1256,6 +1256,9 @@ async def collect_and_analyze(report_type: str, reporting_period=None, exclude_o
             else:
                 result["ot_advisories"] = []
                 result["ot_environment_exposure"] = []
+            result["intel471_breaches"] = [
+                r for r in data_by_source.get("Intel471", []) if "BREACH" in str(r.get("threat_type", "")).upper()
+            ]
         else:
             intel471_all = data_by_source.get("Intel471", [])
             breach_data = [item for item in intel471_all if item.get("threat_type", "").upper() == "BREACH ALERT"]
@@ -1288,6 +1291,10 @@ async def collect_and_analyze(report_type: str, reporting_period=None, exclude_o
         else:
             result["ot_advisories"] = []
             result["ot_environment_exposure"] = []
+        # Peer incidents: render Intel471 breach alerts directly (not via the AI).
+        result["intel471_breaches"] = [
+            r for r in data_by_source.get("Intel471", []) if "BREACH" in str(r.get("threat_type", "")).upper()
+        ]
         print_status("Analysis complete", "success")
         return result, data_by_source
     else:

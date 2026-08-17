@@ -29,6 +29,13 @@ ADMIRALTY_CONFIDENCE_MAP = {
     "F": "Cannot be judged",
 }
 
+# Sectors relevant to a genomics/biotech/manufacturing organization — used to filter the
+# firehose of Intel471 breach alerts down to peer incidents worth reporting.
+_BREACH_RELEVANT_KEYWORDS = [
+    "health", "pharma", "biotech", "medical", "life scien", "laborator", "manufactur",
+    "genom", "diagnostic", "clinical", "hospital", "drug", "therapeut", "biolog", "vaccine",
+]
+
 
 class Intel471Collector(BaseCollector):
     """
@@ -472,72 +479,93 @@ class Intel471Collector(BaseCollector):
         self, client: HTTPClient, auth: aiohttp.BasicAuth, start_date: datetime, end_date: datetime
     ) -> list[dict[str, Any]]:
         """
-        Fetch breach alerts from Intel471.
+        Fetch breach alerts from Intel471's dedicated ``/breachAlerts`` feed.
 
-        Breach alerts are important for threat intelligence even if they don't
-        specifically mention biotech keywords. We include all breach alerts
-        targeting relevant industries.
-
-        Args:
-            client: HTTP client
-            auth: Basic auth credentials
-            start_date: Start of date range
-            end_date: End of date range
+        This is the "Breach Alerts" product in the Titan portal (named-victim compromise
+        notices), NOT the ``/alerts`` endpoint (which serves watcher notifications). The
+        endpoint requires at least one search parameter; ``breachAlert=*`` matches all, and
+        the window is scoped with ``from``/``until``. Each record's real content is nested at
+        ``data.breach_alert``. Results are filtered to the organization's relevant sectors.
 
         Returns:
-            List of breach alert dictionaries
+            List of parsed breach-alert peer-incident records (threat_type "BREACH ALERT").
         """
-        alerts_url = f"{self.BASE_URL}/alerts"
-
-        # CRITICAL: Intel471 uses MILLISECONDS
+        url = f"{self.BASE_URL}/breachAlerts"
         params = {
+            "breachAlert": "*",  # required: one of breachAlert/actor/victim/confidence
             "from": self.format_date_timestamp_ms(start_date),
             "until": self.format_date_timestamp_ms(end_date),
             "count": collector_config.intel471_breach_alerts_limit,
             "v": self.API_VERSION,
-            "documentType": "BREACH ALERT",  # Filter for breach alerts specifically
         }
 
-        threats = []
-
+        threats: list[dict[str, Any]] = []
         try:
-            response = await client.get_raw_response(alerts_url, auth=auth, params=params)
+            response = await client.get_raw_response(url, auth=auth, params=params)
+            if response.status != 200:
+                text = await response.text()
+                logger.warning(f"Intel471 /breachAlerts returned status {response.status}: {text[:300]}")
+                return threats
 
-            if response.status == 200:
-                data = await response.json()
-
-                for alert in data.get("alerts", []):
-                    # For breach alerts, we're less restrictive - include if:
-                    # 1. It mentions biotech keywords, OR
-                    # 2. It targets relevant industries (manufacturing, healthcare, etc.)
-                    subject = alert.get("subject", "").lower()
-                    tags = alert.get("tags", [])
-                    document_type = alert.get("documentType", "").upper()
-
-                    # Always include breach alerts - they're important threat intelligence
-                    # even if not directly biotech-related
-                    is_breach = "BREACH" in document_type or "breach" in subject
-
-                    if is_breach or self._is_relevant_biotech(subject, tags):
-                        threat = self._parse_report(alert)  # Breach alerts use same format as reports
-                        threat["threat_type"] = "Breach Alert"  # Mark as breach
-                        threats.append(threat)
-
-                logger.info(f"Retrieved {len(threats)} breach alerts from Intel471")
-            else:
-                response_text = await response.text()
-                logger.warning(f"Intel471 alerts API returned status {response.status}: {response_text[:500]}")
-                # If alerts endpoint doesn't work, try fetching from reports with documentType filter
-                logger.info("Attempting to fetch breach alerts from reports endpoint...")
-                return await self._fetch_breach_alerts_from_reports(client, auth, start_date, end_date)
-
+            data = await response.json()
+            alerts = data.get("breach_alerts", [])
+            total = data.get("breach_alerts_total_count", len(alerts))
+            for alert in alerts:
+                record = self._parse_breach_alert(alert)
+                if record.get("organization") and self._breach_is_relevant(record):
+                    threats.append(record)
+            logger.info(
+                f"Intel471 breach alerts: {len(threats)} relevant of {len(alerts)} fetched "
+                f"({total} in window)"
+            )
         except Exception as e:
             logger.warning(f"Error fetching Intel471 breach alerts: {e}")
-            # Fallback: try fetching from reports endpoint
-            logger.info("Attempting to fetch breach alerts from reports endpoint as fallback...")
-            return await self._fetch_breach_alerts_from_reports(client, auth, start_date, end_date)
 
         return threats
+
+    def _parse_breach_alert(self, alert: dict[str, Any]) -> dict[str, Any]:
+        """Normalize a ``/breachAlerts`` record (content nested at data.breach_alert)."""
+        ba = (alert.get("data") or {}).get("breach_alert") or {}
+        victim = ba.get("victim") or {}
+        industries = [i for i in (victim.get("industries") or []) if isinstance(i, dict)]
+        date_ms = ba.get("date_of_information") or ba.get("released_at") or alert.get("last_updated") or 0
+        date_iso = datetime.fromtimestamp(date_ms / 1000).isoformat() if date_ms else ""
+        summary = self._strip_html(ba.get("summary", "")) if ba.get("summary") else ""
+        return {
+            "source": self.source_name,
+            "threat_type": "BREACH ALERT",
+            "organization": (victim.get("name") or "").strip(),
+            "threat_actor": ba.get("actor_or_group") or "Unknown",
+            "incident_type": self._breach_incident_type(ba.get("title", ""), summary),
+            "date": date_iso,
+            "industries": [i.get("industry", "") for i in industries],
+            "sectors": [i.get("sector", "") for i in industries],
+            "country": victim.get("country", ""),
+            "confidence": (ba.get("confidence") or {}).get("level", ""),
+            "summary": summary[:600],
+            "title": ba.get("title", ""),
+            "portal_url": "",
+            "uid": alert.get("uid", ""),
+        }
+
+    @staticmethod
+    def _breach_incident_type(title: str, summary: str) -> str:
+        """Derive a short incident type from the breach-alert text."""
+        text = f"{title} {summary}".lower()
+        if "ransomware" in text:
+            return "Ransomware"
+        if "leak" in text or "exfiltrat" in text or "database" in text or "dump" in text:
+            return "Data Leak"
+        if "access" in text or "selling" in text or "for sale" in text or "offers to sell" in text:
+            return "Unauthorized Access"
+        return "Breach"
+
+    def _breach_is_relevant(self, record: dict[str, Any]) -> bool:
+        """Keep only breaches in the organization's relevant sectors (name + industry text)."""
+        hay = " ".join(
+            [record.get("organization", ""), *record.get("industries", []), *record.get("sectors", [])]
+        ).lower()
+        return any(keyword in hay for keyword in _BREACH_RELEVANT_KEYWORDS)
 
     async def _fetch_breach_alerts_from_reports(
         self, client: HTTPClient, auth: aiohttp.BasicAuth, start_date: datetime, end_date: datetime

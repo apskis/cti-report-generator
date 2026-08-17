@@ -271,6 +271,9 @@ class ThreatAnalystAgent:
                 analysis_result = self._strip_non_cve_ids(
                     analysis_result, cve_data, kev_lookup, intel471_data, crowdstrike_data, osint_data
                 )
+                analysis_result = self._strip_ungrounded_incidents(
+                    analysis_result, intel471_data, crowdstrike_data, osint_data
+                )
                 return analysis_result
             else:
                 return self._get_default_analysis(
@@ -364,6 +367,9 @@ class ThreatAnalystAgent:
                 )
                 analysis_result = self._strip_non_cve_ids(
                     analysis_result, cve_data, kev_lookup, intel471_data, crowdstrike_data, osint_data
+                )
+                analysis_result = self._strip_ungrounded_incidents(
+                    analysis_result, intel471_data, crowdstrike_data, osint_data
                 )
                 return analysis_result
             else:
@@ -1099,6 +1105,61 @@ IMPORTANT: Continue to follow all standard JSON schema requirements from the bas
         removed = original_count - len(filtered)
         if removed:
             logger.warning(f"Stripped {removed} ungrounded/invalid CVE(s) from cve_analysis")
+
+        return analysis_result
+
+    @staticmethod
+    def _strip_ungrounded_incidents(
+        analysis_result: dict[str, Any],
+        intel471_data: list[dict] = None,
+        crowdstrike_data: list[dict] = None,
+        osint_data: list[dict] = None,
+    ) -> dict[str, Any]:
+        """Remove industry_incidents whose victim organization is not in the source data.
+
+        The AI can invent a peer breach (and mis-attribute it, e.g. "Amgen — Intel471") when
+        no such incident exists in the collected feeds. Keep an incident only when its
+        organization name appears in the Intel471 / CrowdStrike / OSINT text.
+        """
+        import json
+        import re
+
+        incidents = analysis_result.get("industry_incidents")
+        if not incidents or not isinstance(incidents, list):
+            return analysis_result
+
+        source_text = ""
+        for record in (intel471_data or []):
+            source_text += json.dumps(record, default=str) + " "
+        for record in (crowdstrike_data or []):
+            source_text += json.dumps(record, default=str) + " "
+        for record in (osint_data or []):
+            source_text += json.dumps(record, default=str) + " "
+        blob = source_text.lower()
+        if not blob.strip():
+            return analysis_result  # no sources to check against -> leave as-is
+
+        def _grounded(org: str) -> bool:
+            org = (org or "").strip().lower()
+            if len(org) < 3:
+                return False
+            if org in blob:
+                return True
+            # Fall back to the first distinctive word (e.g. "molina" of "Molina Healthcare"),
+            # ignoring generic company suffixes/words.
+            _GENERIC = {"inc", "llc", "plc", "ltd", "corp", "corporation", "company", "group",
+                        "healthcare", "health", "pharmaceuticals", "pharma", "the", "of", "and"}
+            for word in re.findall(r"[a-z0-9]+", org):
+                if len(word) >= 4 and word not in _GENERIC and word in blob:
+                    return True
+            return False
+
+        original = len(incidents)
+        kept = [i for i in incidents if isinstance(i, dict) and _grounded(i.get("organization", ""))]
+        analysis_result["industry_incidents"] = kept
+        removed = original - len(kept)
+        if removed:
+            logger.warning(f"Stripped {removed} ungrounded peer incident(s) from industry_incidents")
 
         return analysis_result
 

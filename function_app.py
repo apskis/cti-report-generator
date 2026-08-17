@@ -245,6 +245,11 @@ async def generate_weekly_report(req: func.HttpRequest) -> func.HttpResponse:
 
         await annotate_ot_exploitation(analysis["ot_advisories"], analysis["ot_environment_exposure"])
 
+        # Peer incidents: render Intel471 breach alerts directly (not via the AI).
+        analysis["intel471_breaches"] = [
+            r for r in intel471_data if "BREACH" in str(r.get("threat_type", "")).upper()
+        ]
+
         logger.info("Saving analysis context for historical tracking...")
         if not await asyncio.to_thread(context_mgr.save_analysis_context, "weekly", date.today(), analysis):
             logger.warning("Failed to save analysis context - future reports will lack trend data")
