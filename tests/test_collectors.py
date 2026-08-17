@@ -1930,6 +1930,81 @@ class TestKevEnrichment:
         assert "known_ransomware" not in advisories[0]
 
 
+class TestEpssEnrichment:
+    """Tests for the FIRST.org EPSS lookup used to fill the OT exploitation signal."""
+
+    class _FakeClient:
+        def __init__(self, payload):
+            self._payload = payload
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url, headers=None, params=None, auth=None, expected_status=(200,)):
+            return self._payload
+
+    @pytest.mark.asyncio
+    async def test_fetch_epss_map_parses_scores(self):
+        from src.enrichment import epss as mod
+
+        payload = {"data": [
+            {"cve": "CVE-2026-18019", "epss": "0.71", "percentile": "0.98"},
+            {"cve": "CVE-2026-18015", "epss": "0.02"},
+        ]}
+        with patch.object(mod, "HTTPClient", lambda *a, **k: self._FakeClient(payload)):
+            m = await mod.fetch_epss_map(["cve-2026-18019", "CVE-2026-18015", "not-a-cve"])
+        assert m["CVE-2026-18019"] == 0.71
+        assert m["CVE-2026-18015"] == 0.02
+
+    @pytest.mark.asyncio
+    async def test_fetch_epss_map_disabled_or_empty(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from src.enrichment import epss as mod
+
+        assert await mod.fetch_epss_map([]) == {}  # nothing to look up
+        monkeypatch.setattr(mod, "collector_config", SimpleNamespace(epss_enrich_enabled=False))
+        assert await mod.fetch_epss_map(["CVE-2026-1"]) == {}
+
+    @pytest.mark.asyncio
+    async def test_fetch_epss_map_failure_returns_empty(self):
+        from src.enrichment import epss as mod
+
+        class _Failing(self._FakeClient):
+            async def get(self, *a, **k):
+                raise TimeoutError()
+
+        with patch.object(mod, "HTTPClient", lambda *a, **k: _Failing(None)):
+            assert await mod.fetch_epss_map(["CVE-2026-1"]) == {}
+
+    def test_annotate_sets_max_epss_across_cves(self):
+        from src.enrichment.epss import annotate_records_with_epss
+
+        epss_map = {"CVE-1": 0.4, "CVE-2": 0.8}
+        recs = [{"cve_ids": ["cve-1", "CVE-2"]}, {"cve_ids": ["CVE-1"]}, {"cve_ids": ["CVE-X"]}]
+        annotate_records_with_epss(recs, epss_map, "cve_ids")
+        assert recs[0]["epss"] == 0.8            # highest across the record's CVEs
+        assert recs[1]["epss"] == 0.4
+        assert "epss" not in recs[2]             # no match -> untouched
+
+    def test_annotate_only_raises_existing_score(self):
+        from src.enrichment.epss import annotate_records_with_epss
+
+        recs = [{"cve_ids": ["CVE-1"], "epss": 0.9}]  # Claroty already had a higher score
+        annotate_records_with_epss(recs, {"CVE-1": 0.4}, "cve_ids")
+        assert recs[0]["epss"] == 0.9
+
+    def test_annotate_empty_map_is_noop(self):
+        from src.enrichment.epss import annotate_records_with_epss
+
+        recs = [{"cve_ids": ["CVE-1"]}]
+        annotate_records_with_epss(recs, {}, "cve_ids")
+        assert "epss" not in recs[0]
+
+
 class TestBreachHibpFlag:
     def test_hibp_off_by_default_on_when_flag_set(self, mock_credentials, monkeypatch):
         from types import SimpleNamespace

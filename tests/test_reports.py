@@ -1086,6 +1086,41 @@ class TestOTUnifiedTable:
         assert "ICSA-OWNED" in text
         assert "ICSA-NOT-OWNED" not in text
 
+    def test_groups_same_product_cves_into_one_row(self):
+        gen = self._gen()
+        firefox = [
+            {"cve_ids": [f"CVE-2026-27{i}"], "cvss": 10.0, "affected_ot_devices_count": 1,
+             "epss": 0.03, "description": f"Sandbox escape {i} fixed in Firefox 148."}
+            for i in range(5)
+        ]
+        gen._add_ot_advisories({
+            "ot_environment_exposure": firefox + [
+                {"cve_ids": ["CVE-2020-1467"], "cvss": 10.0, "affected_ot_devices_count": 13,
+                 "is_known_exploited": True, "in_cisa_kev": True,
+                 "description": "Windows elevation of privilege via hard links."},
+            ],
+        })
+        text = "\n".join(c.text for row in gen.doc.tables[0].rows for c in row.cells)
+        assert "Firefox — 5 CVEs" in text            # 5 Firefox rows collapsed into one
+        assert "CVE-2020-1467" in text               # single-product row stays individual
+        # header + one Firefox group row + one Windows row = 3
+        assert len(gen.doc.tables[0].rows) == 3
+
+    def test_group_aggregates_strongest_exploitation(self):
+        gen = self._gen()
+        gen._add_ot_advisories({
+            "ot_environment_exposure": [
+                {"cve_ids": ["CVE-1"], "cvss": 9.0, "affected_ot_devices_count": 2,
+                 "exploits_count": 0, "epss": 0.1, "description": "Firefox issue one."},
+                {"cve_ids": ["CVE-2"], "cvss": 9.0, "affected_ot_devices_count": 2,
+                 "is_known_exploited": True, "in_cisa_kev": True, "description": "Firefox issue two."},
+            ],
+        })
+        # Group of two Firefox CVEs; one is KEV -> the group reads "In the wild (KEV)".
+        row = gen.doc.tables[0].rows[1]
+        assert "Firefox — 2 CVEs" in row.cells[0].text
+        assert "In the wild (KEV)" in row.cells[5].text
+
     def test_advisory_devices_uses_env_assets(self):
         gen = self._gen()
         gen._add_ot_advisories({

@@ -42,6 +42,10 @@ _OT_PRODUCT_KEYWORDS = [
 # EPSS probability at or above which a CVE is labeled "Likely" in the OT Exploited column.
 _EPSS_LIKELY_THRESHOLD = 0.5
 
+# Same-product OT vulnerabilities are collapsed into one row once a product has this many
+# (e.g. a batch of Firefox sandbox escapes) so they don't dominate the table.
+_OT_GROUP_MIN = 2
+
 logger = logging.getLogger(__name__)
 
 
@@ -890,8 +894,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
     def _ot_row_from_asset(self, v: dict[str, Any]) -> dict[str, Any]:
         """Normalize a Claroty OT-device vulnerability into a unified OT-table row."""
-        cve_ids = v.get("cve_ids") or []
-        if isinstance(cve_ids, list) and cve_ids:
+        cve_ids = [c for c in (v.get("cve_ids") or []) if isinstance(c, str)]
+        if cve_ids:
             id_text = ", ".join(cve_ids[:2]) + (f" (+{len(cve_ids) - 2})" if len(cve_ids) > 2 else "")
         else:
             id_text = "—"
@@ -900,6 +904,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
             "id_text": id_text,
             "url": "",
             "sub": "",
+            "cves": cve_ids,
             "source": "Detected on your OT devices",
             "product": self._extract_product(v),
             "description": (v.get("description") or v.get("name") or "").strip(),
@@ -932,10 +937,69 @@ class WeeklyReportGenerator(BaseReportGenerator):
             "cvss": a.get("cvss"),
             "exploited": bool(a.get("in_cisa_kev") or a.get("known_ransomware")),
             "ransomware": bool(a.get("known_ransomware")),
-            # Advisory rows come from the CISA feed, not Claroty vuln records, so no ExploitDB/EPSS.
+            # Advisory rows come from the CISA feed, not Claroty vuln records, so no ExploitDB
+            # count; EPSS is per-CVE (FIRST.org) and is annotated onto the advisory too.
             "exploits_count": 0,
-            "epss": None,
+            "epss": a.get("epss"),
         }
+
+    def _collapse_ot_group(self, members: list[dict[str, Any]]) -> dict[str, Any]:
+        """Collapse several same-product asset rows into one aggregated row."""
+        members = sorted(members, key=lambda m: m.get("cvss") or 0, reverse=True)
+        top = members[0]
+        product = top["product"]
+        seen: set[str] = set()
+        cves: list[str] = []
+        for m in members:
+            for c in m.get("cves") or []:
+                if c not in seen:
+                    seen.add(c)
+                    cves.append(c)
+        n = len(cves)
+        sub = ", ".join(cves[:2]) + (f" (+{n - 2})" if n > 2 else "")
+        desc = f"{n} vulnerabilities in {product}"
+        if top.get("description"):
+            desc += f" (e.g. {top['description'][:70]}…)"
+        epss_vals = [m["epss"] for m in members if isinstance(m.get("epss"), (int, float))]
+        return {
+            "kind": "asset",
+            "id_text": f"{product} — {n} CVEs",
+            "url": "",
+            "sub": sub,
+            "cves": cves,
+            "source": "Detected on your OT devices",
+            "product": product,
+            "description": desc,
+            "devices": max(m["devices"] for m in members),
+            "cvss": max((m["cvss"] or 0) for m in members),
+            "exploited": any(m["exploited"] for m in members),
+            "ransomware": any(m["ransomware"] for m in members),
+            "exploits_count": max(m["exploits_count"] for m in members),
+            "epss": max(epss_vals) if epss_vals else None,
+        }
+
+    def _group_ot_asset_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Group same-product asset rows so near-identical CVEs collapse into one row.
+
+        Rows with an unknown product, or a product with fewer than ``_OT_GROUP_MIN`` rows, are
+        left individual. Advisory rows are handled separately and never grouped.
+        """
+        from collections import defaultdict
+
+        groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            key = (r.get("product") or "").strip().lower()
+            if key:
+                groups[key].append(r)
+            else:
+                out.append(r)  # unknown product -> cannot group meaningfully
+        for members in groups.values():
+            if len(members) < _OT_GROUP_MIN:
+                out.extend(members)
+            else:
+                out.append(self._collapse_ot_group(members))
+        return out
 
     def _add_ot_advisories(self, analysis_result: dict[str, Any]) -> None:
         """Add the consolidated Operational Technology (OT) section — one table.
@@ -960,8 +1024,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
         # Advisories are kept only for products you own (matched to devices in the environment).
         owned_advisories = [a for a in all_advisories if (a.get("affected_assets", 0) or 0) > 0]
 
-        rows = [self._ot_row_from_asset(v) for v in exposure]
-        rows += [self._ot_row_from_advisory(a) for a in owned_advisories]
+        asset_rows = self._group_ot_asset_rows([self._ot_row_from_asset(v) for v in exposure])
+        rows = asset_rows + [self._ot_row_from_advisory(a) for a in owned_advisories]
 
         intro = self.doc.add_paragraph()
         intro_run = intro.add_run(
@@ -1123,11 +1187,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
         n_adv = len(rows) - n_assets
         pct = int(_EPSS_LIKELY_THRESHOLD * 100)
         caption_text = (
-            f"Table: {len(rows)} OT vulnerabilities in your environment "
-            f"({n_assets} detected on OT devices, {n_adv} from CISA advisories for products you "
-            f"own; Claroty xDome + CISA). Exploited: 'In the wild (KEV)', 'Exploit public' "
-            f"(public exploit exists, ExploitDB), or 'Likely (EPSS ≥ {pct}%)'. "
-            f"Product from CISA KEV or parsed from the description."
+            f"Table: {len(rows)} OT entries in your environment "
+            f"({n_assets} device-detected, same-product CVEs grouped; {n_adv} from CISA advisories "
+            f"for products you own; Claroty xDome + CISA). Exploited: 'In the wild (KEV)', "
+            f"'Exploit public' (public exploit exists, ExploitDB), or 'Likely (EPSS ≥ {pct}%)' "
+            f"(FIRST.org). Product from CISA KEV or parsed from the description."
         )
         if claroty_status == "error":
             caption_text += " Advisory-to-product matching did not complete this run."

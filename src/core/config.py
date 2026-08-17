@@ -111,6 +111,18 @@ class CollectorConfig:
     )
     kev_timeout_seconds: int = 15
     kev_max_retries: int = 1
+
+    # EPSS (Exploit Prediction Scoring System, FIRST.org) — keyless public API used to fill the
+    # OT section's exploitation signal for CVEs that CISA KEV and Claroty do not flag.
+    # Best-effort: any failure degrades to no annotation. Disable with EPSS_ENRICH=false.
+    epss_enrich_enabled: bool = field(
+        default_factory=lambda: os.environ.get("EPSS_ENRICH", "true").lower() in {"1", "true", "yes"}
+    )
+    epss_api_url: str = field(
+        default_factory=lambda: os.environ.get("EPSS_API_URL", "https://api.first.org/data/v1/epss")
+    )
+    epss_timeout_seconds: int = 15
+    epss_max_retries: int = 1
     # The catalog is fetched once and memoized for the run; every KEV consumer (OT tables,
     # IT Exploited section, CVE enricher) shares that single download. Cache TTL in hours.
     kev_cache_hours: int = 6

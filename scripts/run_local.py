@@ -1108,7 +1108,7 @@ async def collect_and_analyze(report_type: str, reporting_period=None, exclude_o
     from src.core.keyvault import get_all_api_keys
 
     OT_COLLECTORS = {"ics_advisory", "claroty"}
-    from src.enrichment.kev import annotate_records_with_kev, fetch_kev_map
+    from src.enrichment.ot import annotate_ot_exploitation
 
     # Get credentials
     vault_url = azure_config.get_key_vault_url()
@@ -1252,9 +1252,7 @@ async def collect_and_analyze(report_type: str, reporting_period=None, exclude_o
                 result["ot_advisories"] = data_by_source.get("ICS-Advisory", [])
                 await fetch_and_annotate(result["ot_advisories"], credentials)
                 result["ot_environment_exposure"] = await fetch_environment_exposure(credentials)
-                _kev_map = await fetch_kev_map()
-                annotate_records_with_kev(result["ot_advisories"], _kev_map, "cves")
-                annotate_records_with_kev(result["ot_environment_exposure"], _kev_map, "cve_ids")
+                await annotate_ot_exploitation(result["ot_advisories"], result["ot_environment_exposure"])
             else:
                 result["ot_advisories"] = []
                 result["ot_environment_exposure"] = []
@@ -1286,9 +1284,7 @@ async def collect_and_analyze(report_type: str, reporting_period=None, exclude_o
             result["ot_advisories"] = data_by_source.get("ICS-Advisory", [])
             await fetch_and_annotate(result["ot_advisories"], credentials)
             result["ot_environment_exposure"] = await fetch_environment_exposure(credentials)
-            _kev_map = await fetch_kev_map()
-            annotate_records_with_kev(result["ot_advisories"], _kev_map, "cves")
-            annotate_records_with_kev(result["ot_environment_exposure"], _kev_map, "cve_ids")
+            await annotate_ot_exploitation(result["ot_advisories"], result["ot_environment_exposure"])
         else:
             result["ot_advisories"] = []
             result["ot_environment_exposure"] = []
