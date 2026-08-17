@@ -28,39 +28,39 @@ def _ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
 
-async def _probe(session, auth, path, params):
+async def _probe(session, auth, path, params, label=""):
     url = f"{BASE}{path}"
+    tag = f"{path} [{label}]" if label else path
     try:
         async with session.get(url, auth=auth, params=params) as resp:
             status = resp.status
-            try:
-                data = await resp.json()
-            except Exception:
-                data = {"_non_json_body": (await resp.text())[:300]}
+            body_text = await resp.text()
     except Exception as e:
-        print(f"\n### GET {path}  params={params}\n    ERROR: {type(e).__name__}: {e}")
+        print(f"\n### GET {tag}\n    ERROR: {type(e).__name__}: {e}")
         return
 
-    print(f"\n### GET {path}  params={params}")
+    print(f"\n### GET {tag}  params={params}")
     print(f"    status: {status}")
-    if not isinstance(data, dict):
-        print(f"    body (non-dict): {str(data)[:300]}")
+    if status != 200:
+        # The error body usually names the missing/required parameter.
+        print(f"    body: {body_text[:400]}")
+        return
+    try:
+        data = json.loads(body_text)
+    except Exception:
+        print(f"    non-JSON body: {body_text[:300]}")
         return
     print(f"    top-level keys: {list(data.keys())}")
-    # Find the first list-valued key (that's usually the records array)
     for key, val in data.items():
         if isinstance(val, list):
             print(f"    '{key}': {len(val)} items")
-            if val:
+            if val and isinstance(val[0], dict):
                 sample = val[0]
-                keys = list(sample.keys()) if isinstance(sample, dict) else type(sample).__name__
-                print(f"      sample record keys: {keys}")
-                # Show a few fields likely to name the victim org / type / date
-                if isinstance(sample, dict):
-                    for f in ("subject", "title", "documentType", "type", "name", "entity",
-                              "actor_or_group_str", "victim", "confidence", "activity"):
-                        if f in sample:
-                            print(f"        {f}: {json.dumps(sample[f])[:120]}")
+                print(f"      sample record keys: {list(sample.keys())}")
+                for f in ("subject", "title", "documentType", "documentFamily", "type", "name",
+                          "victims", "entities", "actor_or_group_str", "confidence", "activity"):
+                    if f in sample:
+                        print(f"        {f}: {json.dumps(sample[f])[:200]}")
 
 
 async def main():
@@ -81,12 +81,31 @@ async def main():
 
     print(f"Window: {start.date()} .. {end.date()}  (last 10 days)")
     async with aiohttp.ClientSession() as s:
-        # Candidate 1: dedicated breach-alerts list endpoint (most likely).
-        await _probe(s, auth, "/breachAlerts", win)
-        # Candidate 2: what the collector currently uses (watcher alerts).
-        await _probe(s, auth, "/alerts", {**win, "documentType": "BREACH ALERT"})
-        # Candidate 3: reports endpoint, unfiltered — inspect the documentType values present.
-        await _probe(s, auth, "/reports", win)
+        # /breachAlerts returned 412 last time — try param variants to find what it requires.
+        await _probe(s, auth, "/breachAlerts", {**win}, "from/until")
+        await _probe(s, auth, "/breachAlerts", {"count": 5, "v": API_VERSION}, "count only")
+        await _probe(s, auth, "/breachAlerts", {**win, "sort": "latest"}, "sort=latest")
+        await _probe(s, auth, "/breachAlerts",
+                     {"lastUpdatedFrom": _ms(start), "count": 5, "v": API_VERSION}, "lastUpdatedFrom")
+        await _probe(s, auth, "/breachAlerts", {"breachAlert": "*", "count": 5, "v": API_VERSION}, "breachAlert=*")
+        # For comparison: what documentTypes appear in /reports? (are breach alerts in there?)
+        await _scan_report_doctypes(s, auth, {**win, "count": 50})
+
+
+async def _scan_report_doctypes(session, auth, params):
+    url = f"{BASE}/reports"
+    async with session.get(url, auth=auth, params=params) as resp:
+        if resp.status != 200:
+            print(f"\n### /reports documentType scan -> status {resp.status}")
+            return
+        data = await resp.json()
+    from collections import Counter
+
+    reports = data.get("reports", [])
+    counts = Counter(r.get("documentType", "?") for r in reports)
+    print(f"\n### /reports documentType histogram ({len(reports)} reports):")
+    for dtype, n in counts.most_common():
+        print(f"    {dtype}: {n}")
 
 
 if __name__ == "__main__":
