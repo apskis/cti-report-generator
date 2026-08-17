@@ -492,25 +492,54 @@ class Intel471Collector(BaseCollector):
             List of parsed breach-alert peer-incident records (threat_type "BREACH ALERT").
         """
         url = f"{self.BASE_URL}/breachAlerts"
-        params = {
-            "breachAlert": "*",  # required: one of breachAlert/actor/victim/confidence
-            "from": self.format_date_timestamp_ms(start_date),
-            "until": self.format_date_timestamp_ms(end_date),
-            "count": collector_config.intel471_breach_alerts_limit,
-            "v": self.API_VERSION,
-        }
+        # The API caps count at 100 per request, so paginate with offset up to the configured
+        # limit (batches of 100, hard-capped at 10 pages) to cover the full weekly feed. Dedupe
+        # by uid so an API that ignores offset can't inflate the set with repeated first pages.
+        max_count_per_request = 100
+        limit = collector_config.intel471_breach_alerts_limit
+        pages = min((limit + max_count_per_request - 1) // max_count_per_request, 10)
 
-        threats: list[dict[str, Any]] = []
-        try:
-            response = await client.get_raw_response(url, auth=auth, params=params)
+        alerts: list[dict[str, Any]] = []
+        seen_uids: set[str] = set()
+        total = 0
+        for page_num in range(pages):
+            params = {
+                "breachAlert": "*",  # required: one of breachAlert/actor/victim/confidence
+                "from": self.format_date_timestamp_ms(start_date),
+                "until": self.format_date_timestamp_ms(end_date),
+                "count": max_count_per_request,
+                "v": self.API_VERSION,
+            }
+            if page_num > 0:
+                params["offset"] = page_num * max_count_per_request
+            try:
+                response = await client.get_raw_response(url, auth=auth, params=params)
+            except Exception as e:
+                logger.warning(f"Error fetching Intel471 breach alerts (page {page_num + 1}): {e}")
+                break
             if response.status != 200:
                 text = await response.text()
                 logger.warning(f"Intel471 /breachAlerts returned status {response.status}: {text[:300]}")
-                return threats
-
+                break
             data = await response.json()
-            alerts = data.get("breach_alerts", [])
-            total = data.get("breach_alerts_total_count", len(alerts))
+            page = data.get("breach_alerts", [])
+            total = data.get("breach_alerts_total_count", total)
+            new = 0
+            for alert in page:
+                uid = alert.get("uid") or ""
+                if uid and uid in seen_uids:
+                    continue
+                if uid:
+                    seen_uids.add(uid)
+                alerts.append(alert)
+                new += 1
+            # Stop at the end of the feed (short page) or when a page adds nothing new
+            # (offset unsupported → repeated first page).
+            if len(page) < max_count_per_request or new == 0:
+                break
+
+        threats: list[dict[str, Any]] = []
+        try:
             min_conf = collector_config.intel471_breach_min_confidence
             min_rank = self._confidence_rank(min_conf)
             dropped_window = dropped_conf = dropped_geo = 0

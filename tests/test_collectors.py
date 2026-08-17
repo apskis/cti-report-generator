@@ -306,6 +306,58 @@ class TestIntel471Collector:
         assert c._confidence_rank("") == 0          # empty -> unknown
         assert c._confidence_rank("bogus") == 0     # unrecognized -> unknown (never filtered)
 
+    async def test_breach_alerts_paginate_and_dedupe(self, mock_credentials):
+        from datetime import datetime
+
+        class FakeResp:
+            def __init__(self, alerts):
+                self.status = 200
+                self._alerts = alerts
+
+            async def json(self):
+                return {"breach_alerts": self._alerts, "breach_alerts_total_count": 283}
+
+            async def text(self):
+                return ""
+
+        def mk(uid, name, country="United States"):
+            return {"uid": uid, "last_updated": 1786665600000, "data": {"breach_alert": {
+                "date_of_information": 1786665600000, "confidence": {"level": "medium"},
+                "title": f"{name} ransomware", "summary": "ransomware",
+                "victim": {"name": name, "country": country,
+                           "industries": [{"industry": "Healthcare", "sector": "Healthcare sector"}]},
+                "actor_or_group": "X"}}}
+
+        class FakeClient:
+            def __init__(self, pages):
+                self.pages = pages
+                self.calls = 0
+
+            async def get_raw_response(self, url, auth=None, params=None):
+                self.calls += 1
+                idx = params.get("offset", 0) // 100
+                return FakeResp(self.pages[idx] if idx < len(self.pages) else [])
+
+        c = Intel471Collector(mock_credentials)
+        start, end = datetime(2026, 8, 10), datetime(2026, 8, 17)
+
+        # Multi-page: two full pages + a short page -> stop after the short page, keep all unique.
+        pages = [
+            [mk(f"a{i}", f"US Org {i}") for i in range(100)],
+            [mk(f"b{i}", f"DE Org {i}", "Germany") for i in range(100)],
+            [mk(f"c{i}", f"UK Org {i}", "UK") for i in range(50)],
+        ]
+        client = FakeClient(pages)
+        res = await c._fetch_breach_alerts(client, None, start, end)
+        assert client.calls == 3          # stopped at the short third page
+        assert len(res) == 250            # all US/EU healthcare kept
+
+        # Offset ignored (same first page every request) -> dedupe by uid + stop early.
+        client2 = FakeClient([pages[0]] * 5)
+        res2 = await c._fetch_breach_alerts(client2, None, start, end)
+        assert len(res2) == 100           # deduped to a single page
+        assert client2.calls == 2         # second page adds nothing new -> stop
+
     def test_breach_in_geo_filters_us_europe(self, mock_credentials):
         c = Intel471Collector(mock_credentials)
         assert c._breach_in_geo({"country": "United States"}) is True

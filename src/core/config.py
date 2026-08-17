@@ -78,7 +78,11 @@ class CollectorConfig:
     nvd_max_results: int = 100
     intel471_reports_limit: int = 50
     intel471_quarterly_reports_limit: int = 1000  # Higher limit for quarterly (fetching all report types)
-    intel471_breach_alerts_limit: int = 100  # Higher limit for breach alerts (many available)
+    # Max breach alerts to pull from the /breachAlerts feed. The feed runs ~250-300/week
+    # globally; the fetch paginates in batches of 100 (the API's per-request max) up to this
+    # limit, so 500 covers a full week's window with headroom before the sector/geo/confidence
+    # filters trim it down. Raising this only adds paged requests (capped at 10 pages).
+    intel471_breach_alerts_limit: int = 500
     intel471_indicators_limit: int = 20
     # Minimum confidence for a breach alert to appear as a peer incident. Intel471 grades
     # each breach alert's confidence; this drops low-confidence noise. Accepts a word
