@@ -25,7 +25,7 @@ _DEFAULT_PEER_WATCH_ORGS = [
     # Genomics informatics / research partners & lab software
     "Broad Institute", "SOPHiA Genetics", "Microba", "Benchling",
     # Diagnostics / pharma partners
-    "Roche", "Bristol Myers Squibb", "Merck", "Myriad Genetics", "Kura Oncology",
+    "Bristol Myers Squibb", "Merck", "Myriad Genetics", "Kura Oncology",
 ]
 
 # Default competitor watchlist for the Peer Incidents section. A breach of a direct
@@ -36,7 +36,7 @@ _DEFAULT_PEER_COMPETITOR_ORGS = [
     "Thermo Fisher", "Pacific Biosciences", "PacBio", "Oxford Nanopore", "BGI Genomics",
     "MGI Tech", "Complete Genomics", "Qiagen", "Agilent", "10x Genomics", "Bio-Rad",
     "Element Biosciences", "Ultima Genomics", "Singular Genomics", "Twist Bioscience",
-    "Guardant Health", "Natera", "Tempus",
+    "Guardant Health", "Natera", "Tempus", "Roche",
 ]
 
 
