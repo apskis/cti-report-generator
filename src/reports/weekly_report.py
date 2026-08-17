@@ -1473,6 +1473,40 @@ class WeeklyReportGenerator(BaseReportGenerator):
 
         self.doc.add_paragraph()
 
+    @staticmethod
+    def _relevance_label(relevance: str) -> str:
+        """Human-readable label for a peer-incident relevance lens."""
+        return {
+            "competitor": "Competitor",
+            "supply-chain": "Supply Chain",
+            "sector": "Sector Peer",
+        }.get((relevance or "").lower(), "Sector Peer")
+
+    def _classify_relevance(self, incident: dict[str, Any]) -> str:
+        """Relevance lens for a peer incident: 'competitor', 'supply-chain', or 'sector'.
+
+        Uses the lens the collector already tagged when present; otherwise classifies the
+        organization name against the competitor / supply-chain watchlists (so AI- and
+        OSINT-sourced incidents are labeled too), falling back to 'sector'.
+        """
+        from src.core.config import collector_config
+
+        rel = (incident.get("relevance") or "").lower()
+        if rel in ("competitor", "supply-chain", "sector"):
+            return rel
+        org = (incident.get("organization") or "").lower()
+        if org:
+            def _hit(names: list[str]) -> bool:
+                return any(
+                    t and re.search(rf"\b{re.escape(t.strip().lower())}\b", org) for t in names
+                )
+
+            if _hit(collector_config.peer_competitor_orgs):
+                return "competitor"
+            if _hit(collector_config.peer_watch_orgs):
+                return "supply-chain"
+        return "sector"
+
     def _add_industry_incidents(self, analysis_result: dict[str, Any]) -> None:
         """Add Peer Incidents section - company breaches from OSINT sources."""
         logger.info("Adding Peer Incidents section")
@@ -1544,11 +1578,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
         incidents = _deduped[:_MAX_PEER_INCIDENTS]
 
         if incidents:
-            # Create table: Company | Incident Type | Date | Source
-            table = self.doc.add_table(rows=1, cols=4)
+            # Create table: Company | Incident Type | Date | Relevance | Source
+            table = self.doc.add_table(rows=1, cols=5)
 
             # Header row: orange background, white text
-            headers = ["Organization", "Incident Type", "Date", "Source"]
+            headers = ["Organization", "Incident Type", "Date", "Relevance", "Source"]
             header_cells = table.rows[0].cells
             for i, header in enumerate(headers):
                 header_cells[i].text = header
@@ -1582,7 +1616,17 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     date = date[:10]  # Truncate to YYYY-MM-DD
                 cells[2].text = date
 
-                # Column 3: Source with citation number
+                # Column 3: Relevance lens (why this org is a peer incident)
+                relevance = self._classify_relevance(incident)
+                cells[3].text = ""
+                rel_run = cells[3].paragraphs[0].add_run(self._relevance_label(relevance))
+                rel_run.font.size = FontSizes.SUBTITLE
+                # Emphasize the attention-grabbing lenses (competitor / supply chain); bold
+                # survives the uniform styling pass below (which only sets size + color).
+                if relevance in ("competitor", "supply-chain"):
+                    rel_run.font.bold = True
+
+                # Column 4: Source with citation number
                 source_name = incident.get("source", "OSINT")
                 ai_citation_num = incident.get("osint_citation_number")
 
@@ -1600,9 +1644,9 @@ class WeeklyReportGenerator(BaseReportGenerator):
                 # Check for generic OSINT fallback
                 citation_map.get("OSINT")
 
-                # Column 3: Source - NORMAL SIZE [#] SourceName (not superscript in table column)
-                cells[3].text = ""
-                source_para = cells[3].paragraphs[0]
+                # Column 4: Source - NORMAL SIZE [#] SourceName (not superscript in table column)
+                cells[4].text = ""
+                source_para = cells[4].paragraphs[0]
 
                 if final_citation_num:
                     # Normal size: [#] SourceName
@@ -1622,7 +1666,7 @@ class WeeklyReportGenerator(BaseReportGenerator):
                     source_text_run.font.color.rgb = BrandColors.GRAY_MEDIUM  # Gray to indicate missing citation
 
                 # Styling for all columns
-                for idx in range(4):
+                for idx in range(5):
                     self._set_cell_borders(cells[idx], "CCCCCC")
                     for para in cells[idx].paragraphs:
                         for run in para.runs:
@@ -1630,10 +1674,11 @@ class WeeklyReportGenerator(BaseReportGenerator):
                             run.font.color.rgb = BrandColors.TEXT_DARK
 
             # Set column widths
-            table.columns[0].width = Inches(2.0)  # Organization
-            table.columns[1].width = Inches(1.5)  # Incident Type
-            table.columns[2].width = Inches(1.0)  # Date
-            table.columns[3].width = Inches(1.7)  # Source
+            table.columns[0].width = Inches(1.8)  # Organization
+            table.columns[1].width = Inches(1.4)  # Incident Type
+            table.columns[2].width = Inches(0.9)  # Date
+            table.columns[3].width = Inches(1.1)  # Relevance
+            table.columns[4].width = Inches(1.5)  # Source
 
             # Caption
             caption = self.doc.add_paragraph()
@@ -1641,6 +1686,8 @@ class WeeklyReportGenerator(BaseReportGenerator):
             caption.space_after = Pt(8)
             caption_text = (
                 f"Table: {len(incidents)} peer incidents from threat intelligence sources (Intel471, OSINT). "
+                "Relevance indicates why each is a peer: Competitor (direct rival), Supply Chain "
+                "(supplier or shared-tech vendor), or Sector Peer (healthcare/pharma/biotech). "
                 "Incidents may indicate threat actor targeting patterns or emerging attack vectors."
             )
             caption_run = caption.add_run(caption_text)

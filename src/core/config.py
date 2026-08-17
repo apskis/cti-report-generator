@@ -28,6 +28,17 @@ _DEFAULT_PEER_WATCH_ORGS = [
     "Roche", "Bristol Myers Squibb", "Merck", "Myriad Genetics", "Kura Oncology",
 ]
 
+# Default competitor watchlist for the Peer Incidents section. A breach of a direct
+# genomics/sequencing/diagnostics competitor is worth knowing even though the competitor is
+# not a supplier or a shared-tech vendor, so competitor hits are kept regardless of confidence
+# (see CollectorConfig.peer_competitor_orgs). Override wholesale with PEER_COMPETITOR_ORGS.
+_DEFAULT_PEER_COMPETITOR_ORGS = [
+    "Thermo Fisher", "Pacific Biosciences", "PacBio", "Oxford Nanopore", "BGI Genomics",
+    "MGI Tech", "Complete Genomics", "Qiagen", "Agilent", "10x Genomics", "Bio-Rad",
+    "Element Biosciences", "Ultima Genomics", "Singular Genomics", "Twist Bioscience",
+    "Guardant Health", "Natera", "Tempus",
+]
+
 
 @dataclass(frozen=True)
 class CollectorConfig:
@@ -70,6 +81,18 @@ class CollectorConfig:
             [o.strip() for o in os.environ["PEER_WATCH_ORGS"].split(",") if o.strip()]
             if os.environ.get("PEER_WATCH_ORGS")
             else list(_DEFAULT_PEER_WATCH_ORGS)
+        )
+    )
+    # Competitor watchlist — a fourth relevance lens. A breach of a direct competitor is kept
+    # regardless of sector or confidence, so a competitor compromise surfaces in Peer Incidents.
+    # Whole-word, case-insensitive matching (same as peer_watch_orgs). Override the whole list
+    # with the PEER_COMPETITOR_ORGS env var (comma-separated); otherwise the curated default is
+    # used. Seeded from known genomics/sequencing/diagnostics competitors — trim or extend.
+    peer_competitor_orgs: list[str] = field(
+        default_factory=lambda: (
+            [o.strip() for o in os.environ["PEER_COMPETITOR_ORGS"].split(",") if o.strip()]
+            if os.environ.get("PEER_COMPETITOR_ORGS")
+            else list(_DEFAULT_PEER_COMPETITOR_ORGS)
         )
     )
     crowdstrike_actors_limit: int = 50

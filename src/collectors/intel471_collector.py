@@ -514,7 +514,7 @@ class Intel471Collector(BaseCollector):
             min_conf = collector_config.intel471_breach_min_confidence
             min_rank = self._confidence_rank(min_conf)
             dropped_window = dropped_conf = 0
-            n_supply = 0
+            n_supply = n_competitor = 0
             # Histogram of confidence among relevant, in-window alerts (before the gate), so
             # the debug log shows how many would survive at each threshold (high/medium/low).
             conf_hist: dict[str, int] = {"high": 0, "medium": 0, "low": 0, "unknown": 0}
@@ -534,18 +534,21 @@ class Intel471Collector(BaseCollector):
                     continue
                 rank = self._confidence_rank(record.get("confidence", ""))
                 conf_hist[{3: "high", 2: "medium", 1: "low", 0: "unknown"}[rank]] += 1
-                # Confidence gate applies to SECTOR peers only. Supply-chain / tech-stack
-                # watchlist hits are always relevant regardless of confidence.
+                # Confidence gate applies to SECTOR peers only. Supply-chain / tech-stack and
+                # competitor watchlist hits are always relevant regardless of confidence.
                 if relevance == "supply-chain":
                     n_supply += 1
+                elif relevance == "competitor":
+                    n_competitor += 1
                 elif min_rank and rank and rank < min_rank:
                     dropped_conf += 1
                     continue
                 threats.append(record)
             logger.info(
                 f"Intel471 breach alerts: {len(threats)} relevant of {len(alerts)} fetched "
-                f"({total} in window; {n_supply} supply-chain/tech-stack matches; dropped "
-                f"{dropped_window} out-of-window, {dropped_conf} below confidence={min_conf or 'off'})"
+                f"({total} in window; {n_supply} supply-chain/tech-stack, {n_competitor} competitor "
+                f"matches; dropped {dropped_window} out-of-window, {dropped_conf} below "
+                f"confidence={min_conf or 'off'})"
             )
             logger.info(
                 "Intel471 breach-alert confidence breakdown (sector peers, in-window): "
@@ -603,29 +606,40 @@ class Intel471Collector(BaseCollector):
         return any(keyword in hay for keyword in _BREACH_RELEVANT_KEYWORDS)
 
     @staticmethod
-    def _breach_watch_match(record: dict[str, Any]) -> bool:
-        """True if the victim is on the supply-chain / tech-stack watchlist (peer_watch_orgs).
+    def _org_matches_any(org: str, names: list[str]) -> bool:
+        """True if any watchlist name matches the org on a whole-word, case-insensitive basis.
 
-        Matches on whole words (case-insensitive) so a short vendor name like "Roche" does
-        not match an unrelated victim like "Rochester ...".
+        Whole-word matching avoids a short vendor name like "Roche" matching an unrelated
+        victim such as "Rochester ...".
         """
-        org = (record.get("organization") or "").lower()
         if not org:
             return False
-        for w in collector_config.peer_watch_orgs:
-            term = (w or "").strip().lower()
+        for name in names:
+            term = (name or "").strip().lower()
             if term and re.search(rf"\b{re.escape(term)}\b", org):
                 return True
         return False
 
+    def _breach_watch_match(self, record: dict[str, Any]) -> bool:
+        """True if the victim is on the supply-chain / tech-stack watchlist (peer_watch_orgs)."""
+        return self._org_matches_any((record.get("organization") or "").lower(), collector_config.peer_watch_orgs)
+
+    def _breach_competitor_match(self, record: dict[str, Any]) -> bool:
+        """True if the victim is on the competitor watchlist (peer_competitor_orgs)."""
+        return self._org_matches_any(
+            (record.get("organization") or "").lower(), collector_config.peer_competitor_orgs
+        )
+
     def _breach_relevance(self, record: dict[str, Any]) -> str | None:
         """Classify why a breach is a peer incident, or None if it is not relevant.
 
-        Returns "supply-chain" for a watchlist (supplier / tech-stack vendor) hit, "sector"
-        for a healthcare/pharma/biotech peer, or None. Watchlist wins so a supplier that also
-        happens to be a health company is still treated as supply-chain (bypasses the
-        confidence floor).
+        Lenses, in precedence order: "competitor" (direct rival), "supply-chain" (supplier /
+        tech-stack vendor), then "sector" (healthcare/pharma/biotech peer). The first three
+        bypass the confidence floor; "sector" is the only gated lens. Returns None if no lens
+        matches.
         """
+        if self._breach_competitor_match(record):
+            return "competitor"
         if self._breach_watch_match(record):
             return "supply-chain"
         if self._breach_is_relevant(record):

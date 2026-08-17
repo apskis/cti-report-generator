@@ -1209,3 +1209,28 @@ class TestPeerIncidentsFromIntel471:
         org_cells = [t.rows[r].cells[0].text for t in gen.doc.tables for r in range(1, len(t.rows))]
         assert org_cells.count("Molina Healthcare") == 1  # not double-listed
         assert "Colla Health Inc." in org_cells
+
+    def test_relevance_column_labels_each_lens(self):
+        gen = self._gen()
+        gen._add_industry_incidents({
+            # AI incident with no explicit lens -> classified from the org name (competitor list)
+            "industry_incidents": [
+                {"organization": "Pacific Biosciences", "incident_type": "Breach",
+                 "date": "2026-08-12", "source": "Intel471"},
+            ],
+            "osint_sources_used": [],
+            "intel471_breaches": [
+                {"organization": "Okta", "incident_type": "Unauthorized Access",
+                 "date": "2026-08-14", "relevance": "supply-chain"},
+                {"organization": "Colla Health Inc.", "incident_type": "Data Leak",
+                 "date": "2026-08-13", "relevance": "sector"},
+            ],
+        })
+        # Map organization (col 0) -> relevance label (col 3)
+        rel = {}
+        for t in gen.doc.tables:
+            for r in range(1, len(t.rows)):
+                rel[t.rows[r].cells[0].text] = t.rows[r].cells[3].text
+        assert rel["Pacific Biosciences"] == "Competitor"   # classified from name, no explicit lens
+        assert rel["Okta"] == "Supply Chain"
+        assert rel["Colla Health Inc."] == "Sector Peer"

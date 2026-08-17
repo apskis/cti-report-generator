@@ -275,7 +275,9 @@ class TestIntel471Collector:
 
         from src.core.config import collector_config
 
-        patched = dataclasses.replace(collector_config, peer_watch_orgs=["Okta", "Thermo Fisher"])
+        patched = dataclasses.replace(
+            collector_config, peer_watch_orgs=["Okta"], peer_competitor_orgs=["Qiagen"]
+        )
         monkeypatch.setattr("src.collectors.intel471_collector.collector_config", patched)
         c = Intel471Collector(mock_credentials)
         # Sector peer -> "sector"
@@ -286,10 +288,10 @@ class TestIntel471Collector:
         vendor = c._parse_breach_alert(self._breach_record(
             "Okta Inc.", "Identity software", "Technology sector"))
         assert c._breach_relevance(vendor) == "supply-chain"
-        # Watchlist wins even when the victim is also a health company
-        both = c._parse_breach_alert(self._breach_record(
-            "Thermo Fisher Scientific", "Laboratory equipment", "Healthcare sector"))
-        assert c._breach_relevance(both) == "supply-chain"
+        # Competitor wins over the sector lens even when the victim is also a life-sciences org
+        competitor = c._parse_breach_alert(self._breach_record(
+            "Qiagen NV", "Molecular diagnostics", "Life sciences sector"))
+        assert c._breach_relevance(competitor) == "competitor"
         # Neither lens -> None
         off_topic = c._parse_breach_alert(self._breach_record(
             "Random Bank SA", "Retail banking", "Financial sector", summary="<p>data leaked</p>"))
