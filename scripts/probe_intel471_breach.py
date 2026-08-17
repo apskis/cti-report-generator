@@ -87,9 +87,25 @@ async def main():
         await _probe(s, auth, "/breachAlerts", {**win, "sort": "latest"}, "sort=latest")
         await _probe(s, auth, "/breachAlerts",
                      {"lastUpdatedFrom": _ms(start), "count": 5, "v": API_VERSION}, "lastUpdatedFrom")
-        await _probe(s, auth, "/breachAlerts", {"breachAlert": "*", "count": 5, "v": API_VERSION}, "breachAlert=*")
+        # This is the working query — dump one full record so we can map victim/actor/date.
+        await _dump_one_breach_alert(s, auth, {"breachAlert": "*", **win})
         # For comparison: what documentTypes appear in /reports? (are breach alerts in there?)
         await _scan_report_doctypes(s, auth, {**win, "count": 50})
+
+
+async def _dump_one_breach_alert(session, auth, params):
+    url = f"{BASE}/breachAlerts"
+    async with session.get(url, auth=auth, params=params) as resp:
+        print(f"\n### /breachAlerts full-record dump  params={params}  status={resp.status}")
+        if resp.status != 200:
+            print(f"    body: {(await resp.text())[:300]}")
+            return
+        data = await resp.json()
+    alerts = data.get("breach_alerts", [])
+    print(f"    breach_alerts_total_count: {data.get('breach_alerts_total_count')}, returned: {len(alerts)}")
+    if alerts:
+        print("    --- FULL first record (JSON) ---")
+        print(json.dumps(alerts[0], indent=2)[:2600])
 
 
 async def _scan_report_doctypes(session, auth, params):
