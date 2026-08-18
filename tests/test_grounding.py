@@ -218,6 +218,27 @@ class TestVerifyQuarterlyGrounding:
         findings = verify_report_grounding(report, idx)
         assert any("Acme Genomics" in f for f in findings)
 
+    def test_fabricated_multiword_victim_sharing_common_token_is_flagged(self):
+        # T2.2: the source contains the ambient word "genomics" but never "Acme". The old
+        # any-token grounding let "Acme Genomics" pass because "genomics" matched; mentions_entity
+        # requires the whole name or ALL distinctive tokens, so the fabrication is now caught.
+        idx = build_source_index({"intel471": [{"title": "genomics and biotech firms targeted this quarter"}]})
+        report = {
+            "incidents_by_type": [
+                {"type": "Ransomware", "notable_example": "Acme Genomics: 2M records exposed"}
+            ]
+        }
+        findings = verify_report_grounding(report, idx)
+        assert any("Acme Genomics" in f for f in findings)
+
+    def test_real_multiword_victim_with_all_tokens_present_passes(self):
+        # Every distinctive token present (possibly reworded) -> still grounded.
+        idx = build_source_index({"intel471": [{"title": "Shalina Healthcare disclosed a ransomware breach"}]})
+        report = {
+            "incidents_by_type": [{"type": "Ransomware", "notable_example": "Shalina Healthcare: outage"}]
+        }
+        assert verify_report_grounding(report, idx) == []
+
     def test_fabricated_geopolitical_actor_is_flagged(self):
         idx = self._quarterly_source()
         report = {"geopolitical_threats": [{"name": "Nebula Serpent", "level": "HIGH"}]}

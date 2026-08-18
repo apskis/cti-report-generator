@@ -183,6 +183,47 @@ def test_quarterly_qualitative_incident_value_does_not_crash():
     assert "breach_count_accuracy" not in checks  # skipped, not failed
 
 
+def _quarterly_input_with_breach_landscape(breach_landscape, intel471_data) -> GateInput:
+    gate1 = GateResult(gate_id="1", status="COMPLETE", payload={"tier1_sources": []})
+    gate5 = GateResult(
+        gate_id="5", status="COMPLETE", payload={"report": {"breach_landscape": breach_landscape}}
+    )
+    return GateInput(
+        report_type="QUARTERLY",
+        period_start="2026-04-01",
+        period_end="2026-06-30",
+        tier1_data={"Intel471": intel471_data, "CrowdStrike": []},
+        prior_results={"1": gate1, "5": gate5},
+    )
+
+
+def test_quarterly_dataset_grounded_card_skips_intel471_reconciliation():
+    # T2.5: a Total Incidents card grounded in the breach dataset (VCDB/HHS) is a different
+    # population than the Intel471 breach-alert feed; reconciling them fails every grounded run.
+    gi = _quarterly_input_with_breach_landscape(
+        {
+            "stat_cards": [{"label": "Total Incidents", "value": "40", "change_pct": "N/A"}],
+            "stat_methodology": "Counts and records exposed are from date-stamped industry breach disclosures (VCDB/HHS).",
+        },
+        intel471_data=[{"threat_type": "BREACH ALERT"}, {"threat_type": "BREACH ALERT"}],
+    )
+    result = run(gi, llm_client=None, report_type="QUARTERLY")
+    checks = {v["check"]: v for v in result.payload["validations"]}
+    assert "breach_count_accuracy" not in checks  # skipped because dataset-grounded
+
+
+def test_quarterly_ungrounded_card_still_reconciles_against_intel471():
+    # Not dataset-grounded -> the legacy Intel471 sanity check still runs (40 vs 1 -> fails).
+    gi = _quarterly_input_with_breach_landscape(
+        {"stat_cards": [{"label": "Total Incidents", "value": "40", "change_pct": "N/A"}]},
+        intel471_data=[{"threat_type": "BREACH ALERT"}],
+    )
+    result = run(gi, llm_client=None, report_type="QUARTERLY")
+    checks = {v["check"]: v for v in result.payload["validations"]}
+    assert "breach_count_accuracy" in checks
+    assert checks["breach_count_accuracy"]["passed"] is False
+
+
 def test_extract_leading_int():
     from src.gates.gate1a_statistics import _extract_leading_int
 

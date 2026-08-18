@@ -537,6 +537,41 @@ class TestQuarterlyRobustness:
         assert doc is not None
         assert len(doc.paragraphs) > 0
 
+    # ----- T2.1: change_pct color contract (red up / green down / gray flat|N/A) -----
+
+    def test_change_pct_color_by_direction(self, generator):
+        from docx.shared import RGBColor
+
+        red, green, gray = RGBColor(0xDC, 0x35, 0x45), RGBColor(0x1A, 0x7F, 0x37), RGBColor(0x6B, 0x72, 0x80)
+        f = generator._change_pct_color
+        assert f("+25%") == red and f("25%") == red
+        assert f("-40%") == green and f("−40%") == green and f("-5") == green
+        assert f("0%") == gray and f("N/A") == gray and f("") == gray and f("high") == gray
+
+    # ----- T2.4: a fabricated QoQ delta with no prior value is scrubbed to N/A -----
+
+    def test_fabricated_qoq_delta_without_prior_is_scrubbed(self, generator):
+        # Model emitted a change_pct with no prior_value and there is no stored baseline in tests.
+        analysis = {
+            "breach_landscape": {
+                "stat_cards": [{"label": "Total Incidents", "value": "16", "prior_value": "N/A", "change_pct": "+25%"}]
+            }
+        }
+        doc = generator.generate(analysis)
+        text = _get_document_text(doc)
+        assert "+25%" not in text  # the invented delta must not render
+
+    # ----- T2.3: ungrounded breach stat cards are marked, not presented as authoritative -----
+
+    def test_ungrounded_stat_cards_get_methodology_marker(self, generator):
+        analysis = {
+            "breach_landscape": {"stat_cards": [{"label": "Total Incidents", "value": "42", "change_pct": "N/A"}]}
+        }
+        # No breach_dataset set on the generator -> grounding cannot run.
+        generator._apply_breach_dataset_grounding(analysis)
+        note = analysis["breach_landscape"].get("stat_methodology", "")
+        assert "NOT" in note and "grounded" in note
+
     # ----- Aug 2026 review (B2): a bare-list recommendations payload renders, not "unavailable" -----
 
     def test_bare_list_recommendations_render(self, generator):

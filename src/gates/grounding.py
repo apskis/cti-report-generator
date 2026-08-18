@@ -60,6 +60,25 @@ class SourceIndex:
         tokens = {t.lower() for t in _TOKEN_RE.findall(name) if t.lower() not in _STOPWORDS}
         return any(tok in self.text_blob or tok in self.actor_names for tok in tokens)
 
+    def mentions_entity(self, name: str) -> bool:
+        """Stricter grounding for a NAMED entity (breach victim / company / actor).
+
+        The whole normalized name must appear in the source, OR **all** of its distinctive
+        tokens must (AND, not any). Unlike ``mentions()``, a single common token does not ground
+        a multi-word name — so a fabricated "Acme Genomics" whose only footprint is the ambient
+        word "genomics" is correctly rejected, while a real victim whose every distinctive word
+        appears (possibly reworded) is kept.
+        """
+        norm = (name or "").strip().lower()
+        if not norm:
+            return True  # nothing to verify
+        if norm in self.text_blob or norm in self.actor_names:
+            return True
+        tokens = {t.lower() for t in _TOKEN_RE.findall(name) if t.lower() not in _STOPWORDS}
+        if not tokens:
+            return True  # nothing distinctive left to check (all stopwords)
+        return all(tok in self.text_blob or tok in self.actor_names for tok in tokens)
+
     def get_record(self, record_id: str) -> dict | None:
         """Retrieve a source record by its stable ID."""
         return self.records_by_id.get(record_id)
@@ -265,7 +284,7 @@ def _verify_quarterly_grounding(report: dict, index: SourceIndex) -> list[str]:
         if not isinstance(incident, dict):
             continue
         victim = _extract_victim_name(str(incident.get("notable_example", "")))
-        if victim and not index.mentions(victim):
+        if victim and not index.mentions_entity(victim):
             findings.append(
                 f"Ungrounded breach victim: '{victim}' (in notable_example) is not present in any source record"
             )
@@ -281,7 +300,7 @@ def _verify_quarterly_grounding(report: dict, index: SourceIndex) -> list[str]:
         if not isinstance(entry, dict):
             continue
         actor = str(entry.get("name") or entry.get("actor") or "").strip()
-        if actor and actor.lower() not in _GENERIC_ENTITY_PHRASES and not index.mentions(actor):
+        if actor and actor.lower() not in _GENERIC_ENTITY_PHRASES and not index.mentions_entity(actor):
             findings.append(
                 f"Ungrounded geopolitical actor: '{actor}' is not present in any source record"
             )

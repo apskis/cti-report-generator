@@ -199,9 +199,24 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         (records x IBM per-record cost). Only overrides when the dataset actually has
         incidents for this quarter — otherwise the AI's values (or honest N/A) stand.
         """
+        breach = analysis_result.get("breach_landscape")
+        breach = breach if isinstance(breach, dict) else None
+
+        def _mark_ungrounded(reason: str) -> None:
+            # Don't let unvalidated AI breach numbers read as authoritative fact. Stamp an honest
+            # marker; a compliant model already emits N/A for feed-underivable figures, so this
+            # just labels the estimate rather than blanking the section (C1).
+            if breach is not None and breach.get("stat_cards"):
+                breach["stat_methodology"] = (
+                    "Breach figures below are AI estimates from the threat feeds and are NOT "
+                    f"grounded in a date-stamped breach dataset this quarter ({reason}). Treat "
+                    "counts and impact as indicative, not authoritative."
+                )
+
         records = getattr(self, "breach_dataset", None)
         period = getattr(self, "reporting_period", None)
         if not records or period is None:
+            _mark_ungrounded("no breach dataset available")
             return
         from src.core.breach_metrics import (
             apply_metrics_to_stat_cards,
@@ -217,6 +232,7 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         )
         mode = apply_metrics_to_stat_cards(analysis_result, metrics)
         if mode == "none":
+            _mark_ungrounded("dataset had no incidents in the reporting window")
             return
 
         n = metrics["total_incidents"]
@@ -224,16 +240,20 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             f"Grounded breach stat cards ({mode}) from {n} dataset incidents "
             f"(records: {metrics['records_exposed']:,}, est. impact: ${metrics['est_impact_millions']}M)"
         )
-        breach = analysis_result.get("breach_landscape")
-        if not isinstance(breach, dict):
+        if breach is None:
             return
 
         if mode == "enrich":
-            # Dataset lags the live feeds — kept live counts; Est. Impact rescaled to the
-            # live count; Records Exposed left as-is (dataset records would undercount).
+            # Dataset lags the live feeds — kept live counts; Est. Impact rescaled to the live
+            # count. Records Exposed is NOT grounded in this mode (dataset records would
+            # undercount, the live feed carries no records count) -> force N/A rather than leave
+            # an unvalidated AI number rendering as fact.
+            for card in breach.get("stat_cards") or []:
+                if isinstance(card, dict) and "record" in str(card.get("label", "")).lower():
+                    card["value"] = "N/A"
             logger.info(
                 f"Dataset had fewer incidents ({n}) than the live feeds already found; "
-                "kept live counts and rescaled Est. Impact to the live count (dataset lag)."
+                "kept live counts, rescaled Est. Impact, and set Records Exposed to N/A (dataset lag)."
             )
         else:
             # Authoritative dataset -> ground the named incident examples from it too.
@@ -447,19 +467,25 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         prev_year, prev_quarter = self._calculate_previous_quarter(year, self.quarter)
         prev_key = self._get_quarter_key(prev_year, prev_quarter)
         prior_stats = (self._load_historical_data().get(prev_key) or {}).get("breach_stats") or {}
-        if not prior_stats:
-            return
 
+        na_tokens = {"", "n/a", "na", "none", "null"}
         for card in breach.get("stat_cards") or []:
             if not isinstance(card, dict):
                 continue
             label = str(card.get("label", "")).strip()
-            if label not in prior_stats:
-                continue
-            prior_value = prior_stats[label]
-            card["prior_value"] = prior_value
-            card["change_pct"] = self._compute_change_pct(card.get("value", ""), prior_value)
-        logger.info(f"Applied prior-quarter ({prev_key}) breach stats to stat cards")
+            if prior_stats and label in prior_stats:
+                # Deterministic override from the stored prior quarter.
+                prior_value = prior_stats[label]
+                card["prior_value"] = prior_value
+                card["change_pct"] = self._compute_change_pct(card.get("value", ""), prior_value)
+            elif str(card.get("prior_value", "")).strip().lower() in na_tokens:
+                # No stored baseline AND no real prior value behind the delta -> force N/A, so a
+                # model-invented "(+25%)" with nothing behind it cannot render as fact (C2). A
+                # legitimate delta always carries a real prior_value and is left as-is.
+                card["prior_value"] = "N/A"
+                card["change_pct"] = "N/A"
+        if prior_stats:
+            logger.info(f"Applied prior-quarter ({prev_key}) breach stats to stat cards")
 
     @classmethod
     def _compute_change_pct(cls, current: str, prior: str) -> str:
@@ -925,6 +951,29 @@ and vulnerabilities observed are consistent with those historically used against
         spacer = self.doc.add_paragraph()
         spacer.paragraph_format.space_after = Pt(6)
 
+    @staticmethod
+    def _change_pct_color(change_pct: str) -> RGBColor:
+        """Color for a QoQ delta: red for an increase (+), green for a decrease (-), gray for
+        0% / N/A / unparseable. Implements the contract the strategic prompt advertises — the
+        comparison line was previously hardcoded red, so a good decrease and an honest N/A both
+        rendered as alarm-red.
+        """
+        red = RGBColor(0xDC, 0x35, 0x45)
+        green = RGBColor(0x1A, 0x7F, 0x37)
+        gray = RGBColor(0x6B, 0x72, 0x80)
+        t = (change_pct or "").strip().lower()
+        if t in {"", "n/a", "na", "none", "null"}:
+            return gray
+        if t[0] == "-" or t[0] == "−":  # ASCII hyphen or Unicode minus
+            return green
+        if t[0] == "+":
+            return red
+        m = re.search(r"-?\d+(?:\.\d+)?", t)
+        if not m:
+            return gray
+        val = float(m.group())
+        return red if val > 0 else green if val < 0 else gray
+
     def _add_breach_landscape(self, analysis_result: dict[str, Any]) -> None:
         """Add industry breach landscape section."""
         logger.info("Adding Industry Breach Landscape section")
@@ -1030,7 +1079,7 @@ and vulnerabilities observed are consistent with those historically used against
                 label_run.font.bold = True
                 label_run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)  # Black
 
-                # Paragraph 3 — prior quarter comparison (red italic, single line)
+                # Paragraph 3 — prior quarter comparison (italic; color by direction, single line)
                 prior_label = str(card.get("prior_label", "")).strip()
                 prior_value = str(card.get("prior_value", "")).strip()
                 change_pct = str(card.get("change_pct", "")).strip()
@@ -1057,7 +1106,9 @@ and vulnerabilities observed are consistent with those historically used against
                 comparison_run.font.size = Pt(8)
                 comparison_run.font.italic = True
                 comparison_run.font.bold = False
-                comparison_run.font.color.rgb = RGBColor(0xDC, 0x35, 0x45)  # Red color for comparison
+                # Color by direction (red up / green down / gray flat|N/A). Gray whenever there is
+                # no real change value to signal on.
+                comparison_run.font.color.rgb = self._change_pct_color(change_pct if has_change else "")
 
         # Spacer after stat cards
         spacer = self.doc.add_paragraph()

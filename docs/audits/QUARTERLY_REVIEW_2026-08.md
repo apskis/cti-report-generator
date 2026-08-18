@@ -62,23 +62,27 @@ Legend: ☐ open · ◐ in progress · ☑ done
 
 ## Tier 2 — Correctness & trust
 
-- ☐ **T2.1 · HIGH · Stat-card `change_pct` is always red.** The color contract the strategic
-  prompt advertises (red +, green −, gray 0%/N/A) is unimplemented — the run is hardcoded red. A
-  good −40% and an honest "N/A" both render alarm-red. `quarterly_report.py:~1060`.
-- ☐ **T2.2 · HIGH · Grounding token-OR hole (Q8/Q12).** `SourceIndex.mentions()`
-  (`gates/grounding.py:55-61`) grounds a name if any 4+ char token appears in the corpus, so a
-  fabricated multi-word victim/actor sharing one common word ("Acme **Genomics**") passes. The
-  stricter exact-substring victim check exists in `quarterly_validation.py` but is advisory-only.
-  _Fix:_ require full-name (not any-token) match for victim/actor grounding in the quarterly path.
-- ☐ **T2.3 · HIGH · Empty-dataset stat cards render ungrounded AI numbers**, and in `enrich` mode
-  Records Exposed is deliberately left as the AI's value. `quarterly_report.py:194-237`.
-  _Fix:_ mark/force N/A when a card is not dataset-grounded.
-- ☐ **T2.4 · MED · No backstop against a fabricated QoQ %** on a baseline-less quarter (Q9
-  residual / C2). If the model ignores the "N/A" instruction the delta renders as real.
-  _Fix:_ force `prior_value`/`change_pct` to N/A when no baseline exists.
-- ☐ **T2.5 · MED · gate1a reconciles the grounded card against the wrong source** — it compares
-  Total Incidents against the Intel471 breach-alert count, not VCDB/HHS → a spurious failed check
-  on every grounded run. `gate1a_statistics.py:455-492`.
+- ☑ **T2.1 · HIGH · Stat-card `change_pct` is always red.** _(done 2026-08-18)_ New
+  `_change_pct_color()` — red +, green −, gray 0%/N/A/unparseable — applied at the render site
+  (was hardcoded red). Gray when there's no change value to signal on.
+- ☑ **T2.2 · HIGH · Grounding token-OR hole (Q8/Q12).** _(done 2026-08-18)_ Added
+  `SourceIndex.mentions_entity()` — whole name OR **all** distinctive tokens (AND, not any) — and
+  used it for quarterly victims + geo actors. `mentions()` is unchanged for other callers (its
+  token tolerance is needed for actor normalization). _Residual:_ a single common-word actor name
+  ("China") is still grounded by its lone token — rare, low-risk.
+- ☑ **T2.3 · HIGH · Empty-dataset stat cards render ungrounded AI numbers.** _(done 2026-08-18)_
+  Ungrounded paths (no dataset, or mode `none`) stamp an honest "NOT grounded in a breach dataset"
+  methodology marker; `enrich` mode forces **Records Exposed** to N/A (it was left as the AI's
+  value). Non-destructive: a compliant model's N/As stand. _(If you'd rather force all ungrounded
+  counts to N/A rather than mark them, it's a one-line change.)_
+- ☑ **T2.4 · MED · No backstop against a fabricated QoQ %.** _(done 2026-08-18)_
+  `_apply_prior_quarter_stats` now forces `prior_value`/`change_pct` to N/A when there is no stored
+  baseline AND no real prior value behind the delta — a legitimate delta (real prior_value) is
+  kept.
+- ☑ **T2.5 · MED · gate1a reconciles the grounded card against the wrong source.** _(done
+  2026-08-18)_ The Intel471 breach-count reconciliation is skipped when the card is dataset-grounded
+  (detected via the generator's methodology stamp), since VCDB/HHS aren't in the gate's tier1_data;
+  the legacy check still runs for ungrounded cards.
 
 ---
 

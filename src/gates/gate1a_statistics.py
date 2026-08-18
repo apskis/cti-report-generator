@@ -455,6 +455,17 @@ def _validate_quarterly_statistics(gate_input: GateInput) -> GateResult:
         breach_landscape = report.get("breach_landscape") or {}
         stat_cards = [c for c in (breach_landscape.get("stat_cards") or []) if isinstance(c, dict)]
 
+        # The Total Incidents card is grounded deterministically from the breach dataset
+        # (VCDB/HHS/HIBP) when available — a different, larger population than the Intel471
+        # breach-alert feed — so reconciling the two produces a guaranteed false variance on
+        # every grounded run. Those datasets are quarterly-only and not in tier1_data, so detect
+        # grounding via the generator's methodology stamp and only run the Intel471 sanity check
+        # when the card is NOT dataset-grounded.
+        methodology = str(breach_landscape.get("stat_methodology", "")).lower()
+        dataset_grounded = (
+            "date-stamped" in methodology or "vcdb" in methodology
+        ) and "not grounded" not in methodology
+
         # Get actual Intel471 breach alerts
         intel471_data = gate_input.tier1_data.get("Intel471", [])
         actual_breach_count = sum(1 for item in intel471_data if "BREACH" in str(item.get("threat_type", "")).upper())
@@ -469,7 +480,12 @@ def _validate_quarterly_statistics(gate_input: GateInput) -> GateResult:
             None,
         )
 
-        if total_incidents_card:
+        if dataset_grounded:
+            logger.info(
+                "Breach count reconciliation skipped: Total Incidents is grounded in the breach "
+                "dataset (VCDB/HHS), a different population than the Intel471 breach-alert feed"
+            )
+        elif total_incidents_card:
             raw_value = str(total_incidents_card.get("value", "0")).strip()
             reported_count = _extract_leading_int(raw_value)
             if reported_count is None:
