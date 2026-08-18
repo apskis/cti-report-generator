@@ -1493,9 +1493,10 @@ Examples:
     parser.add_argument("--debug", action="store_true", help="Enable debug mode with verbose logging output")
     parser.add_argument(
         "--log-file",
-        default="debug.log",
-        help="Base name for the timestamped log file when --debug is set (default: debug.log). "
-        "Logs are saved to logs/ with timestamps and retained for 30 days. "
+        default=None,
+        help="Base name for the timestamped log file when --debug is set. Defaults to the report "
+        "type, so each run gets its own file: logs/quarterly_<timestamp>.log or "
+        "logs/weekly_<timestamp>.log. Logs are retained for 30 days. "
         "Use --log-file '' to disable file logging and log to console only.",
     )
     parser.add_argument(
@@ -1524,8 +1525,16 @@ Examples:
 
     args = parser.parse_args()
 
-    # Configure logging based on debug flag (writes debug.log by default in --debug mode)
-    configure_logging(args.debug, log_file=(args.log_file or None))
+    # Configure logging based on debug flag. Each run gets its own timestamped log file named
+    # after the report type (logs/quarterly_<ts>.log / logs/weekly_<ts>.log) unless --log-file
+    # overrides the base name, or --log-file '' disables file logging (console only).
+    if args.log_file is None:
+        log_base: str | None = f"{args.report_type}.log"
+    elif args.log_file == "":
+        log_base = None
+    else:
+        log_base = args.log_file
+    configure_logging(args.debug, log_file=log_base)
 
     # Validate arguments
     if not args.local and not args.azure:
