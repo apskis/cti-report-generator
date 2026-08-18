@@ -68,3 +68,8 @@ collectors:
     description: "Have I Been Pwned - global consumer/credential breach directory (opt-in; set breach_include_hibp)"
     enabled: false  # off by default: not an industry peer source; also gated by breach_include_hibp
     quarterly_only: true
+
+  - name: ransomware_live
+    description: "ransomware.live - public ransomware leak-site victims (peer-relevant sectors; quarterly only)"
+    enabled: true
+    quarterly_only: true

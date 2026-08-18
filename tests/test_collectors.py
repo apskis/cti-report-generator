@@ -1326,16 +1326,65 @@ class TestHIBPParser:
         assert out[0]["incident_type"] == "Ransomware"
 
 
+class TestRansomwareLiveParser:
+    def test_parses_v2_shape_and_filters_to_relevant_sectors(self):
+        from src.collectors.ransomware_live_collector import parse_ransomware_live
+
+        payload = [
+            {"victim": "Shalina Labs", "group": "lockbit3", "country": "US",
+             "sector": "Healthcare", "discovered": "2026-05-14 09:12:33"},
+            {"victim": "BuyMart", "group": "akira", "country": "DE",
+             "sector": "Retail", "discovered": "2026-05-10"},  # dropped: not a peer sector
+            {"victim": "", "group": "play", "sector": "Healthcare"},  # dropped: no name
+        ]
+        out = parse_ransomware_live(payload)
+        assert len(out) == 1
+        r = out[0]
+        assert r["organization"] == "Shalina Labs"
+        assert r["date"] == "2026-05-14"  # time portion trimmed
+        assert r["incident_type"] == "Ransomware"
+        assert r["source"] == "RansomwareLive"
+        assert r["sector"] == "Healthcare"
+        assert r["threat_actor"] == "lockbit3"
+        assert r["records_exposed"] is None
+
+    def test_parses_v1_field_names_and_wrapped_payload(self):
+        from src.collectors.ransomware_live_collector import parse_ransomware_live
+
+        payload = {"victims": [
+            {"post_title": "Acme Bio", "group_name": "play", "activity": "Biotechnology",
+             "discovered": "2026-06-01"}
+        ]}
+        out = parse_ransomware_live(payload)
+        assert len(out) == 1
+        assert out[0]["organization"] == "Acme Bio"
+        assert out[0]["sector"] == "Pharmaceuticals"  # biotech -> Pharmaceuticals
+        assert out[0]["threat_actor"] == "play"
+
+    def test_activity_to_sector_mapping(self):
+        from src.collectors.ransomware_live_collector import activity_to_sector
+
+        assert activity_to_sector("Health Care Services") == "Healthcare"
+        assert activity_to_sector("Pharmaceutical manufacturing") == "Pharmaceuticals"
+        assert activity_to_sector("Industrial Manufacturing") == "Manufacturing"
+        assert activity_to_sector("Legal Services") == "Professional/Scientific"
+        assert activity_to_sector("Retail") == ""
+        assert activity_to_sector("") == ""
+
+
 class TestBreachCollectorsRegistered:
     def test_registered(self):
         names = list_available_collectors()
-        assert {"vcdb", "hhs_breach", "hibp_breach"} <= set(names)
+        assert {"vcdb", "hhs_breach", "hibp_breach", "ransomware_live"} <= set(names)
 
     def test_enabled_only_for_quarterly(self, mock_credentials):
+        from src.collectors.ransomware_live_collector import RansomwareLiveCollector
         from src.collectors.vcdb_collector import VCDBCollector
 
         assert VCDBCollector(mock_credentials, report_type="quarterly").enabled is True
         assert VCDBCollector(mock_credentials, report_type="weekly").enabled is False
+        assert RansomwareLiveCollector(report_type="quarterly").enabled is True
+        assert RansomwareLiveCollector(report_type="weekly").enabled is False
 
     @pytest.mark.asyncio
     async def test_dataset_source_reads_local_file(self, tmp_path):

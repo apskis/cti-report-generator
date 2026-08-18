@@ -271,6 +271,16 @@ class CollectorConfig:
     hhs_browser_headless: bool = True
     # Have I Been Pwned public breaches endpoint (keyless; a descriptive User-Agent is required).
     hibp_breaches_url: str = "https://haveibeenpwned.com/api/v3/breaches"
+    # ransomware.live — public ransomware leak-site victim tracker (keyless). Grounds the
+    # Ransomware stat card and the ransomware share of the breach landscape with date-stamped,
+    # sector-tagged victim postings. Defaults to the v2 "recent victims" endpoint; point
+    # RANSOMWARE_LIVE_URL at a month/range endpoint for fuller historical coverage. The parser
+    # accepts both the v1 (post_title/group_name/activity) and v2 (victim/group/sector) shapes.
+    ransomware_live_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "RANSOMWARE_LIVE_URL", "https://api.ransomware.live/v2/victims/recent"
+        )
+    )
 
     # Retry settings
     max_retries: int = 3
