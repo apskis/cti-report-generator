@@ -281,6 +281,14 @@ class CollectorConfig:
             "RANSOMWARE_LIVE_URL", "https://api.ransomware.live/v2/victims/recent"
         )
     )
+    # SEC EDGAR full-text search (keyless; a descriptive User-Agent is required, <=10 req/s). Pulls
+    # peer public-company Form 8-K Item 1.05 "Material Cybersecurity Incident" disclosures — a
+    # dated, authoritative stream of peer breach disclosures — for the quarterly breach landscape.
+    # The query phrase is the Item 1.05 heading; override the base URL if the endpoint moves.
+    sec_edgar_fts_url: str = field(
+        default_factory=lambda: os.environ.get("SEC_EDGAR_FTS_URL", "https://efts.sec.gov/LATEST/search-index")
+    )
+    sec_edgar_fts_query: str = '"Material Cybersecurity Incidents"'
 
     # Retry settings
     max_retries: int = 3

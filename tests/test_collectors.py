@@ -1372,10 +1372,54 @@ class TestRansomwareLiveParser:
         assert activity_to_sector("") == ""
 
 
+class TestSEC8KParser:
+    def test_parses_efts_response_and_dedupes_by_accession(self):
+        from src.collectors.sec_8k_collector import parse_sec_8k
+
+        payload = {"hits": {"hits": [
+            {"_id": "0001234567-26-000123:a.htm",
+             "_source": {"display_names": ["ACME BIO INC  (ABI)  (CIK 0001234567)"],
+                         "file_date": "2026-05-14", "ciks": ["0001234567"]}},
+            {"_id": "0001234567-26-000123:b.htm",  # same accession -> deduped to one incident
+             "_source": {"display_names": ["ACME BIO INC  (ABI)"], "file_date": "2026-05-14",
+                         "ciks": ["0001234567"]}},
+            {"_id": "0009999999-26-000009:c.htm",
+             "_source": {"display_names": ["MEGACORP  (MEGA)  (CIK 0009999999)"],
+                         "file_date": "2026-06-02", "ciks": ["0009999999"]}},
+            {"_id": "x:d", "_source": {"display_names": [], "file_date": "2026-06-03"}},  # no name -> skipped
+        ]}}
+        out = parse_sec_8k(payload)
+        assert len(out) == 2
+        assert out[0]["organization"] == "ACME BIO INC"
+        assert out[0]["date"] == "2026-05-14"
+        assert out[0]["source"] == "SEC8K"
+        assert out[0]["incident_type"] == "Breach"
+        assert out[0]["country"] == "US"
+        assert out[0]["url"] == "https://www.sec.gov/Archives/edgar/data/1234567/000123456726000123/"
+        assert out[1]["organization"] == "MEGACORP"
+
+    def test_empty_and_malformed_payload(self):
+        from src.collectors.sec_8k_collector import parse_sec_8k
+
+        assert parse_sec_8k({}) == []
+        assert parse_sec_8k({"hits": {"hits": []}}) == []
+        assert parse_sec_8k(None) == []
+
+    def test_build_url_scopes_to_window(self):
+        from datetime import datetime
+
+        from src.collectors.sec_8k_collector import SEC8KCollector
+
+        c = SEC8KCollector(report_type="quarterly", collection_window=(datetime(2026, 4, 1), datetime(2026, 6, 30)))
+        url = c._build_url()
+        assert "startdt=2026-04-01" in url and "enddt=2026-06-30" in url
+        assert "forms=8-K" in url
+
+
 class TestBreachCollectorsRegistered:
     def test_registered(self):
         names = list_available_collectors()
-        assert {"vcdb", "hhs_breach", "hibp_breach", "ransomware_live"} <= set(names)
+        assert {"vcdb", "hhs_breach", "hibp_breach", "ransomware_live", "sec_8k"} <= set(names)
 
     def test_enabled_only_for_quarterly(self, mock_credentials):
         from src.collectors.ransomware_live_collector import RansomwareLiveCollector

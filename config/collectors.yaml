@@ -73,3 +73,8 @@ collectors:
     description: "ransomware.live - public ransomware leak-site victims (peer-relevant sectors; quarterly only)"
     enabled: true
     quarterly_only: true
+
+  - name: sec_8k
+    description: "SEC EDGAR 8-K Item 1.05 - peer public-company material cyber-incident disclosures (quarterly only)"
+    enabled: true
+    quarterly_only: true
