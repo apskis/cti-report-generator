@@ -525,12 +525,26 @@ class TestQuarterlyRobustness:
             },
             {"breach_landscape": {"stat_cards": [{"value": 1, "change_pct": "+high%"}]}},
             {"incidents_by_type": [{"type": "X", "current_count": 3, "notable_example": "Y: z"}]},
+            # Aug 2026 review (T1.2) — sibling fields that were unguarded and crashed the .docx:
+            {"breach_landscape": {"incidents_by_type": ["Ransomware at Covenant", "Hacking at X"]}},
+            {"recommendations": ["Patch immediately", "Audit third-party vendors"]},
+            {"recommendations": {"items": ["Patch immediately", "Audit vendors"]}},
+            {"geopolitical_threats": [{"name": "China", "exposure": None, "threat_level": None}]},
         ],
     )
     def test_malformed_strategic_analysis_does_not_raise(self, generator, analysis):
         doc = generator.generate(analysis)
         assert doc is not None
         assert len(doc.paragraphs) > 0
+
+    # ----- Aug 2026 review (B2): a bare-list recommendations payload renders, not "unavailable" -----
+
+    def test_bare_list_recommendations_render(self, generator):
+        analysis = {"recommendations": ["Patch the ServiceNow instances this week", "Rotate exposed keys"]}
+        doc = generator.generate(analysis)
+        text = _get_document_text(doc)
+        assert "Patch the ServiceNow instances this week" in text
+        assert "No recommendations generated" not in text
 
     # ----- Q18: risk-card trend arrows map to a direction, not "Unchanged" -----
 

@@ -101,8 +101,13 @@ async def _run_gate_pass(report_type, data_by_source, osint_articles, period_day
     return publish_ok, gate_info
 
 
-async def _upload_report(report_type: str, analysis: dict, credentials: dict) -> dict:
-    """Render the .docx and upload it to blob storage; raise on failure."""
+async def _upload_report(
+    report_type: str, analysis: dict, credentials: dict, breach_dataset=None, reporting_period=None
+) -> dict:
+    """Render the .docx and upload it to blob storage; raise on failure.
+
+    breach_dataset / reporting_period are quarterly-only and ground the breach stat cards.
+    """
     storage_account_name = credentials["storage_account_name"]
     storage_account_key = credentials["storage_account_key"]
     if not storage_account_name or not storage_account_key:
@@ -114,6 +119,8 @@ async def _upload_report(report_type: str, analysis: dict, credentials: dict) ->
         analysis_result=analysis,
         storage_account_name=storage_account_name,
         storage_account_key=storage_account_key,
+        breach_dataset=breach_dataset,
+        reporting_period=reporting_period,
     )
     if not report_result.get("success", False):
         raise RuntimeError(f"Report generation failed: {report_result.get('error', 'Unknown error')}")
@@ -296,6 +303,22 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
     try:
         credentials, collector_results, data_by_source = await _fetch_credentials_and_collect("quarterly")
 
+        # Pin the covered quarter to the most-recent COMPLETE calendar quarter (breach reviews
+        # publish after the quarter they cover). Grounds the breach stat cards and names the file.
+        from src.core.reporting_period import (
+            BREACH_DATASET_SOURCES,
+            current_quarter,
+            make_period,
+            merge_breach_dataset,
+            previous_quarter,
+        )
+
+        reporting_period = make_period(*previous_quarter(*current_quarter(date.today())))
+        logger.info(
+            f"Quarterly reporting period: {reporting_period.label} "
+            f"({reporting_period.start} to {reporting_period.end})"
+        )
+
         intel471_data = data_by_source.get("Intel471", [])
         crowdstrike_data = data_by_source.get("CrowdStrike", [])
 
@@ -351,7 +374,18 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
             return _blocked_response("quarterly", gate_info)
 
         logger.info("Generating Quarterly Word document and uploading to Azure Blob Storage...")
-        report_result = await _upload_report("quarterly", analysis, credentials)
+        breach_dataset = merge_breach_dataset(data_by_source)
+        logger.info(
+            f"Breach dataset for grounding: {len(breach_dataset)} records from "
+            f"{', '.join(BREACH_DATASET_SOURCES)}"
+        )
+        report_result = await _upload_report(
+            "quarterly",
+            analysis,
+            credentials,
+            breach_dataset=breach_dataset,
+            reporting_period=reporting_period,
+        )
 
         logger.info(f"Quarterly report generated successfully: {report_result['filename']}")
         return _success_response(

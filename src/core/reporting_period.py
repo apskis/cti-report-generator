@@ -110,6 +110,19 @@ def resolve_period(year: int | None, quarter: int | str | None, today: date) -> 
     return make_period(y, q)
 
 
+# Breach-dataset collectors (quarterly-only) whose date-stamped records ground the breach stat
+# cards. Shared by the local runner and the deployed Function so both wire the same sources.
+BREACH_DATASET_SOURCES = ("VCDB", "HHS", "HIBP")
+
+
+def merge_breach_dataset(data_by_source: dict) -> list[dict]:
+    """Combine the breach-dataset collectors' records into one list for grounding."""
+    merged: list[dict] = []
+    for source in BREACH_DATASET_SOURCES:
+        merged.extend(data_by_source.get(source, []) or [])
+    return merged
+
+
 _RECORD_DATE_KEYS = ("date", "published_date", "published", "last_activity", "created", "reportDate", "updated")
 
 

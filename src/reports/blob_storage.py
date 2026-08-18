@@ -180,7 +180,12 @@ def generate_sas_url(
 
 
 def create_and_upload_report(
-    report_type: str, analysis_result: dict[str, Any], storage_account_name: str, storage_account_key: str
+    report_type: str,
+    analysis_result: dict[str, Any],
+    storage_account_name: str,
+    storage_account_key: str,
+    breach_dataset: list[dict[str, Any]] | None = None,
+    reporting_period: Any = None,
 ) -> dict[str, Any]:
     """
     Generate a report and upload it to Azure Blob Storage.
@@ -190,6 +195,10 @@ def create_and_upload_report(
         analysis_result: Dictionary containing analysis results
         storage_account_name: Azure Storage account name
         storage_account_key: Azure Storage account key
+        breach_dataset: Quarterly only — date-stamped breach records (VCDB/HHS/HIBP) that ground
+            the breach stat cards. Wired onto the generator before generate() when provided.
+        reporting_period: Quarterly only — the ReportingPeriod the report covers, used to scope
+            the breach grounding and name the file.
 
     Returns:
         Dictionary with keys: filename, url, success, error (if failed)
@@ -203,6 +212,14 @@ def create_and_upload_report(
         generator = get_report_generator(report_type)
         if generator is None:
             return {"filename": None, "url": None, "success": False, "error": f"Unknown report type: {report_type}"}
+
+        # Quarterly grounding: pin the period and feed the breach dataset before rendering, so the
+        # breach stat cards are grounded in real incidents instead of the AI's estimate. Mirrors
+        # the local runner (scripts/run_local.py); without this the deployed report ran ungrounded.
+        if reporting_period is not None and hasattr(generator, "set_reporting_period"):
+            generator.set_reporting_period(reporting_period)
+        if breach_dataset is not None and hasattr(generator, "set_breach_dataset"):
+            generator.set_breach_dataset(breach_dataset)
 
         # Generate report
         generator.generate(analysis_result)

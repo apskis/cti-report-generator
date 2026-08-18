@@ -166,11 +166,24 @@ class HHSBreachCollector(BaseCollector):
                 collector_config.hhs_portal_url, headless=collector_config.hhs_browser_headless
             )
         if text is None or not looks_like_hhs_csv(text):
-            logger.info("HHS: no CSV obtained this run")
-            return CollectorResult(source=self.source_name, success=True, data=[], record_count=0)
+            # Distinct FAILURE, not "zero breaches this quarter": none of the sources yielded HHS
+            # CSV. Return success=False (not an empty success) so a silent zero in the
+            # healthcare-heavy breach landscape is visible rather than looking like a quiet
+            # quarter. Fix by pinning HHS_BREACH_CSV_URL to a direct CSV or local file.
+            attempted = "direct/local + JSF auto-export" if direct else "JSF auto-export"
+            if collector_config.hhs_use_browser:
+                attempted += " + headless browser"
+            msg = (
+                f"HHS: no CSV obtained from any source ({attempted}); healthcare breaches will be "
+                "ABSENT this run. Set HHS_BREACH_CSV_URL to a direct CSV URL or local file."
+            )
+            logger.warning(msg)
+            return CollectorResult(source=self.source_name, success=False, data=[], error=msg, record_count=0)
         try:
             records = parse_hhs_csv(text)
             records = filter_records_to_window(records, self.collection_window)
+            # A valid CSV that parses to zero in-window records IS a real "quiet quarter" — kept as
+            # a success, distinct from the no-CSV failure above.
             logger.info(f"HHS: {len(records)} healthcare breach notifications")
             return CollectorResult(source=self.source_name, success=True, data=records, record_count=len(records))
         except Exception as e:

@@ -746,15 +746,9 @@ No direct threats to the organization were identified this quarter; however, the
 _PERIOD_FILTERED_SOURCES = {"Intel471", "OSINT"}
 
 # Date-stamped breach datasets that ground the quarterly breach stat cards.
-_BREACH_DATASET_SOURCES = ("VCDB", "HHS", "HIBP")
-
-
-def _merge_breach_dataset(data_by_source: dict) -> list[dict]:
-    """Combine the breach-dataset collectors' records into one list for grounding."""
-    merged: list[dict] = []
-    for source in _BREACH_DATASET_SOURCES:
-        merged.extend(data_by_source.get(source, []) or [])
-    return merged
+# Breach-dataset merge is shared with the deployed Function (function_app.py) so both wire the
+# same sources into the report's breach grounding.
+from src.core.reporting_period import merge_breach_dataset as _merge_breach_dataset  # noqa: E402
 
 
 def _filter_data_to_period(data_by_source: dict, period) -> dict:

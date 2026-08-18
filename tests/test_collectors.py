@@ -1180,6 +1180,52 @@ class TestHHSDownloadDecode:
         assert isinstance(decode_csv_bytes(b"\xff\xfe\x00\x80\x81\xffabc"), str)
 
 
+class TestHHSFailureSignal:
+    """No-CSV must be a distinct failure, not an empty success that looks like a quiet quarter."""
+
+    @pytest.mark.asyncio
+    async def test_no_csv_returns_failure_not_empty_success(self, monkeypatch):
+        import dataclasses
+
+        from src.collectors import hhs_breach_collector as mod
+        from src.core.config import collector_config
+
+        # No pinned URL and browser disabled; the JSF auto-export misses -> success=False.
+        patched = dataclasses.replace(collector_config, hhs_breach_csv_url="", hhs_use_browser=False)
+        monkeypatch.setattr(mod, "collector_config", patched)
+
+        async def _none(*a, **k):
+            return None
+
+        monkeypatch.setattr(mod, "fetch_hhs_breach_csv", _none)
+
+        res = await mod.HHSBreachCollector(report_type="quarterly").collect("quarterly")
+        assert res.success is False           # NOT an empty success
+        assert res.record_count == 0
+        assert "HHS" in (res.error or "")
+
+    @pytest.mark.asyncio
+    async def test_valid_csv_with_zero_in_window_is_success(self, monkeypatch):
+        import dataclasses
+
+        from src.collectors import hhs_breach_collector as mod
+        from src.core.config import collector_config
+
+        patched = dataclasses.replace(collector_config, hhs_breach_csv_url="", hhs_use_browser=False)
+        monkeypatch.setattr(mod, "collector_config", patched)
+
+        # A valid CSV whose rows all fall outside the window -> genuine "quiet quarter" = success.
+        async def _old_csv(*a, **k):
+            return (
+                "Name of Covered Entity,State,Individuals Affected,Breach Submission Date,Type of Breach\n"
+                "Old Clinic,CA,900,01/15/2019,Hacking/IT Incident\n"
+            )
+
+        monkeypatch.setattr(mod, "fetch_hhs_breach_csv", _old_csv)
+        res = await mod.HHSBreachCollector(report_type="quarterly").collect("quarterly")
+        assert res.success is True            # valid CSV, just no in-window rows
+
+
 class TestHHSBrowserFetch:
     @pytest.mark.asyncio
     async def test_returns_none_when_playwright_absent(self, monkeypatch):

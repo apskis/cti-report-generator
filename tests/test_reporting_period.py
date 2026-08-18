@@ -7,13 +7,33 @@ from datetime import date
 import pytest
 
 from src.core.reporting_period import (
+    BREACH_DATASET_SOURCES,
     current_quarter,
     make_period,
+    merge_breach_dataset,
     parse_quarter,
     previous_quarter,
     quarter_bounds,
     resolve_period,
 )
+
+
+class TestMergeBreachDataset:
+    def test_merges_only_breach_sources(self):
+        data = {
+            "VCDB": [{"organization": "A"}],
+            "HHS": [{"organization": "B"}, {"organization": "C"}],
+            "HIBP": [],
+            "Intel471": [{"threat_type": "REPORT"}],  # not a breach dataset -> excluded
+            "OSINT": [{"title": "news"}],
+        }
+        merged = merge_breach_dataset(data)
+        assert [r["organization"] for r in merged] == ["A", "B", "C"]
+        assert set(BREACH_DATASET_SOURCES) == {"VCDB", "HHS", "HIBP"}
+
+    def test_handles_missing_and_none_sources(self):
+        assert merge_breach_dataset({}) == []
+        assert merge_breach_dataset({"VCDB": None, "HHS": [{"organization": "X"}]}) == [{"organization": "X"}]
 
 
 class TestQuarterBounds:

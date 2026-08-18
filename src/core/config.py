@@ -258,9 +258,11 @@ class CollectorConfig:
     # scientific (biotech R&D), 62 health care. Empty tuple = no industry filter.
     vcdb_relevant_naics_prefixes: tuple = ("31", "32", "33", "54", "62")
     # HHS OCR "Wall of Shame" healthcare breaches (>=500 individuals).
-    # Leave hhs_breach_csv_url empty to auto-export from the JSF portal (hhs_portal_url);
-    # or set it to a direct CSV URL / local file path to bypass the portal scrape.
-    hhs_breach_csv_url: str = ""
+    # Leave hhs_breach_csv_url empty to auto-export from the JSF portal (hhs_portal_url); or set
+    # HHS_BREACH_CSV_URL to a direct CSV URL / local file path to bypass the fragile portal scrape.
+    # Pinning this is strongly recommended for a deployed environment (no Chromium, and the JSF
+    # auto-export is unreliable) — otherwise HHS can silently contribute zero healthcare breaches.
+    hhs_breach_csv_url: str = field(default_factory=lambda: os.environ.get("HHS_BREACH_CSV_URL", ""))
     hhs_portal_url: str = "https://ocrportal.hhs.gov/ocr/breach/breach_report.jsf"
     # The portal is JS-rendered, so a headless browser (Playwright) is used to export the
     # CSV. Requires: pip install playwright && playwright install chromium. Set to False to

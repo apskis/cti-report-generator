@@ -1066,6 +1066,10 @@ and vulnerabilities observed are consistent with those historically used against
         # COMPONENT 4 — Incidents by type. Accept it nested under breach_landscape
         # (current AI schema) OR at the top level of the analysis (docstring/tests).
         incidents = breach_data.get("incidents_by_type") or analysis_result.get("incidents_by_type", [])
+        # Guard against the AI emitting a list of strings (weekly-schema habit) — the row loop
+        # below calls incident.get(...), which would crash on a str. Mirrors the stat-card and
+        # geopolitical guards.
+        incidents = [i for i in incidents if isinstance(i, dict)]
         current_quarter_label = breach_data.get("current_quarter_label", "Current")
         prior_quarter_label = breach_data.get("prior_quarter_label", "Prior")
 
@@ -1481,7 +1485,9 @@ and vulnerabilities observed are consistent with those historically used against
             # both (was always falling through to "MEDIUM" because only threat_level was read).
             threat_level = str(country_data.get("threat_level") or country_data.get("level") or "MEDIUM").upper()
             primary_vector = country_data.get("vector", "Multiple vectors")
-            exposure = country_data.get("exposure", "MEDIUM").upper()
+            # Present-but-null "exposure" returns None; the .get default only fires on a missing
+            # key. str(... or "MEDIUM") mirrors the threat_level guard above (was a NoneType crash).
+            exposure = str(country_data.get("exposure") or "MEDIUM").upper()
             relevance_bullets = country_data.get("relevance", [])
             activity_bullets = country_data.get("activity", [])
             risk_bullets = country_data.get("risk", [])
@@ -1998,12 +2004,25 @@ and vulnerabilities observed are consistent with those historically used against
         rec_heading.paragraph_format.space_before = Pt(12)
         rec_heading.paragraph_format.space_after = Pt(6)
 
-        # Get recommendations data
+        # Get recommendations data. Accept both the {"items": [...], "intro_note": ...} object
+        # and a bare list of recommendations (list of dicts, or the old list-of-strings) — a bare
+        # list previously fell through to "unavailable" and silently dropped real recommendations.
         recommendations = analysis_result.get("recommendations", {})
+        if isinstance(recommendations, list):
+            items = recommendations
+            intro_note = ""
+        elif isinstance(recommendations, dict):
+            items = recommendations.get("items", [])
+            intro_note = recommendations.get("intro_note", "")
+        else:
+            items = []
+            intro_note = ""
+        # Normalize each item to a dict so the render loop's .get(...) never crashes on a
+        # non-dict (a list-of-strings becomes a body-only box).
+        items = [it if isinstance(it, dict) else {"body": str(it)} for it in items if it]
 
         # If missing or items is empty, render unavailable message
-        items = recommendations.get("items", []) if isinstance(recommendations, dict) else []
-        if not recommendations or not items:
+        if not items:
             logger.warning("recommendations missing or items empty")
             unavailable_para = self.doc.add_paragraph()
             unavailable_run = unavailable_para.add_run("No recommendations generated for this reporting period.")
@@ -2015,8 +2034,7 @@ and vulnerabilities observed are consistent with those historically used against
             spacer.paragraph_format.space_after = Pt(6)
             return
 
-        # Component 2 — Italic intro note
-        intro_note = recommendations.get("intro_note", "")
+        # Component 2 — Italic intro note (computed above; absent for a bare-list payload)
         if intro_note:
             intro_para = self.doc.add_paragraph()
             intro_para.paragraph_format.space_before = Pt(0)
@@ -2029,8 +2047,8 @@ and vulnerabilities observed are consistent with those historically used against
 
         # Component 3 — Recommendation boxes
         for index, item in enumerate(items, start=1):
-            title = item.get("title", "")
-            body = item.get("body", "")
+            title = str(item.get("title", ""))
+            body = str(item.get("body", ""))
 
             # Create single-cell table for box
             table = self.doc.add_table(rows=1, cols=1)
