@@ -69,7 +69,13 @@ def _veris_date(timeline: dict) -> str:
     year = inc.get("year")
     if not year:
         return ""
-    month = inc.get("month") or 1
+    # Require a real month: a year-only VERIS incident used to default to month=1, which silently
+    # bucketed every imprecise incident into Q1 and starved Q2-Q4. Without a month we cannot place
+    # it in a quarter, so return "" (the record is then excluded from quarter bucketing) rather
+    # than mis-attribute it. Day precision does not affect the quarter, so day still defaults to 1.
+    month = inc.get("month")
+    if not month:
+        return ""
     day = inc.get("day") or 1
     try:
         return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"

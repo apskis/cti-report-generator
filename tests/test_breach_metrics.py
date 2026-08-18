@@ -39,6 +39,23 @@ class TestDedupe:
         recs = [_rec("", "", records=1), _rec("", "", records=2)]
         assert len(dedupe_breaches(recs)) == 2
 
+    def test_anonymized_same_date_victims_not_collapsed(self):
+        # T3.1: distinct anonymized victims sharing a date used to collapse to one, undercounting.
+        recs = [_rec("Undisclosed entity", "2026-04-10", records=100) for _ in range(5)]
+        assert len(dedupe_breaches(recs)) == 5
+        # "Unknown" placeholder is treated the same.
+        assert len(dedupe_breaches([_rec("Unknown", "2026-04-10") for _ in range(3)])) == 3
+
+    def test_named_org_dedups_across_suffix_variants(self):
+        # T3.1: same named victim in different legal-suffix forms + casing collapses.
+        recs = [
+            _rec("Acme Health, Inc.", "2026-04-10", records=100, source="VCDB"),
+            _rec("acme health inc", "2026-04-10", records=500, source="HHS"),
+        ]
+        out = dedupe_breaches(recs)
+        assert len(out) == 1
+        assert out[0]["records_exposed"] == 500
+
 
 class TestBucket:
     def test_bucket_keeps_only_in_period(self):
@@ -86,8 +103,17 @@ class TestCompute:
             _rec("Factory", "2026-04-02", records=1_000, sector="Manufacturing"),
         ]
         m = compute_breach_metrics(recs)
+        # Total impact is the per-incident sum, sector-weighted (unaffected by the sample floor).
         assert m["est_impact_usd"] == 9_770_000 + 4_730_000
-        assert m["avg_cost_per_breach_usd"] == (9_770_000 + 4_730_000) / 2
+        # avg is floored to the default here: only 2 incidents (< the T3.3 sample floor of 5).
+        assert m["avg_cost_per_breach_usd"] == 4_880_000.0
+
+    def test_avg_uses_sector_weighting_once_sample_is_large_enough(self):
+        # T3.3: >= 5 incidents -> the sector-weighted per-breach average is trusted for the
+        # enrich rescale; below that it falls back to the flat default (tested above).
+        recs = [_rec(f"H{i}", "2026-04-01", records=1_000, sector="Healthcare") for i in range(5)]
+        m = compute_breach_metrics(recs)
+        assert m["avg_cost_per_breach_usd"] == 9_770_000  # all healthcare, sample >= floor
 
     def test_unknown_sector_uses_default(self):
         recs = [_rec("X", "2026-04-01", records=1_000, sector="")]

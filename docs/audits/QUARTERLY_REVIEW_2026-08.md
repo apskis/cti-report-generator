@@ -88,14 +88,18 @@ Legend: ☐ open · ◐ in progress · ☑ done
 
 ## Tier 3 — Breach-data accuracy
 
-- ☐ **T3.1 · MED · Dedup collapses distinct anonymized victims sharing a date.** Key is
-  `(organization.lower(), date)`; collectors emit `"Undisclosed entity"`, so N unnamed same-date
-  VCDB breaches dedupe to one. Cross-source dedup is also largely ineffective (different names /
-  date semantics → double-counts). `breach_metrics.py:119-135`.
-- ☐ **T3.2 · MED · VCDB year-only / month-only dates default to Jan-01** → imprecise incidents all
-  land in Q1, inflating it. `vcdb_collector.py:66-77`.
-- ☐ **T3.3 · LOW-MED · Enrich-mode impact** multiplies a live count by a sector average derived
-  from as few as 3 incidents — needs a sample-size floor before trusting the weighting.
+- ☑ **T3.1 · MED · Dedup collapses distinct anonymized victims sharing a date.** _(done
+  2026-08-18)_ Placeholder orgs (`Undisclosed entity`, `Unknown`, …) are treated as identity-less
+  and never merged; named orgs dedup on a normalized key (lowercased, punctuation- and
+  legal-suffix-stripped) so `Acme Health, Inc.` and `acme health inc` collide across sources.
+- ☑ **T3.2 · MED · VCDB year-only / month-only dates default to Jan-01.** _(done 2026-08-18)_
+  `_veris_date` now requires a real month; a year-only incident returns `""` (excluded from quarter
+  bucketing) instead of being mis-attributed to Q1. Day still defaults to 1 (doesn't affect the
+  quarter).
+- ☑ **T3.3 · LOW-MED · Enrich-mode impact sample floor.** _(done 2026-08-18)_ The sector-weighted
+  per-breach average is trusted only at ≥ 5 incidents (`_MIN_SAMPLE_FOR_SECTOR_AVG`); below that the
+  enrich rescale falls back to the flat default so 3 incidents can't set the average for a much
+  larger live count.
 
 ---
 

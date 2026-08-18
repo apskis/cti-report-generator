@@ -25,8 +25,31 @@ Common record schema (what each collector emits):
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import Any
+
+# Org strings that carry no identity — an anonymized/placeholder victim. Distinct anonymized
+# breaches must never dedupe into one just because they share a date.
+_PLACEHOLDER_ORGS = {
+    "", "undisclosed entity", "undisclosed", "unknown", "unnamed", "anonymous", "n/a", "na",
+    "redacted", "confidential", "not disclosed", "unspecified",
+}
+
+# Trailing legal-entity suffixes stripped when normalizing an org name for dedup, so
+# "Acme Health, Inc." and "Acme Health Inc" collide (within and across sources).
+_ORG_SUFFIXES = {
+    "inc", "llc", "ltd", "plc", "corp", "corporation", "co", "company", "gmbh", "sa", "ag",
+    "srl", "spa", "nv", "bv", "lp", "llp", "pllc", "sas", "oy", "ab", "as",
+}
+
+
+def _normalize_org(org: str) -> str:
+    """Lowercase, strip punctuation and trailing legal suffixes, collapse whitespace — a
+    conservative canonical form so the same named victim dedups across sources."""
+    t = re.sub(r"[^a-z0-9 ]+", " ", (org or "").lower())
+    words = [w for w in t.split() if w and w not in _ORG_SUFFIXES]
+    return " ".join(words)
 
 # Est. Total Impact is estimated per INCIDENT, not per record. A per-record multiplier
 # explodes on mega-breaches (a 100M-record dump x $/record yields a nonsense figure,
@@ -34,6 +57,11 @@ from typing import Any
 # publishes an average TOTAL cost per breach, which is stable across breach sizes — that
 # is the basis here: sum a per-breach average, weighted by each incident's sector.
 DEFAULT_COST_PER_BREACH_USD = 4_880_000.0  # IBM global average total cost per breach
+
+# Minimum dataset incidents before the sector-weighted per-breach average is trusted for the
+# enrich-mode rescale. Below this, a handful of incidents (e.g. 3 healthcare rows at ~$9.8M each)
+# would set the per-breach average for a much larger live count, so fall back to the flat default.
+_MIN_SAMPLE_FOR_SECTOR_AVG = 5
 
 # Approximate average total cost per breach by sector (IBM, recent editions). Healthcare
 # runs highest; used to weight a healthcare-heavy peer set instead of a flat average.
@@ -116,12 +144,15 @@ def dedupe_breaches(records: list[dict]) -> list[dict]:
     for rec in records:
         if not isinstance(rec, dict):
             continue
-        org = str(rec.get("organization", "")).strip().lower()
+        raw_org = str(rec.get("organization", "")).strip().lower()
         d = _parse_date(rec.get("date"))
-        key = (org, d.isoformat() if d else "")
-        if not org and d is None:
-            # Undedupable (no identity) — keep as-is under a unique key.
-            key = ("", f"_{len(order)}")
+        norm_org = _normalize_org(raw_org)
+        if raw_org in _PLACEHOLDER_ORGS or not norm_org:
+            # Anonymized/placeholder victim carries no identity — never merge distinct ones
+            # (they previously collapsed whenever they shared a date, undercounting the quarter).
+            key = ("", f"_anon_{len(order)}")
+        else:
+            key = (norm_org, d.isoformat() if d else "")
         if key not in best:
             best[key] = rec
             order.append(key)
@@ -189,7 +220,11 @@ def compute_breach_metrics(
             records_known = True
 
     est_impact_usd = sum(per_breach_costs)
-    avg_cost_per_breach_usd = (est_impact_usd / total) if total else default_cost_per_breach_usd
+    # Only trust the sector-weighted per-breach average when the sample is large enough; a tiny
+    # dataset falls back to the flat default so the enrich rescale isn't driven by 3 incidents.
+    avg_cost_per_breach_usd = (
+        est_impact_usd / total if total >= _MIN_SAMPLE_FOR_SECTOR_AVG else default_cost_per_breach_usd
+    )
 
     notable = sorted(
         (r for r in records if isinstance(r.get("records_exposed"), (int, float))),

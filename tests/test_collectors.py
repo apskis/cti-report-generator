@@ -1101,6 +1101,15 @@ class TestVCDBParser:
         assert len(out) == 1
         assert out[0]["incident_type"] == "Data Exposure"
 
+    def test_year_only_date_is_empty_not_jan_01(self):
+        # T3.2: a year-only VERIS incident must not default to 2026-01-01 (which mis-buckets every
+        # imprecise incident into Q1). No real month -> empty date, excluded from quarter bucketing.
+        from src.collectors.vcdb_collector import _veris_date
+
+        assert _veris_date({"incident": {"year": 2026}}) == ""
+        assert _veris_date({"incident": {"year": 2026, "month": 5}}) == "2026-05-01"
+        assert _veris_date({"incident": {"year": 2026, "month": 5, "day": 20}}) == "2026-05-20"
+
 
 class TestHHSParser:
     def test_parses_csv_rows(self):
