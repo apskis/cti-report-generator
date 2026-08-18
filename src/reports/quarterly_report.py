@@ -213,6 +213,12 @@ class QuarterlyReportGenerator(BaseReportGenerator):
                     "counts and impact as indicative, not authoritative."
                 )
 
+        # Ledger stash: what the quarter's metrics were computed from, persisted by
+        # _save_current_risk_assessment so next quarter reads a real prior value + basis.
+        self._last_grounded_metrics = None
+        self._last_grounding_mode = "ungrounded"
+        self._last_dataset_incidents = 0
+
         records = getattr(self, "breach_dataset", None)
         period = getattr(self, "reporting_period", None)
         if not records or period is None:
@@ -227,13 +233,19 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         from src.core.config import collector_config
 
         scoped = scope_breaches(records, period.start, period.end)
+        self._last_dataset_incidents = len(scoped)
         metrics = compute_breach_metrics(
             scoped, default_cost_per_breach_usd=collector_config.breach_cost_per_breach_usd
         )
         mode = apply_metrics_to_stat_cards(analysis_result, metrics)
         if mode == "none":
+            self._last_grounding_mode = "none"
             _mark_ungrounded("dataset had no incidents in the reporting window")
             return
+
+        # Grounded (full/enrich): record the canonical metrics + mode for the ledger.
+        self._last_grounded_metrics = metrics
+        self._last_grounding_mode = mode
 
         n = metrics["total_incidents"]
         logger.info(
@@ -412,6 +424,18 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         }
         if breach_stats:
             entry["breach_stats"] = breach_stats
+        # Ledger: canonical grounded metrics (stable keys) + the basis they were computed on, so
+        # next quarter's QoQ reads real numbers and can tell a trend from a basis change.
+        from src.core import quarter_ledger
+
+        metrics_block = quarter_ledger.metrics_block(getattr(self, "_last_grounded_metrics", None))
+        if metrics_block:
+            entry["metrics"] = metrics_block
+        entry["basis"] = quarter_ledger.basis_block(
+            getattr(self, "_last_grounding_mode", "ungrounded"),
+            getattr(self, "_last_dataset_incidents", 0),
+            self.created_at.isoformat(),
+        )
         history[quarter_key] = entry
 
         self._save_historical_data(history)
@@ -466,16 +490,20 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         year = self._get_year()
         prev_year, prev_quarter = self._calculate_previous_quarter(year, self.quarter)
         prev_key = self._get_quarter_key(prev_year, prev_quarter)
-        prior_stats = (self._load_historical_data().get(prev_key) or {}).get("breach_stats") or {}
+        from src.core import quarter_ledger
+
+        prev_entry = self._load_historical_data().get(prev_key) or {}
+        has_prior = bool(prev_entry.get("breach_stats") or prev_entry.get("metrics"))
 
         na_tokens = {"", "n/a", "na", "none", "null"}
         for card in breach.get("stat_cards") or []:
             if not isinstance(card, dict):
                 continue
             label = str(card.get("label", "")).strip()
-            if prior_stats and label in prior_stats:
-                # Deterministic override from the stored prior quarter.
-                prior_value = prior_stats[label]
+            # Resilient lookup: label-keyed display value first, then the canonical metrics block
+            # (so a relabeled or metrics-only prior entry still yields a prior value).
+            prior_value = quarter_ledger.prior_value_for_label(prev_entry, label)
+            if prior_value not in (None, ""):
                 card["prior_value"] = prior_value
                 card["change_pct"] = self._compute_change_pct(card.get("value", ""), prior_value)
             elif str(card.get("prior_value", "")).strip().lower() in na_tokens:
@@ -484,7 +512,7 @@ class QuarterlyReportGenerator(BaseReportGenerator):
                 # legitimate delta always carries a real prior_value and is left as-is.
                 card["prior_value"] = "N/A"
                 card["change_pct"] = "N/A"
-        if prior_stats:
+        if has_prior:
             logger.info(f"Applied prior-quarter ({prev_key}) breach stats to stat cards")
 
     @classmethod
