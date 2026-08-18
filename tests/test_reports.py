@@ -530,6 +530,15 @@ class TestQuarterlyRobustness:
             {"recommendations": ["Patch immediately", "Audit third-party vendors"]},
             {"recommendations": {"items": ["Patch immediately", "Audit vendors"]}},
             {"geopolitical_threats": [{"name": "China", "exposure": None, "threat_level": None}]},
+            # Aug 2026 review (T4.1) — remaining render type-guards:
+            {"risk_assessment": {"nation_state": 3, "ransomware": 2, "supply_chain": 1, "insider": 0}},
+            {"looking_ahead": {"watch_items": [{"subject": 2026, "detail": "x"}]}},
+            {"geopolitical_threats": [
+                {"name": "China", "display_name": None, "level": "HIGH",
+                 "relevance": "one string", "activity": "a", "risk": "r"}
+            ]},
+            {"executive_summary": ["paragraph one", "paragraph two"]},
+            {"breach_landscape": {"common_factors": ["not", "a", "string"]}},
         ],
     )
     def test_malformed_strategic_analysis_does_not_raise(self, generator, analysis):

@@ -622,6 +622,12 @@ class QuarterlyReportGenerator(BaseReportGenerator):
 
         # Get summary paragraphs
         summary = analysis_result.get("executive_summary", "")
+        # The AI may emit a list of paragraphs (or a non-string); coerce so .split/.strip below
+        # never crash. A list is joined into paragraphs; anything else becomes str().
+        if isinstance(summary, list):
+            summary = "\n\n".join(str(p) for p in summary if p)
+        elif not isinstance(summary, str):
+            summary = str(summary or "")
         if not summary:
             summary = self._generate_default_executive_summary(analysis_result)
 
@@ -734,10 +740,12 @@ and vulnerabilities observed are consistent with those historically used against
         previous_assessment = history.get(prev_quarter_key, {})
 
         # Get current risk levels. `(x or default)` coerces present-but-null values too.
-        current_nation_state = (risk_data.get("nation_state") or RiskLevel.HIGH).upper()
-        current_ransomware = (risk_data.get("ransomware") or RiskLevel.HIGH).upper()
-        current_supply_chain = (risk_data.get("supply_chain") or RiskLevel.MEDIUM).upper()
-        current_insider = (risk_data.get("insider") or RiskLevel.LOW).upper()
+        # str(...) so a non-string risk value (e.g. an int) doesn't crash .upper(); mirrors the
+        # persistence path. `or DEFAULT` still handles present-but-null.
+        current_nation_state = str(risk_data.get("nation_state") or RiskLevel.HIGH).upper()
+        current_ransomware = str(risk_data.get("ransomware") or RiskLevel.HIGH).upper()
+        current_supply_chain = str(risk_data.get("supply_chain") or RiskLevel.MEDIUM).upper()
+        current_insider = str(risk_data.get("insider") or RiskLevel.LOW).upper()
 
         # Get AI's trend assessments from analysis
         ai_nation_state_trend = risk_data.get("nation_state_trend", RiskLevel.UNCHANGED)
@@ -950,6 +958,19 @@ and vulnerabilities observed are consistent with those historically used against
         # Spacer after risk assessment
         spacer = self.doc.add_paragraph()
         spacer.paragraph_format.space_after = Pt(6)
+
+    @staticmethod
+    def _as_bullets(value: Any) -> list[str]:
+        """Normalize a bullet field to a list of non-empty strings.
+
+        Accepts a list (each item stringified) or a single string (kept whole, not sliced into
+        characters). Anything else -> empty list.
+        """
+        if isinstance(value, str):
+            return [value] if value.strip() else []
+        if isinstance(value, list):
+            return [str(v).strip() for v in value if v is not None and str(v).strip()]
+        return []
 
     @staticmethod
     def _change_pct_color(change_pct: str) -> RGBColor:
@@ -1277,6 +1298,8 @@ and vulnerabilities observed are consistent with those historically used against
         spacer.paragraph_format.space_after = Pt(6)
 
         common_factors = breach_data.get("common_factors", "")
+        if not isinstance(common_factors, str):
+            common_factors = str(common_factors or "")
         if common_factors:
             # Subheading
             factors_heading = self.doc.add_paragraph()
@@ -1296,6 +1319,20 @@ and vulnerabilities observed are consistent with those historically used against
             factors_run.font.size = Pt(10)
             factors_run.font.bold = False
             factors_run.font.color.rgb = RGBColor(0x11, 0x18, 0x27)
+
+            # If the narrative cites bare percentages, add a short caveat so an AI estimate is not
+            # read as a hard measured statistic — these figures are not dataset-grounded.
+            if re.search(r"\d\s*%|\bpercent\b", common_factors, re.IGNORECASE):
+                caveat = self.doc.add_paragraph()
+                caveat.paragraph_format.space_after = Pt(6)
+                caveat_run = caveat.add_run(
+                    "Percentages above reflect analyst assessment of this quarter's incidents, "
+                    "not a measured dataset statistic."
+                )
+                caveat_run.font.name = "Arial"
+                caveat_run.font.size = Pt(8)
+                caveat_run.font.italic = True
+                caveat_run.font.color.rgb = BrandColors.GRAY_MEDIUM
 
         # Spacer after breach landscape
         spacer = self.doc.add_paragraph()
@@ -1521,7 +1558,7 @@ and vulnerabilities observed are consistent with those historically used against
             country_name = country_data.get("name", "")
             if not country_name:
                 country_name = country_data.get("country", "Unknown")
-            display_name = country_data.get("display_name", country_name)
+            display_name = country_data.get("display_name") or country_name  # `or` guards present-null
 
             # Truncate display name if longer than 20 characters
             if len(display_name) > 20:
@@ -1539,9 +1576,12 @@ and vulnerabilities observed are consistent with those historically used against
             # Present-but-null "exposure" returns None; the .get default only fires on a missing
             # key. str(... or "MEDIUM") mirrors the threat_level guard above (was a NoneType crash).
             exposure = str(country_data.get("exposure") or "MEDIUM").upper()
-            relevance_bullets = country_data.get("relevance", [])
-            activity_bullets = country_data.get("activity", [])
-            risk_bullets = country_data.get("risk", [])
+            # Coerce each bullet field to a list of strings. If the AI emits a single string,
+            # slicing/iterating it later would render one character per bullet ("• C", "• h"); a
+            # list of non-dicts would crash on concatenation. _as_bullets normalizes both.
+            relevance_bullets = self._as_bullets(country_data.get("relevance"))
+            activity_bullets = self._as_bullets(country_data.get("activity"))
+            risk_bullets = self._as_bullets(country_data.get("risk"))
 
             # ============================================================
             # ROW 1 — HEADER ROW (dark charcoal background, white text)
@@ -2004,7 +2044,7 @@ and vulnerabilities observed are consistent with those historically used against
 
         # Component 4 — Numbered watch item list
         for i, item in enumerate(watch_items):
-            subject = item.get("subject", "")
+            subject = str(item.get("subject", ""))  # str() so a non-string subject can't crash add_run
             detail = item.get("detail", "")
 
             # Try to use 'List Number' style, fall back to manual numbering

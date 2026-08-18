@@ -115,12 +115,15 @@ def _parse_date(value: Any) -> date | None:
     if not value:
         return None
     s = str(value).strip().replace("Z", "")
-    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%m/%d/%Y", "%Y/%m/%d"):
+    # Take just the date portion (before any time/space separator) for the date-only formats,
+    # instead of the previous fragile `s[:len(fmt)+4]` truncation.
+    date_part = re.split(r"[T ]", s, maxsplit=1)[0]
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%Y/%m/%d"):
         try:
-            return datetime.strptime(s[: len(fmt) + 4], fmt).date()
+            return datetime.strptime(date_part, fmt).date()
         except ValueError:
             continue
-    # Last resort: fromisoformat handles most ISO shapes.
+    # Last resort: fromisoformat handles most ISO shapes (incl. full datetimes).
     try:
         return datetime.fromisoformat(s).date()
     except ValueError:
@@ -215,7 +218,9 @@ def compute_breach_metrics(
     for r in records:
         per_breach_costs.append(cost_for_sector(str(r.get("sector", "")), default_cost_per_breach_usd))
         rec_n = r.get("records_exposed")
-        if isinstance(rec_n, (int, float)):
+        # Exclude bool (an int subclass — a stray True would count as 1 record) and negatives
+        # (never a valid affected-records figure). 0 is a valid known-zero.
+        if isinstance(rec_n, (int, float)) and not isinstance(rec_n, bool) and rec_n >= 0:
             records_total += int(rec_n)
             records_known = True
 
@@ -305,7 +310,7 @@ def build_incidents_by_type(records: list[dict]) -> list[dict]:
         best = max(recs, key=lambda r: r.get("records_exposed") or 0)
         org = str(best.get("organization", "")).strip() or "Undisclosed entity"
         rec_n = best.get("records_exposed")
-        if isinstance(rec_n, (int, float)) and rec_n > 0:
+        if isinstance(rec_n, (int, float)) and not isinstance(rec_n, bool) and rec_n > 0:
             example = f"{org}: {itype.lower()} affecting {int(rec_n):,} records"
         else:
             example = f"{org}: {itype.lower()} incident"

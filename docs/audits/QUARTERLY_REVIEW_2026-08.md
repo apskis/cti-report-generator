@@ -103,25 +103,42 @@ Legend: ☐ open · ◐ in progress · ☑ done
 
 ---
 
-## Tier 4 — Lower-severity render / robustness / tests
+## Tier 4 — Lower-severity render / robustness / tests _(done 2026-08-18)_
 
-- ☐ Render crash-class (low probability): risk-level on int (`:711-714`), watch-item `subject`
-  raw `add_run` (`:1969`), `display_name` `len()` on null (`:1472`), `executive_summary` assumed
-  str (`:603`).
-- ☐ Recommendations as a bare list (not `{"items":[…]}`) silently dropped to "unavailable".
-- ☐ Geo bullet as a string renders one character per bullet.
-- ☐ Ungrounded narrative percentages ("34% of incidents…") read as hard stats — label or ground.
-- ☐ `records_exposed` sum counts `bool` (int subclass) and negatives; `_parse_date` truncation
-  heuristic fragile.
-- ☐ **Test gaps:** breach-layer dedup edge cases, VCDB year-only bucketing, the HHS POST flow, and
-  a `function_app` grounding integration test (its absence let T1.1 ship).
+- ☑ Render crash-class type-guards (T4.1): risk-levels via `str(... or default).upper()`;
+  watch-item `subject` via `str(...)`; `display_name` via `or country_name`; `executive_summary`
+  coerced (list joined / non-str stringified); geo bullets normalized with `_as_bullets` (a string
+  no longer slices to one char per bullet); `common_factors` coerced to str.
+- ☑ Recommendations as a bare list now renders (fixed in T1.2).
+- ☑ Ungrounded narrative percentages: a short italic caveat is appended to `common_factors` when it
+  cites a percentage, so an AI estimate isn't read as a measured statistic (T4.3).
+- ☑ `records_exposed` sum now excludes `bool` and negatives; `_parse_date` drops the fragile
+  `s[:len(fmt)+4]` truncation for a date-part split (T4.2).
+- ☑ **Test gaps closed:** anonymized/cross-suffix dedup, VCDB year-only bucketing, HHS
+  failure-vs-quiet-quarter, and a `create_and_upload_report` wiring test (the surrogate for the
+  `function_app` grounding integration that would have caught T1.1).
+  ◐ _Remaining (accepted):_ a full `fetch_hhs_breach_csv` POST-flow test (the JSF export
+  orchestration) is left uncovered — heavy to mock; the pure parsers, decode, and collector
+  failure-signal paths are tested, and the live flow is best verified with `scripts/diagnose_hhs.py`.
 
 ---
 
 ## Bottom line / sequencing
 
-Every Tier-A crash from July (Q1–Q7) is fixed; a `quarterly --real` run should survive the
-previously-audited failures. The work here is: **T1** (make a real run both survivable and
-meaningful), then **T2.1 / T2.2** (the most visible defect and the trust-critical grounding hole),
-then Tier 3–4 batched. HHS (T1.3) is best verified against the live portal —
-`scripts/diagnose_hhs.py` exists for exactly that.
+**Status: Tiers 1–4 all complete (2026-08-18).** A `quarterly --real` run now survives malformed
+AI output, grounds its breach stat cards in the deployed path, colors QoQ deltas by direction,
+refuses a fabricated multi-word victim, counts breaches accurately (no anonymized-collapse, no
+Q1 inflation), and labels ungrounded estimates instead of presenting them as fact. 523 tests pass
+(excluding the 2 `semantic_kernel`-gated modules).
+
+**Remaining / accepted:**
+- The full `fetch_hhs_breach_csv` JSF POST-flow test is uncovered (heavy to mock) — verify the live
+  flow with `scripts/diagnose_hhs.py` on a real-network host.
+- T2.2 residual: a single common-word actor name (e.g. an actor literally "China") is still
+  grounded by its lone token — rare, low-risk.
+- T2.3 is non-destructive (marks ungrounded cards rather than forcing every count to N/A); flip to
+  hard-N/A if preferred.
+
+**Next once verified live:** the strategic enhancements discussed separately — a persisted
+quarter ledger for exact QoQ, and new sources (ransomware.live, SEC 8-K Item 1.05, Maine AG,
+CISA KEV quarterly additions).
