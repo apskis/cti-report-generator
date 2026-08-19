@@ -186,6 +186,7 @@ def create_and_upload_report(
     storage_account_key: str,
     breach_dataset: list[dict[str, Any]] | None = None,
     reporting_period: Any = None,
+    history_store: Any = None,
 ) -> dict[str, Any]:
     """
     Generate a report and upload it to Azure Blob Storage.
@@ -220,6 +221,10 @@ def create_and_upload_report(
             generator.set_reporting_period(reporting_period)
         if breach_dataset is not None and hasattr(generator, "set_breach_dataset"):
             generator.set_breach_dataset(breach_dataset)
+        # Durable quarter ledger: the deployed Function passes a blob-backed store so
+        # quarter-over-quarter history survives the ephemeral container.
+        if history_store is not None and hasattr(generator, "set_history_store"):
+            generator.set_history_store(history_store)
 
         # Generate report
         generator.generate(analysis_result)

@@ -363,8 +363,17 @@ class QuarterlyReportGenerator(BaseReportGenerator):
         data_dir.mkdir(parents=True, exist_ok=True)
         return data_dir / "quarterly_risk_history.json"
 
+    def set_history_store(self, store: Any) -> None:
+        """Persist the quarter ledger to a durable store (``load``/``save``) instead of the local
+        file. The deployed Function injects a blob-backed store so QoQ history survives the
+        ephemeral container; local runs leave this unset and use the JSON file."""
+        self.history_store = store
+
     def _load_historical_data(self) -> dict[str, Any]:
-        """Load historical quarterly risk assessment data."""
+        """Load the quarter ledger from the injected store, or the local JSON file."""
+        store = getattr(self, "history_store", None)
+        if store is not None:
+            return store.load()
         file_path = self._get_historical_file_path()
         if not file_path.exists():
             return {}
@@ -377,7 +386,11 @@ class QuarterlyReportGenerator(BaseReportGenerator):
             return {}
 
     def _save_historical_data(self, history: dict[str, Any]) -> None:
-        """Save historical quarterly risk assessment data."""
+        """Save the quarter ledger to the injected store, or the local JSON file."""
+        store = getattr(self, "history_store", None)
+        if store is not None:
+            store.save(history)
+            return
         file_path = self._get_historical_file_path()
         try:
             with open(file_path, "w") as f:

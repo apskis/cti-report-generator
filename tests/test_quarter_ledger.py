@@ -54,6 +54,22 @@ class TestPriorValueLookup:
         assert ql.prior_value_for_label(None, "Total Incidents") is None
 
 
+class TestBlobHistoryStore:
+    def test_conforms_to_protocol_and_is_non_fatal(self, monkeypatch):
+        from src.reports.history_store import BlobQuarterHistoryStore, HistoryStore
+
+        store = BlobQuarterHistoryStore("acct", "key")
+        assert isinstance(store, HistoryStore)
+
+        # A storage failure must never abort a report: load -> {}, save -> swallowed.
+        def _boom():
+            raise RuntimeError("no network")
+
+        monkeypatch.setattr(store, "_blob_client", _boom)
+        assert store.load() == {}
+        store.save({"2026-Q1": {"metrics": {"total_incidents": 6}}})  # must not raise
+
+
 class TestQuarterRoundTrip:
     """Quarter N grounds + saves its metrics; quarter N+1 reads them as its prior value."""
 
@@ -115,3 +131,41 @@ class TestQuarterRoundTrip:
         assert total_card["value"] == "10"          # grounded to this quarter's dataset
         assert str(total_card["prior_value"]) == "6"  # prior from the Q1 ledger entry
         assert total_card["change_pct"].startswith("+")  # 6 -> 10 is an increase
+
+    def test_round_trip_through_injected_store_not_local_file(self, monkeypatch, tmp_path):
+        # Deployed durability: with a history store injected, the ledger round-trips through the
+        # store (blob in production) instead of the local file — nothing is written to disk.
+        from src.core.reporting_period import make_period
+        from src.reports.quarterly_report import QuarterlyReportGenerator
+
+        # Point the local-file dir somewhere empty; assert nothing lands there.
+        monkeypatch.setenv("QUARTERLY_HISTORY_DIR", str(tmp_path))
+
+        class _MemStore:
+            def __init__(self):
+                self.data: dict = {}
+
+            def load(self):
+                return dict(self.data)
+
+            def save(self, history):
+                self.data = dict(history)
+
+        store = _MemStore()
+
+        q1 = QuarterlyReportGenerator()
+        q1.set_history_store(store)
+        q1.set_reporting_period(make_period(2026, 1))
+        q1.set_breach_dataset(self._dataset(2, 6, 2))
+        q1.generate(self._analysis())
+        assert store.data.get("2026-Q1", {}).get("metrics", {}).get("total_incidents") == 6
+        assert not (tmp_path / "quarterly_risk_history.json").exists()  # not the local file
+
+        q2 = QuarterlyReportGenerator()
+        q2.set_history_store(store)
+        q2.set_reporting_period(make_period(2026, 2))
+        q2.set_breach_dataset(self._dataset(5, 10, 3))
+        analysis_q2 = self._analysis()
+        q2.generate(analysis_q2)
+        total = next(c for c in analysis_q2["breach_landscape"]["stat_cards"] if c["label"] == "Total Incidents")
+        assert str(total["prior_value"]) == "6"  # prior read from the injected store

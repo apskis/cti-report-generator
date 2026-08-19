@@ -102,11 +102,17 @@ async def _run_gate_pass(report_type, data_by_source, osint_articles, period_day
 
 
 async def _upload_report(
-    report_type: str, analysis: dict, credentials: dict, breach_dataset=None, reporting_period=None
+    report_type: str,
+    analysis: dict,
+    credentials: dict,
+    breach_dataset=None,
+    reporting_period=None,
+    history_store=None,
 ) -> dict:
     """Render the .docx and upload it to blob storage; raise on failure.
 
-    breach_dataset / reporting_period are quarterly-only and ground the breach stat cards.
+    breach_dataset / reporting_period are quarterly-only and ground the breach stat cards;
+    history_store is the durable quarter ledger (blob-backed) for QoQ across runs.
     """
     storage_account_name = credentials["storage_account_name"]
     storage_account_key = credentials["storage_account_key"]
@@ -121,6 +127,7 @@ async def _upload_report(
         storage_account_key=storage_account_key,
         breach_dataset=breach_dataset,
         reporting_period=reporting_period,
+        history_store=history_store,
     )
     if not report_result.get("success", False):
         raise RuntimeError(f"Report generation failed: {report_result.get('error', 'Unknown error')}")
@@ -379,12 +386,19 @@ async def generate_quarterly_report(req: func.HttpRequest) -> func.HttpResponse:
             f"Breach dataset for grounding: {len(breach_dataset)} records from "
             f"{', '.join(BREACH_DATASET_SOURCES)}"
         )
+        # Durable quarter ledger so QoQ history survives the ephemeral Function container.
+        from src.reports.history_store import BlobQuarterHistoryStore
+
+        history_store = BlobQuarterHistoryStore(
+            credentials["storage_account_name"], credentials["storage_account_key"]
+        )
         report_result = await _upload_report(
             "quarterly",
             analysis,
             credentials,
             breach_dataset=breach_dataset,
             reporting_period=reporting_period,
+            history_store=history_store,
         )
 
         logger.info(f"Quarterly report generated successfully: {report_result['filename']}")
