@@ -78,3 +78,8 @@ collectors:
     description: "SEC EDGAR 8-K Item 1.05 - peer public-company material cyber-incident disclosures (quarterly only)"
     enabled: true
     quarterly_only: true
+
+  - name: california_ag
+    description: "California AG breach registry - cross-sector US breach notifications, complements HHS (quarterly only)"
+    enabled: true
+    quarterly_only: true

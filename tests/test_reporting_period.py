@@ -29,7 +29,9 @@ class TestMergeBreachDataset:
         }
         merged = merge_breach_dataset(data)
         assert [r["organization"] for r in merged] == ["A", "B", "C"]
-        assert set(BREACH_DATASET_SOURCES) == {"VCDB", "HHS", "HIBP", "RansomwareLive", "SEC8K"}
+        assert set(BREACH_DATASET_SOURCES) == {
+            "VCDB", "HHS", "HIBP", "RansomwareLive", "SEC8K", "CaliforniaAG"
+        }
 
     def test_handles_missing_and_none_sources(self):
         assert merge_breach_dataset({}) == []

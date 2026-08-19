@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from src.collectors.base import BaseCollector
+from src.collectors.california_ag_collector import CaliforniaAGCollector
 from src.collectors.claroty_collector import ClarotyCollector
 from src.collectors.crowdstrike_collector import CrowdStrikeCollector
 from src.collectors.hhs_breach_collector import HHSBreachCollector
@@ -44,6 +45,7 @@ COLLECTOR_REGISTRY: dict[str, type[BaseCollector]] = {
     "hibp_breach": HIBPBreachCollector,
     "ransomware_live": RansomwareLiveCollector,
     "sec_8k": SEC8KCollector,
+    "california_ag": CaliforniaAGCollector,
 }
 
 

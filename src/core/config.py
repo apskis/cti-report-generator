@@ -289,6 +289,14 @@ class CollectorConfig:
         default_factory=lambda: os.environ.get("SEC_EDGAR_FTS_URL", "https://efts.sec.gov/LATEST/search-index")
     )
     sec_edgar_fts_query: str = '"Material Cybersecurity Incidents"'
+    # California AG breach-notification registry (keyless HTML list). Cross-sector, so it
+    # complements the healthcare-only HHS source. (Chosen over the Maine AG registry, which is
+    # currently offline.) The list is date-sorted; the collector paginates and window-filters.
+    # Override CA_AG_BREACH_URL to point at a date-filtered query for fuller coverage.
+    ca_ag_breach_url: str = field(
+        default_factory=lambda: os.environ.get("CA_AG_BREACH_URL", "https://oag.ca.gov/privacy/databreach/list")
+    )
+    ca_ag_max_pages: int = 5
 
     # Retry settings
     max_retries: int = 3

@@ -1416,10 +1416,58 @@ class TestSEC8KParser:
         assert "forms=8-K" in url
 
 
+class TestCaliforniaAGParser:
+    _HTML = """
+    <html><body>
+    <table class="views-table">
+      <thead><tr><th>Organization Name</th><th>Date(s) of Breach</th><th>Reported Date</th></tr></thead>
+      <tbody>
+        <tr><td><a href="/x">Acme Health System</a></td><td>04/02/2026 - 04/10/2026</td><td>05/14/2026</td></tr>
+        <tr><td>Beta Manufacturing Inc</td><td>Unknown</td><td>06/02/2026</td></tr>
+        <tr><td></td><td>x</td><td>06/03/2026</td></tr>
+      </tbody>
+    </table></body></html>"""
+
+    def test_parses_list_table(self):
+        from src.collectors.california_ag_collector import parse_california_ag
+
+        out = parse_california_ag(self._HTML)
+        assert len(out) == 2  # nameless row dropped
+        assert out[0]["organization"] == "Acme Health System"
+        assert out[0]["date"] == "2026-05-14"  # reported date, ISO-normalized
+        assert out[0]["source"] == "CaliforniaAG"
+        assert out[0]["incident_type"] == "Breach"
+        assert out[0]["country"] == "US"
+        assert out[1]["organization"] == "Beta Manufacturing Inc"
+        assert out[1]["date"] == "2026-06-02"
+
+    def test_header_indexed_survives_column_reorder(self):
+        from src.collectors.california_ag_collector import parse_california_ag
+
+        reordered = self._HTML.replace(
+            "<th>Organization Name</th><th>Date(s) of Breach</th><th>Reported Date</th>",
+            "<th>Reported Date</th><th>Organization Name</th><th>Date(s) of Breach</th>",
+        ).replace(
+            '<td><a href="/x">Acme Health System</a></td><td>04/02/2026 - 04/10/2026</td><td>05/14/2026</td>',
+            '<td>05/14/2026</td><td>Acme Health System</td><td>04/02/2026 - 04/10/2026</td>',
+        )
+        out = parse_california_ag(reordered)
+        assert out[0]["organization"] == "Acme Health System"
+        assert out[0]["date"] == "2026-05-14"
+
+    def test_date_normalization_and_empty(self):
+        from src.collectors.california_ag_collector import _to_iso, parse_california_ag
+
+        assert _to_iso("05/14/2026") == "2026-05-14"
+        assert _to_iso("12/01/2025 - 12/15/2025") == "2025-12-01"  # range uses first
+        assert _to_iso("Unknown") == "" and _to_iso("") == ""
+        assert parse_california_ag("") == []
+
+
 class TestBreachCollectorsRegistered:
     def test_registered(self):
         names = list_available_collectors()
-        assert {"vcdb", "hhs_breach", "hibp_breach", "ransomware_live", "sec_8k"} <= set(names)
+        assert {"vcdb", "hhs_breach", "hibp_breach", "ransomware_live", "sec_8k", "california_ag"} <= set(names)
 
     def test_enabled_only_for_quarterly(self, mock_credentials):
         from src.collectors.ransomware_live_collector import RansomwareLiveCollector
