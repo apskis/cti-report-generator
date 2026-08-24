@@ -125,11 +125,17 @@ class WeeklyReportGenerator(BaseReportGenerator):
             self._add_active_campaigns(analysis_result)
             self._add_industry_incidents(analysis_result)
             self._add_questions_to_ask(analysis_result)
+            # Sources/References: the [N] markers here LABEL the reference entries, so keep them at
+            # normal size — subscript is only for inline citations in the body. Record this
+            # section's paragraphs so the subscript pass below skips them.
+            _pids_before = {id(p._p) for p in self.doc.paragraphs}
             self._add_resources_section(analysis_result)
+            self._citation_skip_p_ids = {id(p._p) for p in self.doc.paragraphs} - _pids_before
             self._add_footer()
 
             # Document-wide pass: render every inline citation marker ([1], [3][4]) as a
-            # subscript, wherever it appears (summary, tables, incidents, etc.).
+            # subscript, wherever it appears (summary, tables, incidents, etc.) EXCEPT the
+            # Sources list recorded above.
             self._subscript_all_citations()
 
             logger.info("Weekly CTI Report generated successfully")

@@ -695,7 +695,12 @@ class BaseReportGenerator(ABC):
         """
         if self.doc is None:
             return
+        # Paragraphs a generator explicitly opts out of (e.g. the weekly Sources/References list,
+        # where [N] labels the entry rather than citing inline) keep their markers at normal size.
+        skip = getattr(self, "_citation_skip_p_ids", set())
         for paragraph in _iter_report_paragraphs(self.doc):
+            if id(paragraph._p) in skip:
+                continue
             _subscript_citations_in_paragraph(paragraph)
 
     def _set_document_background(self, color_hex: str = "1E1E1E") -> None:

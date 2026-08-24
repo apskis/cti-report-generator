@@ -102,6 +102,24 @@ class TestWeeklyReportGenerator:
         """Create a fresh generator instance."""
         return WeeklyReportGenerator()
 
+    def test_sources_section_citations_not_raised(self):
+        # The [N] markers in the Sources/References list LABEL entries and must stay normal size;
+        # inline citations in the body keep the raised marker.
+        from docx import Document
+
+        gen = WeeklyReportGenerator()
+        gen.doc = Document()
+        body = gen.doc.add_paragraph("Active exploitation confirmed [5] this week.")
+        source = gen.doc.add_paragraph("[5] GitLab CVE Comes Under Active Exploitation")
+        gen._citation_skip_p_ids = {id(source._p)}
+        gen._subscript_all_citations()
+
+        def raised(p):
+            return any(bool(r.font.superscript) for r in p.runs)
+
+        assert raised(body) is True      # inline citation still raised
+        assert raised(source) is False   # sources-list marker left at normal size
+
     @pytest.fixture
     def sample_analysis_result(self):
         """Sample analysis result for testing."""
