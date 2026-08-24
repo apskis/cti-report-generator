@@ -318,6 +318,9 @@ def _scan_industry_incidents_quality(report: dict) -> tuple[list[str], list[str]
         "health care",
     ]
 
+    entity_suffixes = ("corp", "inc", "llc", "llp", "ltd", "co", "lp", "plc", "gmbh", "sa", "ag")
+    entity_indicators = ("corp.", "inc.", "llc", "llp", "ltd.", "co.", "l.p.", "plc", "dba", "d/b/a")
+
     vague_incidents = []
     for inc in industry_incidents:
         if isinstance(inc, dict):
@@ -331,7 +334,10 @@ def _scan_industry_incidents_quality(report: dict) -> tuple[list[str], list[str]
             ):
                 vague_incidents.append(inc.get("organization", "Unknown"))
             # Or if it's suspiciously generic (very long or contains parenthetical descriptions)
-            elif len(org.split()) > 6 or ("(named" in org or "(site" in org):
+            # Skip the word-count check for names with corporate entity indicators (real company names)
+            elif "(named" in org or "(site" in org:
+                vague_incidents.append(inc.get("organization", "Unknown"))
+            elif len(org.split()) > 6 and not any(ind in org for ind in entity_indicators):
                 vague_incidents.append(inc.get("organization", "Unknown"))
 
     if vague_incidents:
