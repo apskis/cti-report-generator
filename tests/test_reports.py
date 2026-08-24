@@ -564,6 +564,23 @@ class TestQuarterlyRobustness:
         assert doc is not None
         assert len(doc.paragraphs) > 0
 
+    def test_sources_section_citations_not_raised(self, generator):
+        # Same as weekly: [N] in the Resources/Sources list labels entries and stays normal size;
+        # inline body citations keep the raised superscript marker.
+        from docx import Document
+
+        generator.doc = Document()
+        body = generator.doc.add_paragraph("Confirmed by Intel471 [3] this quarter.")
+        source = generator.doc.add_paragraph("[3] Intel471 - underground breach report")
+        generator._citation_skip_p_ids = {id(source._p)}
+        generator._subscript_all_citations()
+
+        def raised(p):
+            return any(bool(r.font.superscript) for r in p.runs)
+
+        assert raised(body) is True
+        assert raised(source) is False
+
     # ----- T2.1: change_pct color contract (red up / green down / gray flat|N/A) -----
 
     def test_change_pct_color_by_direction(self, generator):
